@@ -196,6 +196,7 @@ class DocumentType(str, Enum):
     COVER_LETTER = "cover_letter"
     JOB_DESCRIPTION = "job_description"
     REFERENCE_LETTER = "reference_letter"
+    CERTIFICATION = "certification"
     OTHER = "other"
 
 class Document(BaseModel):
@@ -205,6 +206,7 @@ class Document(BaseModel):
     raw_content: str
     structured_content: str
     uploaded_at: datetime = Field(default_factory=datetime.now)
+    reasoning_analysis: Optional[str] = None
 
 class MotivationLetter(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
@@ -409,9 +411,14 @@ class SQLiteDocumentRepository:
                     filename TEXT,
                     raw_content TEXT,
                     structured_content TEXT,
-                    uploaded_at TEXT
+                    uploaded_at TEXT,
+                    reasoning_analysis TEXT
                 )
             ''')
+            try:
+                c.execute('ALTER TABLE documents ADD COLUMN reasoning_analysis TEXT')
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
     
     def save(self, document: Document) -> str:
@@ -419,11 +426,12 @@ class SQLiteDocumentRepository:
             c = conn.cursor()
             c.execute(
                 """INSERT OR REPLACE INTO documents 
-                   (id, type, filename, raw_content, structured_content, uploaded_at) 
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   (id, type, filename, raw_content, structured_content, uploaded_at, reasoning_analysis) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (document.id, document.type.value, document.filename,
                  document.raw_content, document.structured_content,
-                 document.uploaded_at.isoformat())
+                 document.uploaded_at.isoformat(),
+                 getattr(document, 'reasoning_analysis', None))
             )
             conn.commit()
         return document.id
@@ -435,7 +443,7 @@ class SQLiteDocumentRepository:
             row = c.fetchone()
             
             if row:
-                return Document(
+                doc = Document(
                     id=row[0],
                     type=DocumentType(row[1]),
                     filename=row[2],
@@ -443,6 +451,9 @@ class SQLiteDocumentRepository:
                     structured_content=row[4],
                     uploaded_at=datetime.fromisoformat(row[5])
                 )
+                if len(row) > 6:
+                    setattr(doc, 'reasoning_analysis', row[6])
+                return doc
         return None
     
     def get_by_type(self, doc_type: DocumentType) -> List[Document]:
@@ -456,14 +467,17 @@ class SQLiteDocumentRepository:
             rows = c.fetchall()
             
             for row in rows:
-                documents.append(Document(
+                doc = Document(
                     id=row[0],
                     type=DocumentType(row[1]),
                     filename=row[2],
                     raw_content=row[3],
                     structured_content=row[4],
                     uploaded_at=datetime.fromisoformat(row[5])
-                ))
+                )
+                if len(row) > 6:
+                    setattr(doc, 'reasoning_analysis', row[6])
+                documents.append(doc)
         return documents
     
     def get_latest_resume(self) -> Optional[Resume]:
@@ -494,7 +508,6 @@ class Crawl4AIJobScraper:
     
     def scrape_job_description(self, url: str) -> JobData:
         self._logger.info(f"Scraping job description from: {url}")
-        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -502,9 +515,17 @@ class Crawl4AIJobScraper:
                 markdown_content = loop.run_until_complete(self._crawl_url(url))
             finally:
                 loop.close()
-            
-            return self._extract_job_data_from_markdown(url, markdown_content)
-            
+
+            # Use markdown content directly, no LLM extraction
+            lines = markdown_content.split('\n')
+            title = next((line.strip('# ').strip() for line in lines if line.startswith('#')), "Unknown Position")
+            return JobData(
+                url=url,
+                title=title,
+                company="Unknown Company",
+                description=markdown_content[:3000],
+                requirements=""
+            )
         except Exception as e:
             self._logger.error(f"Error scraping job description: {e}")
             raise Exception(f"Failed to scrape job description: {str(e)}")
@@ -810,40 +831,28 @@ class DocumentExtractor:
         self._logger = logging.getLogger(self.__class__.__name__)
     
     def extract_resume(self, raw_content: str) -> Resume:
-        output_schema = Resume.model_json_schema()
-        
-        system_prompt = """You are an expert resume parser. Extract information from resumes and return structured JSON data that matches the exact schema provided. Be thorough and accurate."""
-        
+        # Use LLM to clean and format the resume text, not to parse JSON
+        system_prompt = "You are an expert resume editor. Clean up the following resume text: fix any formatting, syntax, or logical issues, and present the information in a clear, well-structured way. Do not add or remove information, just improve the clarity and flow. Return only the improved resume text."
         prompt = f"""
-        Extract and structure the resume information from the following content and return ONLY valid JSON that matches this exact schema:
-
-        {json.dumps(output_schema, indent=2)}
+        Clean up and format the following resume text for clarity and logical flow. Do not add or remove information, just improve the structure and readability.
 
         Resume content:
         {raw_content[:6000]}
-
-        Instructions:
-        - Extract all relevant information accurately
-        - Use null for missing fields
-        - Parse dates in a consistent format
-        - Split responsibilities/descriptions into arrays where appropriate
-        - Return only the JSON object with no additional text, formatting, or code blocks
         """
-        
         try:
-            response = self.llm_backend.generate_response(prompt, system_prompt)
-            
-            cleaned_response = response.strip()
-            if cleaned_response.startswith('```'):
-                cleaned_response = cleaned_response[7:]
-            if cleaned_response.endswith('```'):
-                cleaned_response = cleaned_response[:-3]
-            
-            resume_data = json.loads(cleaned_response.strip())
-            return Resume(**resume_data)
-            
+            cleaned_text = self.llm_backend.generate_response(prompt, system_prompt).strip()
+            return Resume(
+                summary=cleaned_text,
+                work_experience=[],
+                education=[],
+                technical_skills=[],
+                soft_skills=[],
+                projects=[],
+                certifications=[],
+                languages=[]
+            )
         except Exception as e:
-            self._logger.error(f"Resume extraction failed: {e}")
+            self._logger.error(f"Resume cleaning failed: {e}")
             return self._create_fallback_resume(raw_content)
     
     def extract_generic_document(self, raw_content: str, doc_type: DocumentType) -> GenericDocument:
@@ -1044,24 +1053,36 @@ class JobOpsApplication:
     def generate_motivation_letter(self, job_url: str, language: str = "en") -> str:
         try:
             job_data = self.job_scraper.scrape_job_description(job_url)
-            
-            resume = self.repository.get_latest_resume()
-            if not resume:
-                raise ValueError("No resume found. Please upload a resume first.")
-            
+
+            # Aggregate all relevant documents (resume, certificate, etc.)
+            doc_types = [DocumentType.RESUME, DocumentType.CERTIFICATION]
+            all_docs = []
+            for dt in doc_types:
+                all_docs.extend(self.repository.get_by_type(dt))
+            # Sort by upload date (latest last)
+            all_docs.sort(key=lambda d: d.uploaded_at)
+            # Concatenate all structured_content
+            combined_docs_markdown = "\n\n".join([doc.structured_content for doc in all_docs if doc.structured_content])
+
+            if not combined_docs_markdown.strip():
+                raise ValueError("No resume or relevant documents found. Please upload a resume or certificate first.")
+
+            # Use the combined markdown as the resume summary
+            resume = Resume(summary=combined_docs_markdown)
+
             letter = self.letter_generator.generate(job_data, resume, language)
-            
+
             output_dir = self.base_dir / 'motivations'
             output_dir.mkdir(exist_ok=True)
             filepath = self._save_letter(letter, output_dir)
-            
+
             self.notification_service.notify(
                 "JobOps", 
                 f"Motivation letter generated: {filepath.name}"
             )
-            
+
             return str(filepath)
-            
+
         except Exception as e:
             self._logger.error(f"Error generating motivation letter: {e}")
             self.notification_service.notify("JobOps Error", str(e))
@@ -1089,19 +1110,41 @@ class JobOpsApplication:
             else:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     raw_content = f.read()
-            
-            if doc_type == DocumentType.RESUME:
-                structured_obj = self.document_extractor.extract_resume(raw_content)
-                structured_content = structured_obj.json()
-            else:
-                structured_obj = self.document_extractor.extract_generic_document(raw_content, doc_type)
-                structured_content = structured_obj.json()
-            
+
+            # Use LLM to clean up and restructure content into markdown
+            system_prompt = "You are an expert document formatter. Clean up and restructure the following document content into clear, well-formatted markdown. Do not add or remove information, just improve the structure and readability. Return only the improved markdown. Optionally, you may include a <think>...</think> block with your reasoning before the markdown code block."
+            prompt = f"""
+            Clean up and format the following document content as markdown for clarity and logical flow. Do not add or remove information, just improve the structure and readability.
+
+            Document content:
+            {raw_content[:6000]}
+            """
+            try:
+                llm_response = self.llm_backend.generate_response(prompt, system_prompt).strip()
+                import re
+                # Extract <think>...</think>
+                reasoning_analysis = None
+                think_match = re.search(r'<think>(.*?)</think>', llm_response, re.DOTALL | re.IGNORECASE)
+                if think_match:
+                    reasoning_analysis = think_match.group(1).strip()
+                # Extract markdown code block
+                md_match = re.search(r'```markdown\s*(.*?)\s*```', llm_response, re.DOTALL | re.IGNORECASE)
+                if md_match:
+                    structured_content = md_match.group(1).strip()
+                else:
+                    # Remove <think>...</think> if present
+                    structured_content = re.sub(r'<think>.*?</think>', '', llm_response, flags=re.DOTALL | re.IGNORECASE).strip()
+            except Exception as e:
+                self._logger.error(f"Document markdown cleaning failed: {e}")
+                structured_content = raw_content
+                reasoning_analysis = None
+
             document = Document(
                 type=doc_type,
                 filename=file_path.name,
                 raw_content=raw_content,
-                structured_content=structured_content
+                structured_content=structured_content,
+                reasoning_analysis=reasoning_analysis
             )
             
             self.repository.save(document)
@@ -1131,31 +1174,80 @@ class JobOpsApplication:
         def on_upload_resume(icon, item):
             import tkinter as tk
             from tkinter import filedialog, messagebox
-            root = tk.Tk()
-            root.withdraw()
-            file_path = filedialog.askopenfilename(title="Select Resume File", filetypes=[("PDF or Text Files", "*.pdf *.txt")])
-            if file_path:
+            import threading
+            import time
+
+            # Animation images
+            def create_image(color):
+                img = Image.new('RGB', CONSTANTS.ICON_SIZE, color=color)
+                d = ImageDraw.Draw(img)
+                d.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
+                d.text((22, 22), "J", fill=color)
+                return img
+            img1 = create_image((70, 130, 180))
+            img2 = create_image((180, 130, 70))
+
+            animating = True
+            def animate_icon():
+                flip = False
+                while animating:
+                    icon.icon = img1 if flip else img2
+                    flip = not flip
+                    time.sleep(0.3)
+                icon.icon = img1  # restore original
+
+            def do_upload(file_path):
+                nonlocal animating
+                anim_thread = threading.Thread(target=animate_icon, daemon=True)
+                animating = True
+                anim_thread.start()
                 try:
                     doc = self.upload_document(file_path, DocumentType.RESUME)
-                    messagebox.showinfo("Success", f"Resume uploaded: {doc.filename}")
+                    root.after(0, lambda: messagebox.showinfo("Success", f"Resume uploaded: {doc.filename}"))
                 except Exception as e:
-                    messagebox.showerror("Error", f"Error uploading resume: {e}")
-            root.destroy()
+                    root.after(0, lambda e=e: messagebox.showerror("Error", f"Error uploading resume: {e}"))
+                finally:
+                    animating = False
+                    root.after(0, root.destroy)
+
+            def ask_and_upload():
+                file_path = filedialog.askopenfilename(title="Select Resume File", filetypes=[("PDF or Text Files", "*.pdf *.txt")])
+                if file_path:
+                    threading.Thread(target=do_upload, args=(file_path,), daemon=True).start()
+                else:
+                    root.destroy()
+
+            root = tk.Tk()
+            root.withdraw()
+            root.after(0, ask_and_upload)
+            root.mainloop()
 
         def on_generate_letter(icon, item):
             import tkinter as tk
             from tkinter import simpledialog, messagebox
-            root = tk.Tk()
-            root.withdraw()
-            job_url = simpledialog.askstring("Job URL", "Enter the job posting URL:")
-            if job_url:
-                language = simpledialog.askstring("Language", "Enter language (en/nl, default 'en'):") or "en"
+            import threading
+
+            def do_generate(job_url, language):
                 try:
                     filepath = self.generate_motivation_letter(job_url, language)
-                    messagebox.showinfo("Success", f"Motivation letter generated: {filepath}")
+                    root.after(0, lambda: messagebox.showinfo("Success", f"Motivation letter generated: {filepath}"))
                 except Exception as e:
-                    messagebox.showerror("Error", f"Error generating letter: {e}")
-            root.destroy()
+                    root.after(0, lambda: messagebox.showerror("Error", f"Error generating letter: {e}"))
+                finally:
+                    root.after(0, root.destroy)
+
+            def ask_and_generate():
+                job_url = simpledialog.askstring("Job URL", "Enter the job posting URL:")
+                if job_url:
+                    language = simpledialog.askstring("Language", "Enter language (en/nl, default 'en'):") or "en"
+                    threading.Thread(target=do_generate, args=(job_url, language), daemon=True).start()
+                else:
+                    root.destroy()
+
+            root = tk.Tk()
+            root.withdraw()
+            root.after(0, ask_and_generate)
+            root.mainloop()
 
         def on_exit(icon, item):
             icon.stop()
