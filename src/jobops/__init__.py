@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import webbrowser
 
+import psutil
 import requests
 from bs4 import BeautifulSoup
 from plyer import notification
@@ -186,6 +187,8 @@ class JobData(BaseModel):
     company_size: Optional[str] = None
     benefits: Optional[str] = None
     scraped_at: datetime = Field(default_factory=datetime.now)
+    company_profile_url: Optional[str] = None
+    company_profile: Optional[str] = None
     
     @validator('url')
     def validate_url(cls, v):
@@ -508,7 +511,7 @@ class Crawl4AIJobScraper:
         self.llm_backend = llm_backend
         self._logger = logging.getLogger(self.__class__.__name__)
     
-    def scrape_job_description(self, url: str) -> JobData:
+    def scrape_job_description(self, url: str, company: str = None, title: str = None, location: str = None) -> JobData:
         self._logger.info(f"Scraping job description from: {url}")
         try:
             loop = asyncio.new_event_loop()
@@ -518,15 +521,74 @@ class Crawl4AIJobScraper:
             finally:
                 loop.close()
 
-            # Use markdown content directly, no LLM extraction
-            lines = markdown_content.split('\n')
-            title = next((line.strip('# ').strip() for line in lines if line.startswith('#')), "Unknown Position")
+            # If all fields are provided, skip LLM extraction and use them directly
+            if company and title and location is not None:
+                return JobData(
+                    url=url,
+                    title=title,
+                    company=company,
+                    location=location,
+                    description=markdown_content[:3000],
+                    requirements="",
+                    company_profile_url=None,
+                    company_profile=None
+                )
+            # Otherwise, fallback to LLM extraction as before
+            system_prompt = (
+                "You are an expert job posting parser. Extract the following information from the job posting markdown below and return ONLY a valid JSON object (no markdown, no code blocks, no extra text):\n"
+                "{\n  'title': '...',\n  'company': '...',\n  'location': '...',\n  'company_profile_url': '...',  // If not present, suggest a likely URL such as '/about' or '/about-us', or null if unknown\n  'company_profile': '...'       // If a company profile/description is present in the markdown or at the profile URL, include it here, otherwise null\n}\n"
+                "Instructions:\n"
+                "- Carefully search the markdown for job title, company name, and location.\n"
+                "- If the company profile or description is present, extract it. If not, suggest a likely company profile URL (e.g., '/about', '/about-us') based on the company website or job URL.\n"
+                "- If you cannot find a field, use null.\n"
+                "- Return ONLY the JSON object, with no extra text, markdown, or code blocks."
+            )
+            prompt = f"""
+            Extract the following information from the job posting markdown below and return ONLY a valid JSON object (no markdown, no code blocks, no extra text):
+            {{
+              "title": "...",
+              "company": "...",
+              "location": "...",
+              "company_profile_url": "...",  // If not present, suggest a likely URL such as '/about' or '/about-us', or null if unknown
+              "company_profile": "..."       // If a company profile/description is present in the markdown or at the profile URL, include it here, otherwise null
+            }}
+
+            Markdown:
+            {markdown_content[:10000]}
+            """
+            import json
+            try:
+                response = self.llm_backend.generate_response(prompt, system_prompt)
+                cleaned_response = response.strip()
+                if cleaned_response.startswith('```'):
+                    cleaned_response = cleaned_response[7:]
+                if cleaned_response.endswith('```'):
+                    cleaned_response = cleaned_response[:-3]
+                job_info = json.loads(cleaned_response.strip())
+                # Use user-provided overrides if present
+                title_val = title if title else job_info.get('title', '').strip() or "Unknown Position"
+                company_val = company if company else job_info.get('company', '').strip() or "Unknown Company"
+                location_val = location if location else job_info.get('location', '').strip() or None
+                company_profile_url = job_info.get('company_profile_url', None)
+                company_profile = job_info.get('company_profile', None)
+            except Exception as e:
+                self._logger.warning(f"LLM job field extraction failed, using fallback: {e}")
+                lines = markdown_content.split('\n')
+                title_val = title if title else next((line.strip('# ').strip() for line in lines if line.startswith('#')), "Unknown Position")
+                company_val = company if company else "Unknown Company"
+                location_val = location if location else None
+                company_profile_url = None
+                company_profile = None
+
             return JobData(
                 url=url,
-                title=title,
-                company="Unknown Company",
+                title=title_val,
+                company=company_val,
+                location=location_val,
                 description=markdown_content[:3000],
-                requirements=""
+                requirements="",
+                company_profile_url=company_profile_url,
+                company_profile=company_profile
             )
         except Exception as e:
             self._logger.error(f"Error scraping job description: {e}")
@@ -615,7 +677,7 @@ class WebJobScraper:
         })
         self._logger = logging.getLogger(self.__class__.__name__)
     
-    def scrape_job_description(self, url: str) -> JobData:
+    def scrape_job_description(self, url: str, company: str = None, title: str = None, location: str = None) -> JobData:
         self._logger.info(f"Scraping job description from: {url}")
         
         try:
@@ -627,13 +689,29 @@ class WebJobScraper:
             for script in soup(["script", "style"]):
                 script.extract()
             
-            if self.llm_backend:
-                return self._extract_with_llm(url, soup)
-            else:
+            # If all fields are provided, skip LLM extraction and use them directly
+            if company and title and location is not None:
                 return JobData(
                     url=url,
-                    title=self._extract_title(soup),
-                    company=self._extract_company(soup),
+                    title=title,
+                    company=company,
+                    location=location,
+                    description=self._extract_description(soup),
+                    requirements=self._extract_requirements(soup)
+                )
+            # Otherwise, fallback to LLM extraction as before
+            if self.llm_backend:
+                return self._extract_with_llm(url, soup, company, title, location)
+            else:
+                # Use user-provided overrides if present
+                title_val = title if title else self._extract_title(soup)
+                company_val = company if company else self._extract_company(soup)
+                location_val = location if location else None
+                return JobData(
+                    url=url,
+                    title=title_val,
+                    company=company_val,
+                    location=location_val,
                     description=self._extract_description(soup),
                     requirements=self._extract_requirements(soup)
                 )
@@ -642,7 +720,7 @@ class WebJobScraper:
             self._logger.error(f"Error scraping job description: {e}")
             raise Exception(f"Failed to scrape job description: {str(e)}")
     
-    def _extract_with_llm(self, url: str, soup: BeautifulSoup) -> JobData:
+    def _extract_with_llm(self, url: str, soup: BeautifulSoup, company: str = None, title: str = None, location: str = None) -> JobData:
         text_content = soup.get_text(separator='\n', strip=True)
         output_schema = JobData.model_json_schema()
         
@@ -668,7 +746,10 @@ class WebJobScraper:
             
             job_info = json.loads(cleaned_response.strip())
             job_info['url'] = url
-            
+            # Use user-provided overrides if present
+            job_info['title'] = title if title else job_info.get('title', 'Unknown Position')
+            job_info['company'] = company if company else job_info.get('company', 'Unknown Company')
+            job_info['location'] = location if location else job_info.get('location', None)
             return JobData(**job_info)
         except Exception as e:
             self._logger.warning(f"LLM extraction failed, using fallback: {e}")
@@ -1073,9 +1154,14 @@ class JobOpsApplication:
             }
             self.config_manager.save(self.config)
     
-    def generate_motivation_letter(self, job_url: str, language: str = "en") -> str:
+    def generate_motivation_letter(self, job_url: str, language: str = "en", company: str = None, title: str = None, location: str = None) -> str:
         try:
-            job_data = self.job_scraper.scrape_job_description(job_url)
+            job_data = self.job_scraper.scrape_job_description(
+                job_url,
+                company=company,
+                title=title,
+                location=location
+            )
 
             # Aggregate all relevant documents (resume, certificate, etc.)
             doc_types = [DocumentType.RESUME, DocumentType.CERTIFICATION]
@@ -1261,9 +1347,11 @@ class JobOpsApplication:
             from tkinter import simpledialog, messagebox
             import threading
 
-            def do_generate(job_url, language):
+            def do_generate(job_url, company, title, location, language):
                 try:
-                    filepath = self.generate_motivation_letter(job_url, language)
+                    filepath = self.generate_motivation_letter(
+                        job_url, language, company=company, title=title, location=location
+                    )
                     root.after(0, lambda: messagebox.showinfo("Success", f"Motivation letter generated: {filepath}"))
                 except Exception as e:
                     root.after(0, lambda: messagebox.showerror("Error", f"Error generating letter: {e}"))
@@ -1273,8 +1361,15 @@ class JobOpsApplication:
             def ask_and_generate():
                 job_url = simpledialog.askstring("Job URL", "Enter the job posting URL:")
                 if job_url:
+                    company = simpledialog.askstring("Company Name", "Enter the company name (optional, speeds up generation):") or None
+                    title = simpledialog.askstring("Job Title", "Enter the job title (optional, speeds up generation):") or None
+                    location = simpledialog.askstring("Location", "Enter the job location (optional, speeds up generation):") or None
                     language = simpledialog.askstring("Language", "Enter language (en/nl, default 'en'):") or "en"
-                    threading.Thread(target=do_generate, args=(job_url, language), daemon=True).start()
+                    threading.Thread(
+                        target=do_generate,
+                        args=(job_url, company, title, location, language),
+                        daemon=True
+                    ).start()
                 else:
                     root.destroy()
 
@@ -1286,6 +1381,17 @@ class JobOpsApplication:
         def on_exit(icon, item):
             icon.stop()
             print("Exiting application. Goodbye!")
+            try:
+                self.notification_service.notify("JobOps", "Exiting application. Goodbye!")
+                # KILL ALL THREADS
+                for thread in threading.enumerate():
+                    thread.join()
+                # KILL ALL PROCESSES belongs to this application
+                for process in psutil.process_iter():
+                    if process.name() == "jobops.exe":
+                        process.kill()
+            except Exception as e:
+                logging.error(f"Error notifying: {e}")
             sys.exit()
             
         def on_help_github_repo(icon, item):
