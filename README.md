@@ -1,3 +1,29 @@
+# Motivation Letter Generator (JobOps)
+
+**For Job Seekers / Sollicitants Only**
+
+This application is designed specifically for job seekers (sollicitants) who want to quickly generate a personalized motivation letter for a job they want to apply to. It is **not** intended for recruiters, agencies, or companies.
+
+## What does it do?
+- You provide a job posting URL, company name, job title, and location (for best results).
+- The app crawls the job page to get the job description for context.
+- It uses your resume and the job details to generate a motivation letter, addressed directly to the company.
+- The output is a ready-to-send motivation letter you can copy/paste or attach to your application.
+
+## What it does NOT do
+- It does **not** act as a recruiter or agency.
+- It does **not** send applications automatically or on your behalf.
+- It does **not** process applications for companies.
+
+## How to use
+1. Upload your resume (PDF or text).
+2. Click "Generate" and enter the job URL, company name, job title, and location.
+3. The app will generate a motivation letter for you to send to the company.
+
+---
+
+**This tool is for individual job seekers who want to stand out with a tailored, professional motivation letter.**
+
 # JobOps - AI-Powered Job Application Assistant
 
 A comprehensive Python application that automates the creation of personalized motivation letters and manages job application workflows using multiple AI backends.

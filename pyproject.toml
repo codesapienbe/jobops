@@ -21,7 +21,10 @@ dependencies = [
     "Pillow",         # for tray icon image
     "pdfplumber",      # for PDF extraction
     "plyer",
-    "crawl4ai"
+    "crawl4ai",
+    "reportlab",
+    "markdown2",
+    "fpdf"
 ]
 
 [project.scripts]

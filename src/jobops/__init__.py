@@ -18,6 +18,7 @@ from enum import Enum
 from dataclasses import dataclass
 from pathlib import Path
 import webbrowser
+import io
 
 import psutil
 import requests
@@ -59,6 +60,20 @@ try:
     CRAWL4AI_AVAILABLE = True
 except ImportError:
     CRAWL4AI_AVAILABLE = False
+
+try:
+    import markdown2
+    MARKDOWN2_AVAILABLE = True
+except ImportError:
+    MARKDOWN2_AVAILABLE = False
+
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.utils import simpleSplit
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
 
 load_dotenv()
 
@@ -643,8 +658,8 @@ class Crawl4AIJobScraper:
             response = self.llm_backend.generate_response(prompt)
             
             cleaned_response = response.strip()
-            if cleaned_response.startswith('```'):
-                cleaned_response = cleaned_response[7:]
+            if cleaned_response.startswith('```markdown'):
+                cleaned_response = cleaned_response[11:]
             if cleaned_response.endswith('```'):
                 cleaned_response = cleaned_response[:-3]
             
@@ -830,7 +845,7 @@ class ConcreteLetterGenerator:
     def generate(self, job_data: JobData, resume: Resume, language: str = "en") -> MotivationLetter:
         self._logger.info("Generating motivation letter")
         
-        system_prompt = self._create_system_prompt(language)
+        system_prompt = self._create_system_prompt(job_data.company, language)
         user_prompt = self._create_user_prompt(job_data, resume, language)
         
         try:
@@ -845,21 +860,20 @@ class ConcreteLetterGenerator:
             self._logger.error(f"Error generating motivation letter: {e}")
             raise Exception(f"Failed to generate motivation letter: {str(e)}")
     
-    def _create_system_prompt(self, language: str) -> str:
+    def _create_system_prompt(self, company: str, language: str) -> str:
         if language == "nl":
-            return """Je bent een professionele HR consultant. Schrijf een overtuigende motivatiebrief 
-            die de kandidaat perfect matcht met de functie. Gebruik concrete voorbeelden en toon waarom 
-            de kandidaat specifiek bij dit bedrijf wil werken. Houd de brief tussen 300-400 woorden."""
+            return f"""Je bent een professionele HR consultant. Schrijf een overtuigende motivatiebrief gericht aan het bedrijf '{company}'.\n- Gebruik altijd een aanhef als 'Geachte {company} team' of 'Geachte Hiring Manager bij {company}'.\n- Vermijd taal die gericht is op recruiters of bureaus; richt je uitsluitend tot het bedrijf.\n- Gebruik concrete voorbeelden en motiveer waarom de kandidaat specifiek bij dit bedrijf wil werken.\n- Houd de brief tussen 300-400 woorden."""
         else:
-            return """You are a professional HR consultant. Write a compelling motivation letter that 
-            perfectly matches the candidate to the position. Use concrete examples and show why the 
-            candidate specifically wants to work for this company. Keep the letter between 300-400 words."""
+            return f"""You are a professional HR consultant. Write a compelling motivation letter addressed directly to the company '{company}'.\n- Always use a salutation such as 'Dear {company} team' or 'Dear Hiring Manager at {company}'.\n- Avoid any recruiter or agency language; address only the company.\n- Use concrete examples and show why the candidate specifically wants to work for this company.\n- Keep the letter between 300-400 words."""
     
     def _create_user_prompt(self, job_data: JobData, resume: Resume, language: str) -> str:
         resume_summary = self._format_resume_for_prompt(resume)
-        
+        salutation_en = f"Dear {job_data.company} team," if job_data.company else "Dear Hiring Manager,"
+        salutation_nl = f"Geachte {job_data.company} team," if job_data.company else "Geachte Hiring Manager,"
         if language == "nl":
             return f"""Schrijf een motivatiebrief voor:
+
+{salutation_nl}
 
 FUNCTIE:
 Titel: {job_data.title}
@@ -870,9 +884,11 @@ Vereisten: {job_data.requirements}
 CV SAMENVATTING:
 {resume_summary}
 
-Maak een persoonlijke en overtuigende brief."""
+Maak een persoonlijke en overtuigende brief, gericht aan het bedrijf zelf."""
         else:
             return f"""Write a motivation letter for:
+
+{salutation_en}
 
 POSITION:
 Title: {job_data.title}
@@ -883,7 +899,7 @@ Requirements: {job_data.requirements}
 RESUME SUMMARY:
 {resume_summary}
 
-Create a personal and compelling letter."""
+Create a personal and compelling letter, addressed directly to the company."""
     
     def _format_resume_for_prompt(self, resume: Resume) -> str:
         parts = [
@@ -1173,6 +1189,11 @@ class JobOpsApplication:
             # Concatenate all structured_content
             combined_docs_markdown = "\n\n".join([doc.structured_content for doc in all_docs if doc.structured_content])
 
+            # Fetch all previous generated motivation letters (COVER_LETTER)
+            previous_letters = self.repository.get_by_type(DocumentType.COVER_LETTER)
+            previous_letters.sort(key=lambda d: d.uploaded_at)
+            previous_letters_markdown = "\n\n".join([doc.structured_content for doc in previous_letters if doc.structured_content])
+
             if not combined_docs_markdown.strip():
                 raise ValueError("No resume or relevant documents found. Please upload a resume or certificate first.")
 
@@ -1190,35 +1211,44 @@ class JobOpsApplication:
             # Use the combined markdown as the resume summary
             resume = Resume(summary=full_resume_md)
 
+            # Enhance prompt with previous letters if any
+            if previous_letters_markdown.strip():
+                # Optionally, you can prepend or append this to the resume summary or add as extra context
+                resume.summary += "\n\n# Previous Motivation Letters\n" + previous_letters_markdown
+
             letter = self.letter_generator.generate(job_data, resume, language)
 
-            output_dir = self.base_dir / 'motivations'
-            output_dir.mkdir(exist_ok=True)
-            filepath = self._save_letter(letter, output_dir)
+            # Save the generated letter as a Document in the database
+            import re
+            # Extract <think>...</think> block if present
+            llm_response = letter.content
+            think_match = re.search(r'<think>(.*?)</think>', llm_response, re.DOTALL | re.IGNORECASE)
+            reasoning_analysis = think_match.group(1).strip() if think_match else None
+            # Remove <think>...</think> from the content for structured_content
+            structured_content = re.sub(r'<think>.*?</think>', '', llm_response, flags=re.DOTALL | re.IGNORECASE).strip()
+            # Set filename as '{Full Name} Cover Letter'
+            full_name = personal_info.get('name', '').strip() or ''
+            filename = f"{full_name} Cover Letter".strip() if full_name else "Cover Letter"
+            document = Document(
+                type=DocumentType.COVER_LETTER,
+                filename=filename,
+                raw_content=letter.content,
+                structured_content=structured_content,
+                reasoning_analysis=reasoning_analysis
+            )
+            self.repository.save(document)
 
             self.notification_service.notify(
                 "JobOps", 
-                f"Motivation letter generated: {filepath.name}"
+                f"Motivation letter generated and stored in database."
             )
 
-            return str(filepath)
+            return f"Motivation letter generated and stored in database with ID: {document.id}"
 
         except Exception as e:
             self._logger.error(f"Error generating motivation letter: {e}")
             self.notification_service.notify("JobOps Error", str(e))
             raise
-    
-    def _save_letter(self, letter: MotivationLetter, output_dir: Path) -> Path:
-        company = letter.job_data.company.replace(' ', '_')
-        title = letter.job_data.title.replace(' ', '_')
-        timestamp = letter.generated_at.strftime('%Y%m%d_%H%M%S')
-        filename = f"motivation_{company}_{title}_{timestamp}.md"
-        filepath = output_dir / filename
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(letter.content)
-        
-        return filepath
     
     def upload_document(self, file_path: str, doc_type: DocumentType) -> Document:
         try:
@@ -1346,8 +1376,32 @@ class JobOpsApplication:
             import tkinter as tk
             from tkinter import simpledialog, messagebox
             import threading
+            import time
+
+            # Animation images
+            def create_image(color):
+                img = Image.new('RGB', CONSTANTS.ICON_SIZE, color=color)
+                d = ImageDraw.Draw(img)
+                d.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
+                d.text((22, 22), "J", fill=color)
+                return img
+            img1 = create_image((70, 130, 180))
+            img2 = create_image((180, 130, 70))
+
+            animating = True
+            def animate_icon():
+                flip = False
+                while animating:
+                    icon.icon = img1 if flip else img2
+                    flip = not flip
+                    time.sleep(0.3)
+                icon.icon = img1  # restore original
 
             def do_generate(job_url, company, title, location, language):
+                nonlocal animating
+                anim_thread = threading.Thread(target=animate_icon, daemon=True)
+                animating = True
+                anim_thread.start()
                 try:
                     filepath = self.generate_motivation_letter(
                         job_url, language, company=company, title=title, location=location
@@ -1356,6 +1410,7 @@ class JobOpsApplication:
                 except Exception as e:
                     root.after(0, lambda: messagebox.showerror("Error", f"Error generating letter: {e}"))
                 finally:
+                    animating = False
                     root.after(0, root.destroy)
 
             def ask_and_generate():
