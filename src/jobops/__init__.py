@@ -591,10 +591,13 @@ class MotivationLetterApp:
     """Main application class."""
     
     def __init__(self):
+        import tkinter as tk
         initialize_directories()
         self.job_scraper = JobScraper()
         self.config = self._load_config()
         self.backend = self._initialize_backend()
+        self.root = tk.Tk()
+        self.root.withdraw()  # Hide the main window
         self._setup_hotkey_listener()
 
     def _load_config(self) -> Dict[str, Any]:
@@ -680,23 +683,18 @@ class MotivationLetterApp:
         import threading
         import pynput
         from pynput import keyboard
-        
-        # Allow hotkey to be configurable
         hotkeys = [
             '<ctrl>+<alt>+j',
             '<ctrl>+<shift>+j',
         ]
-        
         def on_activate():
             log("Hotkey pressed! Showing URL input dialog.")
             show_notification("JobOps", "Hotkey pressed! Opening dialog...")
-            self._show_url_input()
-        
+            # Schedule dialog in main thread
+            self.root.after(0, self._show_url_input)
         def for_canonical(f):
             return lambda k: f(self.listener.canonical(k))
-        
         def listen():
-            # Try all hotkeys
             for hotkey_str in hotkeys:
                 try:
                     hotkey = keyboard.HotKey(
@@ -718,108 +716,60 @@ class MotivationLetterApp:
         threading.Thread(target=listen, daemon=True).start()
 
     def _show_url_input(self):
-        """Show URL input dialog with backend selection."""
         import tkinter as tk
         from tkinter import ttk, simpledialog, messagebox
-        
-        class URLInputDialog(tk.Toplevel):
+        class URLInputDialog(simpledialog.Dialog):
             def __init__(self, parent, app):
-                super().__init__(parent)
                 self.app = app
                 self.result = None
-                
-                self.title("Job URL Input")
-                self.geometry("500x200")
-                
-                # Backend selection
-                backend_frame = ttk.Frame(self)
-                backend_frame.pack(pady=10, padx=10, fill='x')
-                
-                ttk.Label(backend_frame, text="Backend:").pack(side='left')
-                self.backend_var = tk.StringVar(value=app.config['backend'])
+                super().__init__(parent, title="Job URL Input")
+            def body(self, master):
+                ttk.Label(master, text="Backend:").grid(row=0, column=0, sticky='w')
+                self.backend_var = tk.StringVar(value=self.app.config['backend'])
                 backend_combo = ttk.Combobox(
-                    backend_frame, 
-                    textvariable=self.backend_var,
-                    values=['ollama', 'openai', 'groq'],
-                    state='readonly'
-                )
-                backend_combo.pack(side='left', padx=5)
+                    master, textvariable=self.backend_var,
+                    values=['ollama', 'openai', 'groq'], state='readonly')
+                backend_combo.grid(row=0, column=1, sticky='ew')
                 backend_combo.bind('<<ComboboxSelected>>', self.on_backend_change)
-                
-                # Model selection
-                model_frame = ttk.Frame(self)
-                model_frame.pack(pady=5, padx=10, fill='x')
-                
-                ttk.Label(model_frame, text="Model:").pack(side='left')
+                ttk.Label(master, text="Model:").grid(row=1, column=0, sticky='w')
                 self.model_var = tk.StringVar()
-                self.model_entry = ttk.Entry(model_frame, textvariable=self.model_var)
-                self.model_entry.pack(side='left', padx=5, fill='x', expand=True)
-                
-                # URL input
-                url_frame = ttk.Frame(self)
-                url_frame.pack(pady=10, padx=10, fill='x')
-                
-                ttk.Label(url_frame, text="URL:").pack(side='left')
+                self.model_entry = ttk.Entry(master, textvariable=self.model_var)
+                self.model_entry.grid(row=1, column=1, sticky='ew')
+                ttk.Label(master, text="URL:").grid(row=2, column=0, sticky='w')
                 self.url_var = tk.StringVar()
-                url_entry = ttk.Entry(url_frame, textvariable=self.url_var)
-                url_entry.pack(side='left', padx=5, fill='x', expand=True)
-                
-                # Buttons
-                btn_frame = ttk.Frame(self)
-                btn_frame.pack(pady=10)
-                
-                ttk.Button(btn_frame, text="Generate", command=self.on_generate).pack(side='left', padx=5)
-                ttk.Button(btn_frame, text="Cancel", command=self.on_cancel).pack(side='left', padx=5)
-                
+                url_entry = ttk.Entry(master, textvariable=self.url_var)
+                url_entry.grid(row=2, column=1, sticky='ew')
                 self.update_model_field()
-                
-                self.transient(parent)
-                self.grab_set()
-            
+                return url_entry
             def update_model_field(self):
                 backend = self.backend_var.get()
                 settings = self.app.config['backend_settings'][backend]
                 self.model_var.set(settings['model'])
-            
             def on_backend_change(self, event):
                 self.update_model_field()
-            
-            def on_generate(self):
+            def validate(self):
+                if not self.url_var.get():
+                    messagebox.showerror("Error", "Please enter a URL", parent=self)
+                    return False
+                return True
+            def apply(self):
                 backend = self.backend_var.get()
                 model = self.model_var.get()
                 url = self.url_var.get()
-                
-                if not url:
-                    messagebox.showerror("Error", "Please enter a URL")
-                    return
-                
-                # Update config and switch backend if needed
                 if backend != self.app.config['backend'] or model != self.app.config['backend_settings'][backend]['model']:
                     self.app.switch_backend(backend, {'model': model})
-                
                 self.result = url
-                self.destroy()
-            
-            def on_cancel(self):
-                self.result = None
-                self.destroy()
-        
-        root = tk.Tk()
-        root.withdraw()
-        
-        dialog = URLInputDialog(root, self)
-        root.wait_window(dialog)
-        
+        dialog = URLInputDialog(self.root, self)
         if dialog.result:
             try:
                 job_data = self.job_scraper.scrape_job_description(dialog.result)
                 letter = self._generate_letter(job_data)
                 self._save_letter(job_data, letter)
-                messagebox.showinfo("Success", "Motivation letter generated and saved!")
+                from tkinter import messagebox
+                messagebox.showinfo("Success", "Motivation letter generated and saved!", parent=self.root)
             except Exception as e:
-                messagebox.showerror("Error", str(e))
-        
-        root.destroy()
+                from tkinter import messagebox
+                messagebox.showerror("Error", str(e), parent=self.root)
 
     def _generate_letter(self, job_data):
         resumes = get_latest_resume()
@@ -840,12 +790,11 @@ class MotivationLetterApp:
             f.write(letter)
 
     def run(self):
-        """Start the tray icon and hotkey listener in background threads."""
         # Start tray icon in a thread
         tray_thread = threading.Thread(target=self._run_tray, daemon=True)
         tray_thread.start()
-        # Hotkey listener is already started in a daemon thread
-        # Keep the main thread alive until tray icon is stopped
+        # Start Tkinter event loop in main thread
+        self.root.mainloop()
         tray_thread.join()
 
     def _run_tray(self):
