@@ -187,7 +187,7 @@ setup_logging()
 # =============================================================================
 
 def show_notification(title: str, message: str):
-    """Show system notification."""
+    """Show system notification, log errors if notification fails."""
     log(f"Notification: {title} - {message}")
     try:
         notification.notify(
@@ -198,6 +198,11 @@ def show_notification(title: str, message: str):
         )
     except Exception as e:
         log(f"Notification error: {e}", 'warning')
+        try:
+            with open(os.path.join(AppConstants.USER_HOME_DIR, 'app.log'), 'a', encoding='utf-8') as f:
+                f.write(f"[NOTIFY_FAIL] {datetime.now().isoformat()} {title}: {message} | {e}\n")
+        except Exception as log_e:
+            log(f"Failed to log notification error: {log_e}", 'error')
 
 def initialize_directories():
     """Create necessary directories."""
@@ -348,87 +353,139 @@ class LLMBackend:
 class OllamaBackend(LLMBackend):
     """Ollama backend for local LLM inference."""
     
-    def __init__(self, model: str = "llama2", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "qwen3:0.6b", base_url: str = "http://localhost:11434"):
+        log(f"[OllamaBackend] Initializing with model={model}, base_url={base_url}")
         if not OLLAMA_AVAILABLE:
+            log("[OllamaBackend] Ollama package not installed", 'error')
             raise ImportError("Ollama package not installed. Install with: pip install ollama")
         self.model = model
         self.base_url = base_url
         ollama.base_url = base_url
     
     def generate_response(self, prompt: str, system_prompt: str = None) -> str:
+        log(f"[OllamaBackend] Generating response for model={self.model}")
         try:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
-            
+            log(f"[OllamaBackend] Sending chat request to Ollama: {ollama.base_url}")
             response = ollama.chat(model=self.model, messages=messages)
+            log(f"[OllamaBackend] Received response from Ollama")
             return response['message']['content']
         except Exception as e:
             log(f"Ollama generation error: {e}", 'error')
             raise
+    def health_check(self) -> bool:
+        log(f"[OllamaBackend] Performing health check for model={self.model}")
+        try:
+            # Try a minimal prompt
+            response = ollama.chat(model=self.model, messages=[{"role": "user", "content": "Hello"}])
+            log(f"[OllamaBackend] Health check response: {response}")
+            return True
+        except Exception as e:
+            log(f"[OllamaBackend] Health check failed: {e}", 'error')
+            return False
 
 class OpenAIBackend(LLMBackend):
     """OpenAI API backend."""
     
     def __init__(self, api_key: str = None, model: str = "gpt-4-turbo-preview"):
+        log(f"[OpenAIBackend] Initializing with model={model}")
         if not OPENAI_AVAILABLE:
+            log("[OpenAIBackend] OpenAI package not installed", 'error')
             raise ImportError("OpenAI package not installed. Install with: pip install openai")
         if not api_key:
             api_key = os.getenv('OPENAI_API_KEY')
             if not api_key:
+                log("[OpenAIBackend] OpenAI API key not provided", 'error')
                 raise ValueError("OpenAI API key not provided and not found in environment")
         self.client = OpenAI(api_key=api_key)
         self.model = model
     
     def generate_response(self, prompt: str, system_prompt: str = None) -> str:
+        log(f"[OpenAIBackend] Generating response for model={self.model}")
         try:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
-            
+            log(f"[OpenAIBackend] Sending chat request to OpenAI")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1000
             )
+            log(f"[OpenAIBackend] Received response from OpenAI")
             return response.choices[0].message.content
         except Exception as e:
             log(f"OpenAI generation error: {e}", 'error')
             raise
+    def health_check(self) -> bool:
+        log(f"[OpenAIBackend] Performing health check for model={self.model}")
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "Hello"}],
+                temperature=0.0,
+                max_tokens=10
+            )
+            log(f"[OpenAIBackend] Health check response: {response}")
+            return True
+        except Exception as e:
+            log(f"[OpenAIBackend] Health check failed: {e}", 'error')
+            return False
 
 class GroqBackend(LLMBackend):
     """Groq API backend."""
     
     def __init__(self, api_key: str = None, model: str = "mixtral-8x7b-32768"):
+        log(f"[GroqBackend] Initializing with model={model}")
         if not GROQ_AVAILABLE:
+            log("[GroqBackend] Groq package not installed", 'error')
             raise ImportError("Groq package not installed. Install with: pip install groq")
         if not api_key:
             api_key = os.getenv('GROQ_API_KEY')
             if not api_key:
+                log("[GroqBackend] Groq API key not provided", 'error')
                 raise ValueError("Groq API key not provided and not found in environment")
         self.client = Groq(api_key=api_key)
         self.model = model
     
     def generate_response(self, prompt: str, system_prompt: str = None) -> str:
+        log(f"[GroqBackend] Generating response for model={self.model}")
         try:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
-            
+            log(f"[GroqBackend] Sending chat request to Groq")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1000
             )
+            log(f"[GroqBackend] Received response from Groq")
             return response.choices[0].message.content
         except Exception as e:
             log(f"Groq generation error: {e}", 'error')
             raise
+    def health_check(self) -> bool:
+        log(f"[GroqBackend] Performing health check for model={self.model}")
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "Hello"}],
+                temperature=0.0,
+                max_tokens=10
+            )
+            log(f"[GroqBackend] Health check response: {response}")
+            return True
+        except Exception as e:
+            log(f"[GroqBackend] Health check failed: {e}", 'error')
+            return False
 
 # =============================================================================
 # MOTIVATION LETTER GENERATOR
@@ -592,12 +649,14 @@ class MotivationLetterApp:
     
     def __init__(self):
         import tkinter as tk
+        log("[MotivationLetterApp] Initializing application")
         initialize_directories()
         self.job_scraper = JobScraper()
         self.config = self._load_config()
         self.backend = self._initialize_backend()
         self.root = tk.Tk()
         self.root.withdraw()  # Hide the main window
+        self._health_check_backend()
         self._setup_hotkey_listener()
 
     def _load_config(self) -> Dict[str, Any]:
@@ -607,7 +666,7 @@ class MotivationLetterApp:
             'backend': 'ollama',  # ollama, openai, or groq
             'backend_settings': {
                 'ollama': {
-                    'model': 'llama2',
+                    'model': 'qwen3:0.6b',
                     'base_url': 'http://localhost:11434'
                 },
                 'openai': {
@@ -618,11 +677,17 @@ class MotivationLetterApp:
                 }
             }
         }
-        
         try:
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
-                    return json.load(f)
+                    config = json.load(f)
+                # Ensure ollama model is qwen3:0.6b
+                if config['backend_settings']['ollama'].get('model', '') != 'qwen3:0.6b':
+                    log(f"[Config] Updating Ollama model in config from {config['backend_settings']['ollama'].get('model', '')} to qwen3:0.6b", 'info')
+                    config['backend_settings']['ollama']['model'] = 'qwen3:0.6b'
+                    with open(config_path, 'w') as f:
+                        json.dump(config, f, indent=2)
+                return config
             else:
                 with open(config_path, 'w') as f:
                     json.dump(default_config, f, indent=2)
@@ -647,8 +712,9 @@ class MotivationLetterApp:
         
         try:
             if backend_type == 'ollama':
+                log(f"[MotivationLetterApp] Using Ollama model: {settings.get('model', 'qwen3:0.6b')}")
                 return OllamaBackend(
-                    model=settings['model'],
+                    model=settings.get('model', 'qwen3:0.6b'),
                     base_url=settings['base_url']
                 )
             elif backend_type == 'openai':
@@ -718,58 +784,68 @@ class MotivationLetterApp:
     def _show_url_input(self):
         import tkinter as tk
         from tkinter import ttk, simpledialog, messagebox
-        class URLInputDialog(simpledialog.Dialog):
-            def __init__(self, parent, app):
-                self.app = app
-                self.result = None
-                super().__init__(parent, title="Job URL Input")
-            def body(self, master):
-                ttk.Label(master, text="Backend:").grid(row=0, column=0, sticky='w')
-                self.backend_var = tk.StringVar(value=self.app.config['backend'])
-                backend_combo = ttk.Combobox(
-                    master, textvariable=self.backend_var,
-                    values=['ollama', 'openai', 'groq'], state='readonly')
-                backend_combo.grid(row=0, column=1, sticky='ew')
-                backend_combo.bind('<<ComboboxSelected>>', self.on_backend_change)
-                ttk.Label(master, text="Model:").grid(row=1, column=0, sticky='w')
-                self.model_var = tk.StringVar()
-                self.model_entry = ttk.Entry(master, textvariable=self.model_var)
-                self.model_entry.grid(row=1, column=1, sticky='ew')
-                ttk.Label(master, text="URL:").grid(row=2, column=0, sticky='w')
-                self.url_var = tk.StringVar()
-                url_entry = ttk.Entry(master, textvariable=self.url_var)
-                url_entry.grid(row=2, column=1, sticky='ew')
-                self.update_model_field()
-                return url_entry
-            def update_model_field(self):
-                backend = self.backend_var.get()
-                settings = self.app.config['backend_settings'][backend]
-                self.model_var.set(settings['model'])
-            def on_backend_change(self, event):
-                self.update_model_field()
-            def validate(self):
-                if not self.url_var.get():
-                    messagebox.showerror("Error", "Please enter a URL", parent=self)
-                    return False
-                return True
-            def apply(self):
-                backend = self.backend_var.get()
-                model = self.model_var.get()
-                url = self.url_var.get()
-                if backend != self.app.config['backend'] or model != self.app.config['backend_settings'][backend]['model']:
-                    self.app.switch_backend(backend, {'model': model})
-                self.result = url
-        dialog = URLInputDialog(self.root, self)
-        if dialog.result:
+        try:
+            class URLInputDialog(simpledialog.Dialog):
+                def __init__(self, parent, app):
+                    self.app = app
+                    self.result = None
+                    super().__init__(parent, title="Job URL Input")
+                def body(self, master):
+                    ttk.Label(master, text="Backend:").grid(row=0, column=0, sticky='w')
+                    self.backend_var = tk.StringVar(value=self.app.config['backend'])
+                    backend_combo = ttk.Combobox(
+                        master, textvariable=self.backend_var,
+                        values=['ollama', 'openai', 'groq'], state='readonly')
+                    backend_combo.grid(row=0, column=1, sticky='ew')
+                    backend_combo.bind('<<ComboboxSelected>>', self.on_backend_change)
+                    ttk.Label(master, text="Model:").grid(row=1, column=0, sticky='w')
+                    self.model_var = tk.StringVar()
+                    self.model_entry = ttk.Entry(master, textvariable=self.model_var)
+                    self.model_entry.grid(row=1, column=1, sticky='ew')
+                    ttk.Label(master, text="URL:").grid(row=2, column=0, sticky='w')
+                    self.url_var = tk.StringVar()
+                    url_entry = ttk.Entry(master, textvariable=self.url_var)
+                    url_entry.grid(row=2, column=1, sticky='ew')
+                    self.update_model_field()
+                    return url_entry
+                def update_model_field(self):
+                    backend = self.backend_var.get()
+                    settings = self.app.config['backend_settings'][backend]
+                    self.model_var.set(settings['model'])
+                def on_backend_change(self, event):
+                    self.update_model_field()
+                def validate(self):
+                    if not self.url_var.get():
+                        messagebox.showerror("Error", "Please enter a URL", parent=self)
+                        return False
+                    return True
+                def apply(self):
+                    backend = self.backend_var.get()
+                    model = self.model_var.get()
+                    url = self.url_var.get()
+                    if backend != self.app.config['backend'] or model != self.app.config['backend_settings'][backend]['model']:
+                        self.app.switch_backend(backend, {'model': model})
+                    self.result = url
+            dialog = URLInputDialog(self.root, self)
+            if dialog.result:
+                try:
+                    job_data = self.job_scraper.scrape_job_description(dialog.result)
+                    letter = self._generate_letter(job_data)
+                    self._save_letter(job_data, letter)
+                    from tkinter import messagebox
+                    messagebox.showinfo("Success", "Motivation letter generated and saved!", parent=self.root)
+                except Exception as e:
+                    log(f"Error in letter generation: {e}", 'error')
+                    try:
+                        show_notification("JobOps Error", str(e))
+                    except Exception as notify_e:
+                        log(f"Notification error: {notify_e}", 'error')
+        except Exception as e:
+            log(f"Dialog error: {e}", 'error')
             try:
-                job_data = self.job_scraper.scrape_job_description(dialog.result)
-                letter = self._generate_letter(job_data)
-                self._save_letter(job_data, letter)
-                from tkinter import messagebox
-                messagebox.showinfo("Success", "Motivation letter generated and saved!", parent=self.root)
-            except Exception as e:
-                from tkinter import messagebox
-                messagebox.showerror("Error", str(e), parent=self.root)
+                show_notification("JobOps Error", f"Dialog error: {e}")
+            except Exception as notify_e:
+                log(f"Notification error: {notify_e}", 'error')
 
     def _generate_letter(self, job_data):
         resumes = get_latest_resume()
@@ -819,7 +895,7 @@ class MotivationLetterApp:
         def on_upload(icon, item):
             log("Upload Document menu clicked! Opening file dialog.")
             show_notification("JobOps", "Upload a document...")
-            self._upload_document()
+            self.root.after(0, self._upload_document)
         menu = pystray.Menu(
             pystray.MenuItem('Generate', on_generate),
             pystray.MenuItem('Upload Document', on_upload),
@@ -833,62 +909,113 @@ class MotivationLetterApp:
         from tkinter import filedialog, simpledialog, messagebox
         import pdfplumber
         import datetime
-        root = tk.Tk()
-        root.withdraw()
-        filetypes = [
-            ("PDF files", "*.pdf"),
-            ("Markdown files", "*.md"),
-            ("Text files", "*.txt"),
-            ("All files", "*.*")
-        ]
-        filepath = filedialog.askopenfilename(title="Select Document", filetypes=filetypes)
-        if not filepath:
-            root.destroy()
-            return
-        # Ask for document type
-        doc_type = simpledialog.askstring(
-            "Document Type",
-            f"Enter document type ({', '.join(DocumentType.ALL)}):",
-            initialvalue=DocumentType.RESUME
-        )
-        if not doc_type or doc_type not in DocumentType.ALL:
-            messagebox.showerror("Error", f"Invalid document type. Must be one of: {', '.join(DocumentType.ALL)}")
-            root.destroy()
-            return
-        # Extract raw content
         try:
-            if filepath.lower().endswith('.pdf'):
-                with pdfplumber.open(filepath) as pdf:
-                    raw_content = "\n".join(page.extract_text() or '' for page in pdf.pages)
-            else:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    raw_content = f.read()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to extract content: {e}")
-            root.destroy()
-            return
-        # Use LLM to structure content
-        try:
-            prompt = f"""Extract and structure the following document as JSON. Identify fields such as name, contact, experience, education, skills, etc. If it's a resume, use a standard resume schema.\n\nDocument:\n{raw_content[:4000]}"""
-            structured_content = self.backend.generate_response(prompt)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to structure document: {e}")
-            root.destroy()
-            return
-        # Store in DB
-        try:
-            conn = sqlite3.connect(get_db_path())
-            c = conn.cursor()
-            c.execute(
-                "INSERT INTO documents (type, filename, raw_content, structured_content, uploaded_at) VALUES (?, ?, ?, ?, ?)",
-                (doc_type, os.path.basename(filepath), raw_content, structured_content, datetime.datetime.now().isoformat())
+            log("[Upload] Starting document upload dialog")
+            root = tk.Tk()
+            root.withdraw()
+            filetypes = [
+                ("PDF files", "*.pdf"),
+                ("Markdown files", "*.md"),
+                ("Text files", "*.txt"),
+                ("All files", "*.*")
+            ]
+            filepath = filedialog.askopenfilename(title="Select Document", filetypes=filetypes)
+            log(f"[Upload] File selected: {filepath}")
+            if not filepath:
+                log("[Upload] No file selected, aborting upload")
+                root.destroy()
+                return
+            doc_type = simpledialog.askstring(
+                "Document Type",
+                f"Enter document type ({', '.join(DocumentType.ALL)}):",
+                initialvalue=DocumentType.RESUME,
+                parent=root
             )
-            conn.commit()
-            conn.close()
-            messagebox.showinfo("Success", "Document uploaded and structured successfully!")
+            log(f"[Upload] Document type selected: {doc_type}")
+            if not doc_type or doc_type not in DocumentType.ALL:
+                log(f"[Upload] Invalid document type: {doc_type}", 'error')
+                messagebox.showerror("Error", f"Invalid document type. Must be one of: {', '.join(DocumentType.ALL)}", parent=root)
+                root.destroy()
+                return
+            try:
+                log(f"[Upload] Extracting content from file: {filepath}")
+                if filepath.lower().endswith('.pdf'):
+                    with pdfplumber.open(filepath) as pdf:
+                        raw_content = "\n".join(page.extract_text() or '' for page in pdf.pages)
+                else:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        raw_content = f.read()
+                log(f"[Upload] Content extracted successfully")
+            except Exception as e:
+                log(f"Upload extract error: {e}", 'error')
+                try:
+                    show_notification("JobOps Error", f"Failed to extract content: {e}")
+                except Exception as notify_e:
+                    log(f"Notification error: {notify_e}", 'error')
+                root.destroy()
+                return
+            try:
+                log(f"[Upload] Sending content to LLM for structuring")
+                prompt = f"""Extract and structure the following document as JSON. Identify fields such as name, contact, experience, education, skills, etc. If it's a resume, use a standard resume schema.\n\nDocument:\n{raw_content[:4000]}"""
+                structured_content = self.backend.generate_response(prompt)
+                log(f"[Upload] LLM structuring complete")
+            except Exception as e:
+                log(f"Upload LLM error: {e}", 'error')
+                try:
+                    show_notification("JobOps Error", f"Failed to structure document: {e}")
+                except Exception as notify_e:
+                    log(f"Notification error: {notify_e}", 'error')
+                root.destroy()
+                return
+            try:
+                log(f"[Upload] Inserting structured document into database")
+                conn = sqlite3.connect(get_db_path())
+                c = conn.cursor()
+                c.execute(
+                    "INSERT INTO documents (type, filename, raw_content, structured_content, uploaded_at) VALUES (?, ?, ?, ?, ?)",
+                    (doc_type, os.path.basename(filepath), raw_content, structured_content, datetime.datetime.now().isoformat())
+                )
+                conn.commit()
+                conn.close()
+                log(f"[Upload] Document inserted into database successfully")
+                messagebox.showinfo("Success", "Document uploaded and structured successfully!", parent=root)
+            except Exception as e:
+                log(f"Upload DB error: {e}", 'error')
+                try:
+                    show_notification("JobOps Error", f"Failed to save to database: {e}")
+                except Exception as notify_e:
+                    log(f"Notification error: {notify_e}", 'error')
+                root.destroy()
+                return
+            root.destroy()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save to database: {e}")
-        root.destroy()
+            log(f"Upload dialog error: {e}", 'error')
+            try:
+                show_notification("JobOps Error", f"Upload dialog error: {e}")
+            except Exception as notify_e:
+                log(f"Notification error: {notify_e}", 'error')
+
+    def _health_check_backend(self):
+        log(f"[MotivationLetterApp] Performing health check for backend: {self.config['backend']}")
+        try:
+            if hasattr(self.backend, 'health_check'):
+                healthy = self.backend.health_check()
+                if healthy:
+                    log(f"[MotivationLetterApp] Health check passed for backend: {self.config['backend']}")
+                else:
+                    log(f"[MotivationLetterApp] Health check failed for backend: {self.config['backend']}", 'error')
+                    try:
+                        show_notification("JobOps Error", f"Health check failed for backend: {self.config['backend']}")
+                    except Exception as notify_e:
+                        log(f"Notification error: {notify_e}", 'error')
+            else:
+                log(f"[MotivationLetterApp] No health_check method for backend: {self.config['backend']}", 'warning')
+        except Exception as e:
+            log(f"[MotivationLetterApp] Exception during health check: {e}", 'error')
+            try:
+                show_notification("JobOps Error", f"Exception during health check: {e}")
+            except Exception as notify_e:
+                log(f"Notification error: {notify_e}", 'error')
 
 # =============================================================================
 # MAIN ENTRY POINT
