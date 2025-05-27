@@ -8,6 +8,7 @@ import os
 import json
 import logging
 import sqlite3
+import sys
 import threading
 import asyncio
 from abc import ABC, abstractmethod
@@ -16,6 +17,7 @@ from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass
 from pathlib import Path
+import webbrowser
 
 import requests
 from bs4 import BeautifulSoup
@@ -1049,6 +1051,27 @@ class JobOpsApplication:
         self.letter_generator = ConcreteLetterGenerator(self.llm_backend)
         self.notification_service = SystemNotificationService()
         self.document_extractor = DocumentExtractor(self.llm_backend)
+
+        # Prompt for personal info if missing
+        if not self.config.app_settings.get('personal_info'):
+            import tkinter as tk
+            from tkinter import simpledialog
+            root = tk.Tk()
+            root.withdraw()
+            name = simpledialog.askstring("Personal Info", "Enter your full name:")
+            phone = simpledialog.askstring("Personal Info", "Enter your phone number:")
+            email = simpledialog.askstring("Personal Info", "Enter your email address:")
+            city = simpledialog.askstring("Personal Info", "Enter your city:")
+            linkedin = simpledialog.askstring("Personal Info", "Enter your LinkedIn URL:")
+            root.destroy()
+            self.config.app_settings['personal_info'] = {
+                'name': name or '',
+                'phone': phone or '',
+                'email': email or '',
+                'city': city or '',
+                'linkedin': linkedin or ''
+            }
+            self.config_manager.save(self.config)
     
     def generate_motivation_letter(self, job_url: str, language: str = "en") -> str:
         try:
@@ -1067,8 +1090,19 @@ class JobOpsApplication:
             if not combined_docs_markdown.strip():
                 raise ValueError("No resume or relevant documents found. Please upload a resume or certificate first.")
 
+            # Add personal info to the context
+            personal_info = self.config.app_settings.get('personal_info', {})
+            personal_info_md = f"""
+**Name:** {personal_info.get('name', '')}
+**Phone:** {personal_info.get('phone', '')}
+**Email:** {personal_info.get('email', '')}
+**City:** {personal_info.get('city', '')}
+**LinkedIn:** {personal_info.get('linkedin', '')}
+"""
+            full_resume_md = personal_info_md + "\n\n" + combined_docs_markdown
+
             # Use the combined markdown as the resume summary
-            resume = Resume(summary=combined_docs_markdown)
+            resume = Resume(summary=full_resume_md)
 
             letter = self.letter_generator.generate(job_data, resume, language)
 
@@ -1252,10 +1286,15 @@ class JobOpsApplication:
         def on_exit(icon, item):
             icon.stop()
             print("Exiting application. Goodbye!")
+            sys.exit()
+            
+        def on_help_github_repo(icon, item):
+            webbrowser.open("https://github.com/codesapienbe/jobops-toolbar")
 
         menu = pystray.Menu(
-            pystray.MenuItem("Upload Resume", on_upload_resume),
-            pystray.MenuItem("Generate Motivation Letter", on_generate_letter),
+            pystray.MenuItem("Upload", on_upload_resume),
+            pystray.MenuItem("Generate", on_generate_letter),
+            pystray.MenuItem("Help", on_help_github_repo),
             pystray.MenuItem("Exit", on_exit)
         )
         icon = pystray.Icon(CONSTANTS.APP_NAME, create_image(), CONSTANTS.APP_NAME, menu)
