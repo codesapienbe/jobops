@@ -247,6 +247,7 @@ class AppConfig(BaseModel):
         'language': 'en',
         'output_format': 'markdown'
     }
+    sqlite_timeout: float = 30.0
 
 class LLMBackend(Protocol):
     def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str: ...
@@ -414,16 +415,17 @@ class GroqBackend(BaseLLMBackend):
             return False
 
 class SQLiteDocumentRepository:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, timeout: float = 30.0):
         self.db_path = Path(db_path)
         self._logger = logging.getLogger(self.__class__.__name__)
+        self.timeout = timeout
         self._init_db()
     
     def _init_db(self):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
+            c.execute('PRAGMA journal_mode=WAL;')
             c.execute('''
                 CREATE TABLE IF NOT EXISTS documents (
                     id TEXT PRIMARY KEY,
@@ -442,7 +444,7 @@ class SQLiteDocumentRepository:
             conn.commit()
     
     def save(self, document: Document) -> str:
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
                 """INSERT OR REPLACE INTO documents 
@@ -457,7 +459,7 @@ class SQLiteDocumentRepository:
         return document.id
     
     def get_by_id(self, doc_id: str) -> Optional[Document]:
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
             row = c.fetchone()
@@ -478,7 +480,7 @@ class SQLiteDocumentRepository:
     
     def get_by_type(self, doc_type: DocumentType) -> List[Document]:
         documents = []
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
                 "SELECT * FROM documents WHERE type = ? ORDER BY uploaded_at DESC", 
@@ -512,7 +514,7 @@ class SQLiteDocumentRepository:
         return None
     
     def delete(self, doc_id: str) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
             deleted = c.rowcount > 0
@@ -1108,7 +1110,9 @@ class JobOpsApplication:
     
     def _initialize_services(self):
         db_path = self.base_dir / CONSTANTS.DB_NAME
-        self.repository = SQLiteDocumentRepository(str(db_path))
+        # Use sqlite_timeout from config if present
+        timeout = self.config.sqlite_timeout if hasattr(self.config, 'sqlite_timeout') else 30.0
+        self.repository = SQLiteDocumentRepository(str(db_path), timeout=timeout)
         
         backend_settings = self.config.backend_settings[self.config.backend]
         self.llm_backend = LLMBackendFactory.create(self.config.backend, backend_settings)
