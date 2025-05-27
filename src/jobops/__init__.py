@@ -18,10 +18,12 @@ from datetime import datetime
 import threading
 import pystray
 from PIL import Image, ImageDraw
+import sqlite3
 
 # Third-party imports
 import requests
 from bs4 import BeautifulSoup
+from plyer import notification
 
 # LLM Backend imports
 try:
@@ -121,6 +123,42 @@ class AppConstants:
         "languages": ["English", "Turkish", "Dutch"],
         "open_source": "I actively work on open-source projects and dedicate time on a daily basis to contribute to the community. My GitHub profile showcases several projects including contributions to cybersecurity toolkits and AI-related repositories."
     }
+
+# =============================================================================
+# DATABASE SETUP
+# =============================================================================
+
+def get_db_path():
+    return os.path.expanduser('~/.jobops/jobops.db')
+
+def init_db():
+    db_path = get_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            filename TEXT,
+            raw_content TEXT,
+            structured_content TEXT,
+            uploaded_at TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Enum for document types
+class DocumentType:
+    RESUME = 'resume'
+    COVER_LETTER = 'cover_letter'
+    JOB_DESCRIPTION = 'job_description'
+    REFERENCE_LETTER = 'reference_letter'
+    OTHER = 'other'
+    ALL = [RESUME, COVER_LETTER, JOB_DESCRIPTION, REFERENCE_LETTER, OTHER]
+
+init_db()
 
 # =============================================================================
 # LOGGING SETUP
@@ -641,16 +679,37 @@ class MotivationLetterApp:
     def _setup_hotkey_listener(self):
         import threading
         import pynput
+        from pynput import keyboard
+        
+        # Allow hotkey to be configurable
+        hotkeys = [
+            '<ctrl>+<alt>+j',
+            '<ctrl>+<shift>+j',
+        ]
+        
         def on_activate():
+            log("Hotkey pressed! Showing URL input dialog.")
+            show_notification("JobOps", "Hotkey pressed! Opening dialog...")
             self._show_url_input()
+        
         def for_canonical(f):
             return lambda k: f(self.listener.canonical(k))
-        from pynput import keyboard
-        hotkey = keyboard.HotKey(
-            keyboard.HotKey.parse('<ctrl>+<alt>+j'),
-            on_activate
-        )
+        
         def listen():
+            # Try all hotkeys
+            for hotkey_str in hotkeys:
+                try:
+                    hotkey = keyboard.HotKey(
+                        keyboard.HotKey.parse(hotkey_str),
+                        on_activate
+                    )
+                    log(f"Registering hotkey: {hotkey_str}")
+                    break
+                except Exception as e:
+                    log(f"Failed to register hotkey {hotkey_str}: {e}", 'warning')
+            else:
+                log("No hotkey could be registered!", 'error')
+                return
             with keyboard.Listener(
                 on_press=for_canonical(hotkey.press),
                 on_release=for_canonical(hotkey.release)) as listener:
@@ -763,7 +822,11 @@ class MotivationLetterApp:
         root.destroy()
 
     def _generate_letter(self, job_data):
-        prompt = f"""Write a motivation letter in markdown for the following job:\n\nTitle: {job_data.get('title', '')}\nCompany: {job_data.get('company', '')}\nURL: {job_data.get('url', '')}\n\nDescription:\n{job_data.get('description', '')}\n\nRequirements:\n{job_data.get('requirements', '')}\n"""
+        resumes = get_latest_resume()
+        if not resumes:
+            raise Exception("No resume found in the database. Please upload a resume document first.")
+        resume_data = resumes[0]
+        prompt = f"""Write a motivation letter in markdown for the following job:\n\nTitle: {job_data.get('title', '')}\nCompany: {job_data.get('company', '')}\nURL: {job_data.get('url', '')}\n\nDescription:\n{job_data.get('description', '')}\n\nRequirements:\n{job_data.get('requirements', '')}\n\nResume Data:\n{resume_data}\n"""
         return self.backend.generate_response(prompt)
 
     def _save_letter(self, job_data, letter):
@@ -786,7 +849,7 @@ class MotivationLetterApp:
         tray_thread.join()
 
     def _run_tray(self):
-        """Run the system tray icon with an Exit menu item."""
+        """Run the system tray icon with Generate, Upload Document, and Exit menu items."""
         def create_icon():
             # Simple green document icon
             image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
@@ -800,9 +863,83 @@ class MotivationLetterApp:
         def on_exit(icon, item):
             icon.stop()
             log("Application exited by user")
-        menu = pystray.Menu(pystray.MenuItem('Exit', on_exit))
+        def on_generate(icon, item):
+            log("Generate menu clicked! Showing URL input dialog.")
+            show_notification("JobOps", "Opening dialog via tray menu...")
+            self._show_url_input()
+        def on_upload(icon, item):
+            log("Upload Document menu clicked! Opening file dialog.")
+            show_notification("JobOps", "Upload a document...")
+            self._upload_document()
+        menu = pystray.Menu(
+            pystray.MenuItem('Generate', on_generate),
+            pystray.MenuItem('Upload Document', on_upload),
+            pystray.MenuItem('Exit', on_exit)
+        )
         icon = pystray.Icon(AppConstants.APP_NAME, create_icon(), AppConstants.APP_NAME, menu)
         icon.run()
+
+    def _upload_document(self):
+        import tkinter as tk
+        from tkinter import filedialog, simpledialog, messagebox
+        import pdfplumber
+        import datetime
+        root = tk.Tk()
+        root.withdraw()
+        filetypes = [
+            ("PDF files", "*.pdf"),
+            ("Markdown files", "*.md"),
+            ("Text files", "*.txt"),
+            ("All files", "*.*")
+        ]
+        filepath = filedialog.askopenfilename(title="Select Document", filetypes=filetypes)
+        if not filepath:
+            root.destroy()
+            return
+        # Ask for document type
+        doc_type = simpledialog.askstring(
+            "Document Type",
+            f"Enter document type ({', '.join(DocumentType.ALL)}):",
+            initialvalue=DocumentType.RESUME
+        )
+        if not doc_type or doc_type not in DocumentType.ALL:
+            messagebox.showerror("Error", f"Invalid document type. Must be one of: {', '.join(DocumentType.ALL)}")
+            root.destroy()
+            return
+        # Extract raw content
+        try:
+            if filepath.lower().endswith('.pdf'):
+                with pdfplumber.open(filepath) as pdf:
+                    raw_content = "\n".join(page.extract_text() or '' for page in pdf.pages)
+            else:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    raw_content = f.read()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to extract content: {e}")
+            root.destroy()
+            return
+        # Use LLM to structure content
+        try:
+            prompt = f"""Extract and structure the following document as JSON. Identify fields such as name, contact, experience, education, skills, etc. If it's a resume, use a standard resume schema.\n\nDocument:\n{raw_content[:4000]}"""
+            structured_content = self.backend.generate_response(prompt)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to structure document: {e}")
+            root.destroy()
+            return
+        # Store in DB
+        try:
+            conn = sqlite3.connect(get_db_path())
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO documents (type, filename, raw_content, structured_content, uploaded_at) VALUES (?, ?, ?, ?, ?)",
+                (doc_type, os.path.basename(filepath), raw_content, structured_content, datetime.datetime.now().isoformat())
+            )
+            conn.commit()
+            conn.close()
+            messagebox.showinfo("Success", "Document uploaded and structured successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save to database: {e}")
+        root.destroy()
 
 # =============================================================================
 # MAIN ENTRY POINT
@@ -837,6 +974,26 @@ def main():
         raise
     finally:
         log("Application ended")
+
+def get_latest_resume():
+    """Fetch the most recent resume(s) from the documents table. Returns a list of resumes (dicts)."""
+    conn = sqlite3.connect(get_db_path())
+    c = conn.cursor()
+    c.execute("SELECT structured_content FROM documents WHERE type = ? ORDER BY uploaded_at DESC", (DocumentType.RESUME,))
+    rows = c.fetchall()
+    conn.close()
+    resumes = []
+    for row in rows:
+        try:
+            import json as _json
+            data = _json.loads(row[0])
+            if isinstance(data, list):
+                resumes.extend(data)
+            else:
+                resumes.append(data)
+        except Exception:
+            continue
+    return resumes  # Return empty list if none found
 
 if __name__ == "__main__":
     main()

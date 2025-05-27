@@ -19,6 +19,8 @@ dependencies = [
     "python-dotenv",  # for .env support
     "pystray",        # for system tray icon
     "Pillow",         # for tray icon image
+    "pdfplumber",      # for PDF extraction
+    "plyer"
 ]
 
 [project.scripts]
