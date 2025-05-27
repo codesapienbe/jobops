@@ -1,0 +1,33 @@
+[project]
+name = "jobops"
+version = "0.0.1"
+description = "Een krachtige Python applicatie die automatisch gepersonaliseerde motivatiebrieven genereert op basis van job descriptions van URLs, gebruikmakend van verschillende AI backends."
+readme = "README.md"
+authors = [
+    { name = "Yilmaz Mustafa", email = "ymus@tuta.io" }
+]
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "requests",
+    "beautifulsoup4",
+    "openai",
+    "ollama",
+    "groq",
+    "pynput",         # for hotkey
+    "Pillow",         # for icon (if used)
+    "tk",             # for tkinter dialogs
+    "python-dotenv",  # for .env support
+    "pystray",        # for system tray icon
+    "Pillow",         # for tray icon image
+]
+
+[project.scripts]
+jobops = "jobops:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+]
