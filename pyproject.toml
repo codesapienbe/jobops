@@ -20,7 +20,8 @@ dependencies = [
     "pystray",        # for system tray icon
     "Pillow",         # for tray icon image
     "pdfplumber",      # for PDF extraction
-    "plyer"
+    "plyer",
+    "crawl4ai"
 ]
 
 [project.scripts]

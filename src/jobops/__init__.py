@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
-
 """
 AI Motivation Letter Generator
-
-Een applicatie die automatisch motivatiebrieven genereert op basis van job descriptions
-van URLs, gebruikmakend van verschillende LLM backends (OpenAI, Ollama, Groq).
-
-Author: Mustafa Yilmaz
-License: MIT
+A clean, maintainable application for generating motivation letters.
 """
 
 import os
 import json
 import logging
-from typing import Dict, Any
-from datetime import datetime
-import threading
-import pystray
-from PIL import Image, ImageDraw
 import sqlite3
+import threading
+import asyncio
+from abc import ABC, abstractmethod
+from typing import Dict, Any, List, Optional, Protocol, Union
+from datetime import datetime
+from enum import Enum
+from dataclasses import dataclass
+from pathlib import Path
 
-# Third-party imports
 import requests
 from bs4 import BeautifulSoup
 from plyer import notification
+import pystray
+from PIL import Image, ImageDraw
+from dotenv import load_dotenv
 
-# LLM Backend imports
 try:
     from openai import OpenAI
     OPENAI_AVAILABLE = True
@@ -44,232 +42,628 @@ try:
 except ImportError:
     GROQ_AVAILABLE = False
 
-# Add dotenv support
-from dotenv import load_dotenv
+try:
+    import pdfplumber
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
+try:
+    import crawl4ai
+    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, BrowserConfig, CacheMode
+    from crawl4ai.content_filter_strategy import PruningContentFilter
+    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+    CRAWL4AI_AVAILABLE = True
+except ImportError:
+    CRAWL4AI_AVAILABLE = False
+
 load_dotenv()
 
-# =============================================================================
-# CONSTANTS AND CONFIGURATION
-# =============================================================================
+from pydantic import BaseModel, Field, validator, root_validator
+from uuid import uuid4
 
-class AppConstants:
-    """Application-wide constants and configuration values."""
+class PersonalInfo(BaseModel):
+    name: Optional[str] = Field(None, description="Full name of the candidate")
+    title: Optional[str] = Field(None, description="Professional title or current position")
+    experience_years: Optional[str] = Field(None, description="Years of experience")
+    location: Optional[str] = Field(None, description="Current location or address")
+    email: Optional[str] = Field(None, description="Email address")
+    phone: Optional[str] = Field(None, description="Phone number")
+    linkedin: Optional[str] = Field(None, description="LinkedIn profile URL")
+    website: Optional[str] = Field(None, description="Personal website or portfolio")
+    github: Optional[str] = Field(None, description="GitHub profile URL")
+
+class WorkExperience(BaseModel):
+    position: Optional[str] = Field(None, description="Job title or position")
+    company: Optional[str] = Field(None, description="Company or organization name")
+    location: Optional[str] = Field(None, description="Work location")
+    start_date: Optional[str] = Field(None, description="Start date of employment")
+    end_date: Optional[str] = Field(None, description="End date or 'Present'")
+    period: Optional[str] = Field(None, description="Duration period")
+    description: Optional[str] = Field(None, description="Job description")
+    responsibilities: Optional[List[str]] = Field(None, description="Key responsibilities and achievements")
     
-    APP_NAME = 'Motivation Letter Generator'
-    VERSION = '1.0.0'
-    USER_HOME_DIR = os.path.expanduser('~/.jobops')
-    MOTIVATIONS_DIR = os.path.expanduser('~/.jobops/motivations')
-    WINDOW_SIZE = "600x200"
-    ICON_SIZE = (64, 64)
+    @validator('responsibilities', pre=True)
+    def validate_responsibilities(cls, v):
+        if isinstance(v, str):
+            return [v] if v and v.lower() not in ['n/a', 'none', ''] else []
+        return v or []
+
+class Education(BaseModel):
+    degree: Optional[str] = Field(None, description="Degree or qualification")
+    institution: Optional[str] = Field(None, description="Educational institution")
+    location: Optional[str] = Field(None, description="Institution location")
+    start_date: Optional[str] = Field(None, description="Start date")
+    end_date: Optional[str] = Field(None, description="End date or expected graduation")
+    period: Optional[str] = Field(None, description="Duration period")
+    gpa: Optional[str] = Field(None, description="GPA or grade")
+    description: Optional[str] = Field(None, description="Additional details")
+    coursework: Optional[List[str]] = Field(None, description="Relevant coursework")
     
-    # Default resume data (based on provided CV)
-    DEFAULT_RESUME = {
-        "personal_info": {
-            "name": "Mustafa Yilmaz",
-            "title": "Full Stack / Java Developer",
-            "experience_years": "5+",
-            "location": "Belgium"
-        },
-        "summary": "Java developer with 5+ years in financial messaging systems, enterprise apps & AI tech. Background spans SWIFT, entrepreneurship & teaching. Currently pursuing AI/ML postgraduate studies while contributing to open-source. Strong in Java, Spring & databases, with passion for knowledge sharing.",
-        "work_experience": [
-            {
-                "position": "Freelance Software Crafter",
-                "company": "MeOwn",
-                "period": "Feb 2025 - Current",
-                "description": "Working as an independent software engineer developing custom solutions. Developing Python applications with computer vision and AI capabilities using FastAPI. Building backend systems with TypeScript and NestJS framework."
-            },
-            {
-                "position": "Senior Java Developer", 
-                "company": "TheMatchBox",
-                "period": "Nov 2024 - Jan 2025",
-                "description": "Worked on custom plugins for ElasticSearch. Contributed to TheMatchBox core product providing API for matching between Candidates and Jobs using ontology and advanced algorithms."
-            },
-            {
-                "position": "Software Engineer",
-                "company": "S.W.I.F.T",
-                "period": "June 2023 - Nov 2024", 
-                "description": "Working on SWIFT's messaging protocols, enhancing the efficiency and security of financial communication. Worked in Alliance Messaging Hub which has the highest revenue share in the financial market."
-            },
-            {
-                "position": "Java/Python Trainer",
-                "company": "INTEC BRUSSEL",
-                "period": "Jan 2020 - June 2023",
-                "description": "Worked as a Java/Python Trainer teaching Java EE, Python, and shell. Students work at prestigious institutions like KU Leuven and FOD. Attended a hackathon in Belgium and won the 3rd prize."
-            }
-        ],
-        "education": [
-            {
-                "degree": "Postgraduate AI",
-                "institution": "Erasmus Hogeschool Brussel",
-                "period": "2024-2025 (Ongoing)",
-                "description": "Artificial Intelligence, Machine Learning, Deep Learning, Natural Language Processing, and MLOps"
-            }
-        ],
-        "technical_skills": [
-            "Java (Spring Boot, JPA, JDK 11+)",
-            "Python (Pandas, Transformers, OpenCV)",
-            "Databases (MySQL, PostgreSQL, MongoDB)",
-            "Messaging (IBM-MQ, RabbitMQ, ZeroMQ)",
-            "API Development (REST, Spring Boot, Flask)",
-            "Frontend (TypeScript, React)",
-            "DevOps (Docker, Kubernetes, CI/CD)",
-            "Version Control (Git, GitHub, GitLab)"
-        ],
-        "certifications": [
-            "Agile in Software Development",
-            "SWIFT Messaging Systems", 
-            "Best Security Practices in Software Companies"
-        ],
-        "languages": ["English", "Turkish", "Dutch"],
-        "open_source": "I actively work on open-source projects and dedicate time on a daily basis to contribute to the community. My GitHub profile showcases several projects including contributions to cybersecurity toolkits and AI-related repositories."
+    @validator('coursework', pre=True)
+    def validate_coursework(cls, v):
+        if isinstance(v, str):
+            return [v] if v and v.lower() not in ['n/a', 'none', ''] else []
+        return v or []
+
+class Project(BaseModel):
+    name: Optional[str] = Field(None, description="Project name")
+    description: Optional[str] = Field(None, description="Project description")
+    technologies: Optional[List[str]] = Field(None, description="Technologies used")
+    url: Optional[str] = Field(None, description="Project URL or repository")
+    start_date: Optional[str] = Field(None, description="Project start date")
+    end_date: Optional[str] = Field(None, description="Project end date")
+
+class Certification(BaseModel):
+    name: Optional[str] = Field(None, description="Certification name")
+    issuer: Optional[str] = Field(None, description="Issuing organization")
+    date: Optional[str] = Field(None, description="Date obtained")
+    expiry: Optional[str] = Field(None, description="Expiry date")
+    credential_id: Optional[str] = Field(None, description="Credential ID")
+    url: Optional[str] = Field(None, description="Verification URL")
+
+class Language(BaseModel):
+    name: Optional[str] = Field(None, description="Language name")
+    proficiency: Optional[str] = Field(None, description="Proficiency level")
+
+class Resume(BaseModel):
+    id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
+    personal_info: PersonalInfo = Field(default_factory=PersonalInfo)
+    summary: Optional[str] = Field(None, description="Professional summary or objective")
+    work_experience: List[WorkExperience] = Field(default_factory=list)
+    education: List[Education] = Field(default_factory=list)
+    technical_skills: List[str] = Field(default_factory=list)
+    soft_skills: List[str] = Field(default_factory=list)
+    projects: List[Project] = Field(default_factory=list)
+    certifications: List[Certification] = Field(default_factory=list)
+    languages: List[Language] = Field(default_factory=list)
+    publications: List[str] = Field(default_factory=list)
+    awards: List[str] = Field(default_factory=list)
+    volunteer_experience: List[str] = Field(default_factory=list)
+    interests: List[str] = Field(default_factory=list)
+    references: Optional[str] = Field(None, description="References section")
+    additional_sections: Dict[str, Any] = Field(default_factory=dict, description="Any other sections")
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    @root_validator(pre=True)
+    def handle_invalid_values(cls, values):
+        for key, value in values.items():
+            if isinstance(value, str) and value.lower() in {'n/a', 'none', '', 'null'}:
+                values[key] = None
+        return values
+
+class GenericDocument(BaseModel):
+    content_type: Optional[str] = Field(None, description="Type of document content")
+    title: Optional[str] = Field(None, description="Document title")
+    author: Optional[str] = Field(None, description="Document author")
+    date: Optional[str] = Field(None, description="Document date")
+    organization: Optional[str] = Field(None, description="Related organization")
+    key_points: List[str] = Field(default_factory=list, description="Main points or highlights")
+    sections: Dict[str, Any] = Field(default_factory=dict, description="Document sections")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    
+    @root_validator(pre=True)
+    def handle_invalid_values(cls, values):
+        for key, value in values.items():
+            if isinstance(value, str) and value.lower() in {'n/a', 'none', '', 'null'}:
+                values[key] = None
+        return values
+
+class JobData(BaseModel):
+    id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
+    url: str
+    title: str
+    company: str
+    description: str
+    requirements: str
+    location: Optional[str] = None
+    salary: Optional[str] = None
+    employment_type: Optional[str] = None
+    seniority_level: Optional[str] = None
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    benefits: Optional[str] = None
+    scraped_at: datetime = Field(default_factory=datetime.now)
+    
+    @validator('url')
+    def validate_url(cls, v):
+        if not v.startswith(('http://', 'https://')):
+            raise ValueError('URL must start with http:// or https://')
+        return v
+
+class DocumentType(str, Enum):
+    RESUME = "resume"
+    COVER_LETTER = "cover_letter"
+    JOB_DESCRIPTION = "job_description"
+    REFERENCE_LETTER = "reference_letter"
+    OTHER = "other"
+
+class Document(BaseModel):
+    id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
+    type: DocumentType
+    filename: Optional[str] = None
+    raw_content: str
+    structured_content: str
+    uploaded_at: datetime = Field(default_factory=datetime.now)
+
+class MotivationLetter(BaseModel):
+    id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
+    job_data: JobData
+    resume: Resume
+    content: str
+    language: str = "en"
+    generated_at: datetime = Field(default_factory=datetime.now)
+
+class AppConfig(BaseModel):
+    backend: str = "ollama"
+    backend_settings: Dict[str, Dict[str, Any]] = {
+        'ollama': {'model': 'qwen3:0.6b', 'base_url': 'http://localhost:11434'},
+        'openai': {'model': 'gpt-4-turbo-preview'},
+        'groq': {'model': 'mixtral-8x7b-32768'}
+    }
+    app_settings: Dict[str, Any] = {
+        'language': 'en',
+        'output_format': 'markdown'
     }
 
-# =============================================================================
-# DATABASE SETUP
-# =============================================================================
+class LLMBackend(Protocol):
+    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str: ...
+    def health_check(self) -> bool: ...
 
-def get_db_path():
-    return os.path.expanduser('~/.jobops/jobops.db')
+class DocumentRepository(Protocol):
+    def save(self, document: Document) -> str: ...
+    def get_by_id(self, doc_id: str) -> Optional[Document]: ...
+    def get_by_type(self, doc_type: DocumentType) -> List[Document]: ...
+    def get_latest_resume(self) -> Optional[Resume]: ...
+    def delete(self, doc_id: str) -> bool: ...
 
-def init_db():
-    db_path = get_db_path()
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS documents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT NOT NULL,
-            filename TEXT,
-            raw_content TEXT,
-            structured_content TEXT,
-            uploaded_at TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+class JobScraper(Protocol):
+    def scrape_job_description(self, url: str) -> JobData: ...
 
-# Enum for document types
-class DocumentType:
-    RESUME = 'resume'
-    COVER_LETTER = 'cover_letter'
-    JOB_DESCRIPTION = 'job_description'
-    REFERENCE_LETTER = 'reference_letter'
-    OTHER = 'other'
-    ALL = [RESUME, COVER_LETTER, JOB_DESCRIPTION, REFERENCE_LETTER, OTHER]
+class LetterGenerator(Protocol):
+    def generate(self, job_data: JobData, resume: Resume, language: str = "en") -> MotivationLetter: ...
 
-init_db()
+class ConfigManager(Protocol):
+    def load(self) -> AppConfig: ...
+    def save(self, config: AppConfig) -> None: ...
 
-# =============================================================================
-# LOGGING SETUP
-# =============================================================================
+class NotificationService(Protocol):
+    def notify(self, title: str, message: str) -> None: ...
 
-def setup_logging():
-    """Initialize logging configuration."""
-    os.makedirs(os.path.dirname(AppConstants.MOTIVATIONS_DIR), exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        handlers=[
-            logging.FileHandler(os.path.join(AppConstants.USER_HOME_DIR, 'app.log'), encoding='utf-8'),
-            logging.StreamHandler()
-        ]
-    )
+@dataclass(frozen=True)
+class AppConstants:
+    APP_NAME: str = 'Motivation Letter Generator'
+    VERSION: str = '1.0.0'
+    USER_HOME_DIR: str = os.path.expanduser('~/.jobops')
+    MOTIVATIONS_DIR: str = os.path.expanduser('~/.jobops/motivations')
+    WINDOW_SIZE: str = "600x200"
+    ICON_SIZE: tuple = (64, 64)
+    DB_NAME: str = 'jobops.db'
+    CONFIG_NAME: str = 'config.json'
 
-def log(msg: str, level: str = 'info'):
-    """Log a message with specified level."""
-    getattr(logging, level)(msg)
+CONSTANTS = AppConstants()
 
-setup_logging()
+class BaseLLMBackend(ABC):
+    @abstractmethod
+    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str: pass
+    @abstractmethod
+    def health_check(self) -> bool: pass
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-def show_notification(title: str, message: str):
-    """Show system notification, log errors if notification fails."""
-    log(f"Notification: {title} - {message}")
-    try:
-        notification.notify(
-            title=title,
-            message=message,
-            app_name=AppConstants.APP_NAME,
-            timeout=3
-        )
-    except Exception as e:
-        log(f"Notification error: {e}", 'warning')
-        try:
-            with open(os.path.join(AppConstants.USER_HOME_DIR, 'app.log'), 'a', encoding='utf-8') as f:
-                f.write(f"[NOTIFY_FAIL] {datetime.now().isoformat()} {title}: {message} | {e}\n")
-        except Exception as log_e:
-            log(f"Failed to log notification error: {log_e}", 'error')
-
-def initialize_directories():
-    """Create necessary directories."""
-    os.makedirs(AppConstants.USER_HOME_DIR, exist_ok=True)
-    os.makedirs(AppConstants.MOTIVATIONS_DIR, exist_ok=True)
-
-# =============================================================================
-# JOB SCRAPER
-# =============================================================================
-
-class JobScraper:
-    """Scrapes job descriptions from URLs."""
+class OllamaBackend(BaseLLMBackend):
+    def __init__(self, model: str = "qwen3:0.6b", base_url: str = "http://localhost:11434"):
+        if not OLLAMA_AVAILABLE:
+            raise ImportError("Ollama package not available")
+        self.model = model
+        self.base_url = base_url
+        ollama.base_url = base_url
+        self._logger = logging.getLogger(self.__class__.__name__)
     
-    def __init__(self):
+    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        self._logger.info(f"Generating response with model: {self.model}")
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = ollama.chat(model=self.model, messages=messages)
+            return response['message']['content']
+        except Exception as e:
+            self._logger.error(f"Ollama generation error: {e}")
+            raise
+    
+    def health_check(self) -> bool:
+        try:
+            response = ollama.chat(
+                model=self.model,
+                messages=[{"role": "user", "content": "Hello"}]
+            )
+            return True
+        except Exception as e:
+            self._logger.error(f"Health check failed: {e}")
+            return False
+
+class OpenAIBackend(BaseLLMBackend):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4-turbo-preview"):
+        if not OPENAI_AVAILABLE:
+            raise ImportError("OpenAI package not available")
+        
+        api_key = api_key or os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OpenAI API key required")
+        
+        self.client = OpenAI(api_key=api_key)
+        self.model = model
+        self._logger = logging.getLogger(self.__class__.__name__)
+    
+    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        self._logger.info(f"Generating response with model: {self.model}")
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            self._logger.error(f"OpenAI generation error: {e}")
+            raise
+    
+    def health_check(self) -> bool:
+        try:
+            self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "Hello"}],
+                max_tokens=10
+            )
+            return True
+        except Exception as e:
+            self._logger.error(f"Health check failed: {e}")
+            return False
+
+class GroqBackend(BaseLLMBackend):
+    def __init__(self, api_key: Optional[str] = None, model: str = "mixtral-8x7b-32768"):
+        if not GROQ_AVAILABLE:
+            raise ImportError("Groq package not available")
+        
+        api_key = api_key or os.getenv('GROQ_API_KEY')
+        if not api_key:
+            raise ValueError("Groq API key required")
+        
+        self.client = Groq(api_key=api_key)
+        self.model = model
+        self._logger = logging.getLogger(self.__class__.__name__)
+    
+    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        self._logger.info(f"Generating response with model: {self.model}")
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            self._logger.error(f"Groq generation error: {e}")
+            raise
+    
+    def health_check(self) -> bool:
+        try:
+            self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "Hello"}],
+                max_tokens=10
+            )
+            return True
+        except Exception as e:
+            self._logger.error(f"Health check failed: {e}")
+            return False
+
+class SQLiteDocumentRepository:
+    def __init__(self, db_path: str):
+        self.db_path = Path(db_path)
+        self._logger = logging.getLogger(self.__class__.__name__)
+        self._init_db()
+    
+    def _init_db(self):
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS documents (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    filename TEXT,
+                    raw_content TEXT,
+                    structured_content TEXT,
+                    uploaded_at TEXT
+                )
+            ''')
+            conn.commit()
+    
+    def save(self, document: Document) -> str:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                """INSERT OR REPLACE INTO documents 
+                   (id, type, filename, raw_content, structured_content, uploaded_at) 
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (document.id, document.type.value, document.filename,
+                 document.raw_content, document.structured_content,
+                 document.uploaded_at.isoformat())
+            )
+            conn.commit()
+        return document.id
+    
+    def get_by_id(self, doc_id: str) -> Optional[Document]:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+            row = c.fetchone()
+            
+            if row:
+                return Document(
+                    id=row[0],
+                    type=DocumentType(row[1]),
+                    filename=row[2],
+                    raw_content=row[3],
+                    structured_content=row[4],
+                    uploaded_at=datetime.fromisoformat(row[5])
+                )
+        return None
+    
+    def get_by_type(self, doc_type: DocumentType) -> List[Document]:
+        documents = []
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT * FROM documents WHERE type = ? ORDER BY uploaded_at DESC", 
+                (doc_type.value,)
+            )
+            rows = c.fetchall()
+            
+            for row in rows:
+                documents.append(Document(
+                    id=row[0],
+                    type=DocumentType(row[1]),
+                    filename=row[2],
+                    raw_content=row[3],
+                    structured_content=row[4],
+                    uploaded_at=datetime.fromisoformat(row[5])
+                ))
+        return documents
+    
+    def get_latest_resume(self) -> Optional[Resume]:
+        documents = self.get_by_type(DocumentType.RESUME)
+        if documents:
+            try:
+                resume_data = json.loads(documents[0].structured_content)
+                return Resume(**resume_data)
+            except (json.JSONDecodeError, ValueError) as e:
+                self._logger.error(f"Error parsing resume data: {e}")
+                return None
+        return None
+    
+    def delete(self, doc_id: str) -> bool:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            deleted = c.rowcount > 0
+            conn.commit()
+        return deleted
+
+class Crawl4AIJobScraper:
+    def __init__(self, llm_backend: LLMBackend):
+        if not CRAWL4AI_AVAILABLE:
+            raise ImportError("Crawl4AI package not available")
+        self.llm_backend = llm_backend
+        self._logger = logging.getLogger(self.__class__.__name__)
+    
+    def scrape_job_description(self, url: str) -> JobData:
+        self._logger.info(f"Scraping job description from: {url}")
+        
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                markdown_content = loop.run_until_complete(self._crawl_url(url))
+            finally:
+                loop.close()
+            
+            return self._extract_job_data_from_markdown(url, markdown_content)
+            
+        except Exception as e:
+            self._logger.error(f"Error scraping job description: {e}")
+            raise Exception(f"Failed to scrape job description: {str(e)}")
+    
+    async def _crawl_url(self, url: str) -> str:
+        content_filter = PruningContentFilter(
+            threshold=0.3,
+            threshold_type="fixed",
+            min_word_threshold=10
+        )
+        
+        markdown_generator = DefaultMarkdownGenerator(
+            content_filter=content_filter
+        )
+        
+        browser_config = BrowserConfig(
+            headless=True,
+            java_script_enabled=True,
+            verbose=False
+        )
+        
+        crawler_config = CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS,
+            markdown_generator=markdown_generator,
+            page_timeout=30000
+        )
+        
+        async with AsyncWebCrawler(config=browser_config) as crawler:
+            result = await crawler.arun(url=url, config=crawler_config)
+            
+            if result and result.success:
+                return result.markdown.fit_markdown or result.markdown.raw_markdown
+            else:
+                raise Exception(f"Failed to crawl URL: {result.error_message if result else 'Unknown error'}")
+    
+    def _extract_job_data_from_markdown(self, url: str, markdown_content: str) -> JobData:
+        output_schema = JobData.model_json_schema()
+        
+        prompt = f"""
+        Extract job information from the following job posting markdown and return ONLY valid JSON that matches this exact schema:
+
+        {json.dumps(output_schema, indent=2)}
+
+        Job posting content:
+        {markdown_content[:4000]}
+
+        Return only the JSON object with no additional text, formatting, or code blocks.
+        """
+        
+        try:
+            response = self.llm_backend.generate_response(prompt)
+            
+            cleaned_response = response.strip()
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[7:]
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            
+            job_info = json.loads(cleaned_response.strip())
+            job_info['url'] = url
+            
+            return JobData(**job_info)
+        except Exception as e:
+            self._logger.warning(f"LLM extraction failed, using fallback: {e}")
+            return self._fallback_extraction(url, markdown_content)
+    
+    def _fallback_extraction(self, url: str, markdown_content: str) -> JobData:
+        lines = markdown_content.split('\n')
+        title = next((line.strip('# ') for line in lines if line.startswith('#')), "Unknown Position")
+        
+        return JobData(
+            url=url,
+            title=title,
+            company="Unknown Company",
+            description=markdown_content[:1500],
+            requirements=""
+        )
+
+class WebJobScraper:
+    def __init__(self, llm_backend: Optional[LLMBackend] = None):
+        self.llm_backend = llm_backend
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
+        self._logger = logging.getLogger(self.__class__.__name__)
     
-    def scrape_job_description(self, url: str) -> Dict[str, str]:
-        """Scrape job description from URL."""
+    def scrape_job_description(self, url: str) -> JobData:
+        self._logger.info(f"Scraping job description from: {url}")
+        
         try:
-            log(f"Scraping job description from: {url}")
             response = self.session.get(url, timeout=10)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Remove script and style elements
             for script in soup(["script", "style"]):
                 script.extract()
             
-            # Extract title
-            title = self._extract_title(soup)
-            
-            # Extract company
-            company = self._extract_company(soup)
-            
-            # Extract job description
-            description = self._extract_description(soup)
-            
-            # Extract requirements if available
-            requirements = self._extract_requirements(soup)
-            
-            return {
-                'url': url,
-                'title': title,
-                'company': company,
-                'description': description,
-                'requirements': requirements,
-                'scraped_at': datetime.now().isoformat()
-            }
+            if self.llm_backend:
+                return self._extract_with_llm(url, soup)
+            else:
+                return JobData(
+                    url=url,
+                    title=self._extract_title(soup),
+                    company=self._extract_company(soup),
+                    description=self._extract_description(soup),
+                    requirements=self._extract_requirements(soup)
+                )
             
         except Exception as e:
-            log(f"Error scraping job description: {e}", 'error')
+            self._logger.error(f"Error scraping job description: {e}")
             raise Exception(f"Failed to scrape job description: {str(e)}")
     
+    def _extract_with_llm(self, url: str, soup: BeautifulSoup) -> JobData:
+        text_content = soup.get_text(separator='\n', strip=True)
+        output_schema = JobData.model_json_schema()
+        
+        prompt = f"""
+        Extract job information from the following web page content and return ONLY valid JSON that matches this exact schema:
+
+        {json.dumps(output_schema, indent=2)}
+
+        Web page content:
+        {text_content[:4000]}
+
+        Return only the JSON object with no additional text, formatting, or code blocks.
+        """
+        
+        try:
+            response = self.llm_backend.generate_response(prompt)
+            
+            cleaned_response = response.strip()
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[7:]
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            
+            job_info = json.loads(cleaned_response.strip())
+            job_info['url'] = url
+            
+            return JobData(**job_info)
+        except Exception as e:
+            self._logger.warning(f"LLM extraction failed, using fallback: {e}")
+            return self._fallback_extraction(url, soup)
+    
+    def _fallback_extraction(self, url: str, soup: BeautifulSoup) -> JobData:
+        return JobData(
+            url=url,
+            title=self._extract_title(soup),
+            company=self._extract_company(soup),
+            description=self._extract_description(soup),
+            requirements=self._extract_requirements(soup)
+        )
+    
     def _extract_title(self, soup: BeautifulSoup) -> str:
-        """Extract job title from HTML."""
-        # Try multiple selectors for job title
         selectors = [
-            'h1',
-            '.job-title',
-            '.position-title',
-            '[data-testid="job-title"]',
-            '.jobsearch-JobTitle',
-            '.jobs-unified-top-card__job-title'
+            'h1', '.job-title', '.position-title',
+            '[data-testid="job-title"]', '.jobsearch-JobTitle'
         ]
         
         for selector in selectors:
@@ -277,18 +671,13 @@ class JobScraper:
             if element:
                 return element.get_text(strip=True)
         
-        # Fallback to page title
         title_tag = soup.find('title')
         return title_tag.get_text(strip=True) if title_tag else "Unknown Position"
     
     def _extract_company(self, soup: BeautifulSoup) -> str:
-        """Extract company name from HTML."""
         selectors = [
-            '.company-name',
-            '.employer-name',
-            '[data-testid="company-name"]',
-            '.jobsearch-InlineCompanyName',
-            '.jobs-unified-top-card__company-name'
+            '.company-name', '.employer-name',
+            '[data-testid="company-name"]', '.jobsearch-InlineCompanyName'
         ]
         
         for selector in selectors:
@@ -299,15 +688,9 @@ class JobScraper:
         return "Unknown Company"
     
     def _extract_description(self, soup: BeautifulSoup) -> str:
-        """Extract job description from HTML."""
-        # Try to find job description container
         selectors = [
-            '.job-description',
-            '.jobsearch-jobDescriptionText',
-            '.jobs-description',
-            '[data-testid="job-description"]',
-            '.description',
-            '.job-details'
+            '.job-description', '.jobsearch-jobDescriptionText',
+            '.jobs-description', '[data-testid="job-description"]'
         ]
         
         for selector in selectors:
@@ -315,761 +698,488 @@ class JobScraper:
             if element:
                 return element.get_text(separator='\n', strip=True)
         
-        # Fallback: get main content area
         main_content = soup.find('main') or soup.find('body')
         if main_content:
-            return main_content.get_text(separator='\n', strip=True)[:3000]  # Limit length
+            return main_content.get_text(separator='\n', strip=True)[:3000]
         
         return "Could not extract job description"
     
     def _extract_requirements(self, soup: BeautifulSoup) -> str:
-        """Extract job requirements from HTML."""
-        requirements_keywords = ['requirements', 'qualifications', 'skills', 'experience']
+        keywords = ['requirements', 'qualifications', 'skills', 'experience']
         
-        for keyword in requirements_keywords:
-            # Look for sections containing requirements
+        for keyword in keywords:
             elements = soup.find_all(text=lambda text: text and keyword.lower() in text.lower())
             for element in elements:
                 parent = element.parent
                 if parent:
-                    # Get the next sibling or parent content
                     req_text = parent.get_text(separator='\n', strip=True)
-                    if len(req_text) > 50:  # Only if substantial content
-                        return req_text[:1000]  # Limit length
+                    if len(req_text) > 50:
+                        return req_text[:1000]
         
         return ""
 
-# =============================================================================
-# LLM BACKENDS
-# =============================================================================
-
-class LLMBackend:
-    """Base class for LLM backends."""
+class ConcreteLetterGenerator:
+    def __init__(self, llm_backend: LLMBackend):
+        self.backend = llm_backend
+        self._logger = logging.getLogger(self.__class__.__name__)
     
-    def generate_response(self, prompt: str, system_prompt: str = None) -> str:
-        """Generate response from the LLM."""
-        raise NotImplementedError("Subclasses must implement generate_response")
-
-class OllamaBackend(LLMBackend):
-    """Ollama backend for local LLM inference."""
-    
-    def __init__(self, model: str = "qwen3:0.6b", base_url: str = "http://localhost:11434"):
-        log(f"[OllamaBackend] Initializing with model={model}, base_url={base_url}")
-        if not OLLAMA_AVAILABLE:
-            log("[OllamaBackend] Ollama package not installed", 'error')
-            raise ImportError("Ollama package not installed. Install with: pip install ollama")
-        self.model = model
-        self.base_url = base_url
-        ollama.base_url = base_url
-    
-    def generate_response(self, prompt: str, system_prompt: str = None) -> str:
-        log(f"[OllamaBackend] Generating response for model={self.model}")
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            log(f"[OllamaBackend] Sending chat request to Ollama: {ollama.base_url}")
-            response = ollama.chat(model=self.model, messages=messages)
-            log(f"[OllamaBackend] Received response from Ollama")
-            return response['message']['content']
-        except Exception as e:
-            log(f"Ollama generation error: {e}", 'error')
-            raise
-    def health_check(self) -> bool:
-        log(f"[OllamaBackend] Performing health check for model={self.model}")
-        try:
-            # Try a minimal prompt
-            response = ollama.chat(model=self.model, messages=[{"role": "user", "content": "Hello"}])
-            log(f"[OllamaBackend] Health check response: {response}")
-            return True
-        except Exception as e:
-            log(f"[OllamaBackend] Health check failed: {e}", 'error')
-            return False
-
-class OpenAIBackend(LLMBackend):
-    """OpenAI API backend."""
-    
-    def __init__(self, api_key: str = None, model: str = "gpt-4-turbo-preview"):
-        log(f"[OpenAIBackend] Initializing with model={model}")
-        if not OPENAI_AVAILABLE:
-            log("[OpenAIBackend] OpenAI package not installed", 'error')
-            raise ImportError("OpenAI package not installed. Install with: pip install openai")
-        if not api_key:
-            api_key = os.getenv('OPENAI_API_KEY')
-            if not api_key:
-                log("[OpenAIBackend] OpenAI API key not provided", 'error')
-                raise ValueError("OpenAI API key not provided and not found in environment")
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
-    
-    def generate_response(self, prompt: str, system_prompt: str = None) -> str:
-        log(f"[OpenAIBackend] Generating response for model={self.model}")
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            log(f"[OpenAIBackend] Sending chat request to OpenAI")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1000
-            )
-            log(f"[OpenAIBackend] Received response from OpenAI")
-            return response.choices[0].message.content
-        except Exception as e:
-            log(f"OpenAI generation error: {e}", 'error')
-            raise
-    def health_check(self) -> bool:
-        log(f"[OpenAIBackend] Performing health check for model={self.model}")
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": "Hello"}],
-                temperature=0.0,
-                max_tokens=10
-            )
-            log(f"[OpenAIBackend] Health check response: {response}")
-            return True
-        except Exception as e:
-            log(f"[OpenAIBackend] Health check failed: {e}", 'error')
-            return False
-
-class GroqBackend(LLMBackend):
-    """Groq API backend."""
-    
-    def __init__(self, api_key: str = None, model: str = "mixtral-8x7b-32768"):
-        log(f"[GroqBackend] Initializing with model={model}")
-        if not GROQ_AVAILABLE:
-            log("[GroqBackend] Groq package not installed", 'error')
-            raise ImportError("Groq package not installed. Install with: pip install groq")
-        if not api_key:
-            api_key = os.getenv('GROQ_API_KEY')
-            if not api_key:
-                log("[GroqBackend] Groq API key not provided", 'error')
-                raise ValueError("Groq API key not provided and not found in environment")
-        self.client = Groq(api_key=api_key)
-        self.model = model
-    
-    def generate_response(self, prompt: str, system_prompt: str = None) -> str:
-        log(f"[GroqBackend] Generating response for model={self.model}")
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            log(f"[GroqBackend] Sending chat request to Groq")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1000
-            )
-            log(f"[GroqBackend] Received response from Groq")
-            return response.choices[0].message.content
-        except Exception as e:
-            log(f"Groq generation error: {e}", 'error')
-            raise
-    def health_check(self) -> bool:
-        log(f"[GroqBackend] Performing health check for model={self.model}")
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": "Hello"}],
-                temperature=0.0,
-                max_tokens=10
-            )
-            log(f"[GroqBackend] Health check response: {response}")
-            return True
-        except Exception as e:
-            log(f"[GroqBackend] Health check failed: {e}", 'error')
-            return False
-
-# =============================================================================
-# MOTIVATION LETTER GENERATOR
-# =============================================================================
-
-class MotivationLetterGenerator:
-    """Generates motivation letters using LLM backends."""
-    
-    def __init__(self, backend: LLMBackend):
-        self.backend = backend
-    
-    def generate_letter(self, job_data: Dict[str, str], resume_data: Dict[str, Any], language: str = "en") -> str:
-        """Generate motivation letter based on job and resume data."""
+    def generate(self, job_data: JobData, resume: Resume, language: str = "en") -> MotivationLetter:
+        self._logger.info("Generating motivation letter")
         
-        # Create system prompt
         system_prompt = self._create_system_prompt(language)
-        
-        # Create user prompt
-        user_prompt = self._create_user_prompt(job_data, resume_data, language)
+        user_prompt = self._create_user_prompt(job_data, resume, language)
         
         try:
-            log("Generating motivation letter with AI...")
-            response = self.backend.generate_response(user_prompt, system_prompt)
-            log("Motivation letter generated successfully")
-            return response
+            content = self.backend.generate_response(user_prompt, system_prompt)
+            return MotivationLetter(
+                job_data=job_data,
+                resume=resume,
+                content=content,
+                language=language
+            )
         except Exception as e:
-            log(f"Error generating motivation letter: {e}", 'error')
+            self._logger.error(f"Error generating motivation letter: {e}")
             raise Exception(f"Failed to generate motivation letter: {str(e)}")
     
     def _create_system_prompt(self, language: str) -> str:
-        """Create system prompt for the LLM."""
         if language == "nl":
-            return """Je bent een professionele HR consultant en expert in het schrijven van motivatiebrieven. 
-Je taak is om een overtuigende, gepersonaliseerde motivatiebrief te schrijven die:
-
-1. De kandidaat perfect matcht met de functie
-2. Concrete voorbeelden uit de ervaring benadrukt
-3. Toont waarom de kandidaat specifiek bij dit bedrijf wil werken
-4. Een professionele maar warme toon heeft
-5. Relevant is voor de Nederlandse/Belgische arbeidsmarkt
-
-Structuur de brief met:
-- Gepersonaliseerde opening
-- 2-3 paragrafen die relevante ervaring benadrukken
-- Specifieke motivatie voor het bedrijf/functie
-- Sterke, professionele afsluiting
-
-Schrijf in perfect Nederlands (België) en houd de brief tussen 300-400 woorden."""
-
-        else:  # English
-            return """You are a professional HR consultant and expert in writing compelling motivation letters.
-Your task is to write a persuasive, personalized motivation letter that:
-
-1. Perfectly matches the candidate to the position
-2. Highlights concrete examples from experience
-3. Shows why the candidate specifically wants to work for this company
-4. Has a professional yet warm tone
-5. Is relevant for the European job market
-
-Structure the letter with:
-- Personalized opening
-- 2-3 paragraphs highlighting relevant experience
-- Specific motivation for the company/position
-- Strong, professional closing
-
-Write in perfect English and keep the letter between 300-400 words."""
+            return """Je bent een professionele HR consultant. Schrijf een overtuigende motivatiebrief 
+            die de kandidaat perfect matcht met de functie. Gebruik concrete voorbeelden en toon waarom 
+            de kandidaat specifiek bij dit bedrijf wil werken. Houd de brief tussen 300-400 woorden."""
+        else:
+            return """You are a professional HR consultant. Write a compelling motivation letter that 
+            perfectly matches the candidate to the position. Use concrete examples and show why the 
+            candidate specifically wants to work for this company. Keep the letter between 300-400 words."""
     
-    def _create_user_prompt(self, job_data: Dict[str, str], resume_data: Dict[str, Any], language: str) -> str:
-        """Create user prompt with job and resume data."""
-        
-        # Format resume data
-        resume_summary = self._format_resume_for_prompt(resume_data)
+    def _create_user_prompt(self, job_data: JobData, resume: Resume, language: str) -> str:
+        resume_summary = self._format_resume_for_prompt(resume)
         
         if language == "nl":
-            prompt = f"""Schrijf een motivatiebrief voor de volgende functie:
+            return f"""Schrijf een motivatiebrief voor:
 
-FUNCTIE INFORMATIE:
-Titel: {job_data.get('title', 'Onbekend')}
-Bedrijf: {job_data.get('company', 'Onbekend')}
-URL: {job_data.get('url', '')}
+FUNCTIE:
+Titel: {job_data.title}
+Bedrijf: {job_data.company}
+Beschrijving: {job_data.description}
+Vereisten: {job_data.requirements}
 
-FUNCTIEOMSCHRIJVING:
-{job_data.get('description', '')}
-
-VEREISTEN:
-{job_data.get('requirements', '')}
-
-KANDIDAAT CV SAMENVATTING:
+CV SAMENVATTING:
 {resume_summary}
 
-Schrijf een motivatiebrief die specifiek ingaat op deze functie en toont hoe de kandidaat ervaring perfect aansluit bij de vereisten. Gebruik concrete voorbeelden en toon echte interesse in het bedrijf."""
+Maak een persoonlijke en overtuigende brief."""
+        else:
+            return f"""Write a motivation letter for:
 
-        else:  # English
-            prompt = f"""Write a motivation letter for the following position:
+POSITION:
+Title: {job_data.title}
+Company: {job_data.company}
+Description: {job_data.description}
+Requirements: {job_data.requirements}
 
-JOB INFORMATION:
-Title: {job_data.get('title', 'Unknown')}
-Company: {job_data.get('company', 'Unknown')}
-URL: {job_data.get('url', '')}
-
-JOB DESCRIPTION:
-{job_data.get('description', '')}
-
-REQUIREMENTS:
-{job_data.get('requirements', '')}
-
-CANDIDATE CV SUMMARY:
+RESUME SUMMARY:
 {resume_summary}
 
-Write a motivation letter that specifically addresses this position and shows how the candidate's experience perfectly aligns with the requirements. Use concrete examples and show genuine interest in the company."""
-        
-        return prompt
+Create a personal and compelling letter."""
     
-    def _format_resume_for_prompt(self, resume_data: Dict[str, Any]) -> str:
-        """Format resume data for the prompt."""
-        summary = []
-        
-        # Personal info
-        personal = resume_data.get('personal_info', {})
-        summary.append(f"Name: {personal.get('name', '')}")
-        summary.append(f"Title: {personal.get('title', '')}")
-        summary.append(f"Experience: {personal.get('experience_years', '')} years")
-        
-        # Professional summary
-        if resume_data.get('summary'):
-            summary.append(f"\nSummary: {resume_data['summary']}")
-        
-        # Work experience
-        work_exp = resume_data.get('work_experience', [])
-        if work_exp:
-            summary.append("\nWork Experience:")
-            for i, exp in enumerate(work_exp[:3]):  # Top 3 most recent
-                summary.append(f"- {exp.get('position', '')} at {exp.get('company', '')} ({exp.get('period', '')})")
-                summary.append(f"  {exp.get('description', '')}")
-        
-        # Technical skills
-        skills = resume_data.get('technical_skills', [])
-        if skills:
-            summary.append(f"\nTechnical Skills: {', '.join(skills[:10])}")  # Top 10 skills
-        
-        # Education
-        education = resume_data.get('education', [])
-        if education:
-            summary.append("\nEducation:")
-            for edu in education:
-                summary.append(f"- {edu.get('degree', '')} at {edu.get('institution', '')} ({edu.get('period', '')})")
-        
-        # Certifications
-        certs = resume_data.get('certifications', [])
-        if certs:
-            summary.append(f"\nCertifications: {', '.join(certs)}")
-        
-        return '\n'.join(summary)
-
-# =============================================================================
-# MAIN APPLICATION GUI
-# =============================================================================
-
-class MotivationLetterApp:
-    """Main application class."""
-    
-    def __init__(self):
-        import tkinter as tk
-        log("[MotivationLetterApp] Initializing application")
-        initialize_directories()
-        self.job_scraper = JobScraper()
-        self.config = self._load_config()
-        self.backend = self._initialize_backend()
-        self.root = tk.Tk()
-        self.root.withdraw()  # Hide the main window
-        self._health_check_backend()
-        self._setup_hotkey_listener()
-
-    def _load_config(self) -> Dict[str, Any]:
-        """Load or create configuration file."""
-        config_path = os.path.join(AppConstants.USER_HOME_DIR, 'config.json')
-        default_config = {
-            'backend': 'ollama',  # ollama, openai, or groq
-            'backend_settings': {
-                'ollama': {
-                    'model': 'qwen3:0.6b',
-                    'base_url': 'http://localhost:11434'
-                },
-                'openai': {
-                    'model': 'gpt-4-turbo-preview'
-                },
-                'groq': {
-                    'model': 'mixtral-8x7b-32768'
-                }
-            }
-        }
-        try:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                # Ensure ollama model is qwen3:0.6b
-                if config['backend_settings']['ollama'].get('model', '') != 'qwen3:0.6b':
-                    log(f"[Config] Updating Ollama model in config from {config['backend_settings']['ollama'].get('model', '')} to qwen3:0.6b", 'info')
-                    config['backend_settings']['ollama']['model'] = 'qwen3:0.6b'
-                    with open(config_path, 'w') as f:
-                        json.dump(config, f, indent=2)
-                return config
-            else:
-                with open(config_path, 'w') as f:
-                    json.dump(default_config, f, indent=2)
-                return default_config
-        except Exception as e:
-            log(f"Error loading config, using defaults: {e}", 'warning')
-            return default_config
-    
-    def _save_config(self):
-        """Save current configuration."""
-        config_path = os.path.join(AppConstants.USER_HOME_DIR, 'config.json')
-        try:
-            with open(config_path, 'w') as f:
-                json.dump(self.config, f, indent=2)
-        except Exception as e:
-            log(f"Error saving config: {e}", 'error')
-    
-    def _initialize_backend(self) -> LLMBackend:
-        """Initialize the selected backend."""
-        backend_type = self.config['backend']
-        settings = self.config['backend_settings'][backend_type]
-        
-        try:
-            if backend_type == 'ollama':
-                log(f"[MotivationLetterApp] Using Ollama model: {settings.get('model', 'qwen3:0.6b')}")
-                return OllamaBackend(
-                    model=settings.get('model', 'qwen3:0.6b'),
-                    base_url=settings['base_url']
-                )
-            elif backend_type == 'openai':
-                return OpenAIBackend(
-                    model=settings['model']
-                )
-            elif backend_type == 'groq':
-                return GroqBackend(
-                    model=settings['model']
-                )
-            else:
-                log(f"Unknown backend type: {backend_type}, falling back to Ollama", 'warning')
-                return OllamaBackend()
-        except Exception as e:
-            log(f"Error initializing {backend_type} backend: {e}, falling back to Ollama", 'warning')
-            return OllamaBackend()
-    
-    def switch_backend(self, backend_type: str, settings: Dict[str, Any] = None):
-        """Switch to a different backend."""
-        if backend_type not in ['ollama', 'openai', 'groq']:
-            raise ValueError(f"Unsupported backend type: {backend_type}")
-        
-        if settings:
-            self.config['backend_settings'][backend_type].update(settings)
-        
-        self.config['backend'] = backend_type
-        self.backend = self._initialize_backend()
-        self._save_config()
-        log(f"Switched to {backend_type} backend")
-
-    def _setup_hotkey_listener(self):
-        import threading
-        import pynput
-        from pynput import keyboard
-        hotkeys = [
-            '<ctrl>+<alt>+j',
-            '<ctrl>+<shift>+j',
+    def _format_resume_for_prompt(self, resume: Resume) -> str:
+        parts = [
+            f"Name: {resume.personal_info.name or 'N/A'}",
+            f"Title: {resume.personal_info.title or 'N/A'}",
+            f"Experience: {resume.personal_info.experience_years or 'N/A'}",
+            f"Summary: {resume.summary or 'N/A'}",
         ]
-        def on_activate():
-            log("Hotkey pressed! Showing URL input dialog.")
-            show_notification("JobOps", "Hotkey pressed! Opening dialog...")
-            # Schedule dialog in main thread
-            self.root.after(0, self._show_url_input)
-        def for_canonical(f):
-            return lambda k: f(self.listener.canonical(k))
-        def listen():
-            for hotkey_str in hotkeys:
-                try:
-                    hotkey = keyboard.HotKey(
-                        keyboard.HotKey.parse(hotkey_str),
-                        on_activate
-                    )
-                    log(f"Registering hotkey: {hotkey_str}")
-                    break
-                except Exception as e:
-                    log(f"Failed to register hotkey {hotkey_str}: {e}", 'warning')
-            else:
-                log("No hotkey could be registered!", 'error')
-                return
-            with keyboard.Listener(
-                on_press=for_canonical(hotkey.press),
-                on_release=for_canonical(hotkey.release)) as listener:
-                self.listener = listener
-                listener.join()
-        threading.Thread(target=listen, daemon=True).start()
+        
+        if resume.work_experience:
+            parts.append("Recent Experience:")
+            for exp in resume.work_experience[:3]:
+                parts.append(f"- {exp.position or 'N/A'} at {exp.company or 'N/A'} ({exp.period or 'N/A'})")
+        
+        if resume.technical_skills:
+            parts.append(f"Technical Skills: {', '.join(resume.technical_skills[:8])}")
+        
+        if resume.education:
+            parts.append("Education:")
+            for edu in resume.education[:2]:
+                parts.append(f"- {edu.degree or 'N/A'} from {edu.institution or 'N/A'}")
+        
+        return '\n'.join(parts)
 
-    def _show_url_input(self):
-        import tkinter as tk
-        from tkinter import ttk, simpledialog, messagebox
+class DocumentExtractor:
+    def __init__(self, llm_backend: LLMBackend):
+        self.llm_backend = llm_backend
+        self._logger = logging.getLogger(self.__class__.__name__)
+    
+    def extract_resume(self, raw_content: str) -> Resume:
+        output_schema = Resume.model_json_schema()
+        
+        system_prompt = """You are an expert resume parser. Extract information from resumes and return structured JSON data that matches the exact schema provided. Be thorough and accurate."""
+        
+        prompt = f"""
+        Extract and structure the resume information from the following content and return ONLY valid JSON that matches this exact schema:
+
+        {json.dumps(output_schema, indent=2)}
+
+        Resume content:
+        {raw_content[:6000]}
+
+        Instructions:
+        - Extract all relevant information accurately
+        - Use null for missing fields
+        - Parse dates in a consistent format
+        - Split responsibilities/descriptions into arrays where appropriate
+        - Return only the JSON object with no additional text, formatting, or code blocks
+        """
+        
         try:
-            class URLInputDialog(simpledialog.Dialog):
-                def __init__(self, parent, app):
-                    self.app = app
-                    self.result = None
-                    super().__init__(parent, title="Job URL Input")
-                def body(self, master):
-                    ttk.Label(master, text="Backend:").grid(row=0, column=0, sticky='w')
-                    self.backend_var = tk.StringVar(value=self.app.config['backend'])
-                    backend_combo = ttk.Combobox(
-                        master, textvariable=self.backend_var,
-                        values=['ollama', 'openai', 'groq'], state='readonly')
-                    backend_combo.grid(row=0, column=1, sticky='ew')
-                    backend_combo.bind('<<ComboboxSelected>>', self.on_backend_change)
-                    ttk.Label(master, text="Model:").grid(row=1, column=0, sticky='w')
-                    self.model_var = tk.StringVar()
-                    self.model_entry = ttk.Entry(master, textvariable=self.model_var)
-                    self.model_entry.grid(row=1, column=1, sticky='ew')
-                    ttk.Label(master, text="URL:").grid(row=2, column=0, sticky='w')
-                    self.url_var = tk.StringVar()
-                    url_entry = ttk.Entry(master, textvariable=self.url_var)
-                    url_entry.grid(row=2, column=1, sticky='ew')
-                    self.update_model_field()
-                    return url_entry
-                def update_model_field(self):
-                    backend = self.backend_var.get()
-                    settings = self.app.config['backend_settings'][backend]
-                    self.model_var.set(settings['model'])
-                def on_backend_change(self, event):
-                    self.update_model_field()
-                def validate(self):
-                    if not self.url_var.get():
-                        messagebox.showerror("Error", "Please enter a URL", parent=self)
-                        return False
-                    return True
-                def apply(self):
-                    backend = self.backend_var.get()
-                    model = self.model_var.get()
-                    url = self.url_var.get()
-                    if backend != self.app.config['backend'] or model != self.app.config['backend_settings'][backend]['model']:
-                        self.app.switch_backend(backend, {'model': model})
-                    self.result = url
-            dialog = URLInputDialog(self.root, self)
-            if dialog.result:
-                try:
-                    job_data = self.job_scraper.scrape_job_description(dialog.result)
-                    letter = self._generate_letter(job_data)
-                    self._save_letter(job_data, letter)
-                    from tkinter import messagebox
-                    messagebox.showinfo("Success", "Motivation letter generated and saved!", parent=self.root)
-                except Exception as e:
-                    log(f"Error in letter generation: {e}", 'error')
-                    try:
-                        show_notification("JobOps Error", str(e))
-                    except Exception as notify_e:
-                        log(f"Notification error: {notify_e}", 'error')
+            response = self.llm_backend.generate_response(prompt, system_prompt)
+            
+            cleaned_response = response.strip()
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[7:]
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            
+            resume_data = json.loads(cleaned_response.strip())
+            return Resume(**resume_data)
+            
         except Exception as e:
-            log(f"Dialog error: {e}", 'error')
-            try:
-                show_notification("JobOps Error", f"Dialog error: {e}")
-            except Exception as notify_e:
-                log(f"Notification error: {notify_e}", 'error')
+            self._logger.error(f"Resume extraction failed: {e}")
+            return self._create_fallback_resume(raw_content)
+    
+    def extract_generic_document(self, raw_content: str, doc_type: DocumentType) -> GenericDocument:
+        output_schema = GenericDocument.model_json_schema()
+        
+        system_prompt = f"""You are an expert document parser. Extract information from {doc_type.value} documents and return structured JSON data."""
+        
+        prompt = f"""
+        Extract and structure the document information from the following {doc_type.value} content and return ONLY valid JSON that matches this exact schema:
 
-    def _generate_letter(self, job_data):
-        resumes = get_latest_resume()
-        if not resumes:
-            raise Exception("No resume found in the database. Please upload a resume document first.")
-        resume_data = resumes[0]
-        prompt = f"""Write a motivation letter in markdown for the following job:\n\nTitle: {job_data.get('title', '')}\nCompany: {job_data.get('company', '')}\nURL: {job_data.get('url', '')}\n\nDescription:\n{job_data.get('description', '')}\n\nRequirements:\n{job_data.get('requirements', '')}\n\nResume Data:\n{resume_data}\n"""
-        return self.backend.generate_response(prompt)
+        {json.dumps(output_schema, indent=2)}
 
-    def _save_letter(self, job_data, letter):
-        import datetime
-        company = job_data.get('company', 'Unknown').replace(' ', '_')
-        title = job_data.get('title', 'Unknown').replace(' ', '_')
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"motivation_{company}_{title}_{timestamp}.md"
-        filepath = os.path.join(AppConstants.MOTIVATIONS_DIR, filename)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(letter)
+        Document content:
+        {raw_content[:4000]}
 
-    def run(self):
-        # Start tray icon in a thread
-        tray_thread = threading.Thread(target=self._run_tray, daemon=True)
-        tray_thread.start()
-        # Start Tkinter event loop in main thread
-        self.root.mainloop()
-        tray_thread.join()
-
-    def _run_tray(self):
-        """Run the system tray icon with Generate, Upload Document, and Exit menu items."""
-        def create_icon():
-            # Simple green document icon
-            image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
-            dc = ImageDraw.Draw(image)
-            dc.rectangle((12, 8, 48, 56), fill='#4CAF50', outline='#2E7D32')
-            dc.polygon([(48, 8), (48, 20), (36, 8)], fill='#2E7D32')
-            dc.line([(18, 24), (42, 24)], fill='white', width=2)
-            dc.line([(18, 30), (42, 30)], fill='white', width=2)
-            dc.line([(18, 36), (36, 36)], fill='white', width=2)
-            return image
-        def on_exit(icon, item):
-            icon.stop()
-            log("Application exited by user")
-        def on_generate(icon, item):
-            log("Generate menu clicked! Showing URL input dialog.")
-            show_notification("JobOps", "Opening dialog via tray menu...")
-            self._show_url_input()
-        def on_upload(icon, item):
-            log("Upload Document menu clicked! Opening file dialog.")
-            show_notification("JobOps", "Upload a document...")
-            self.root.after(0, self._upload_document)
-        menu = pystray.Menu(
-            pystray.MenuItem('Generate', on_generate),
-            pystray.MenuItem('Upload Document', on_upload),
-            pystray.MenuItem('Exit', on_exit)
-        )
-        icon = pystray.Icon(AppConstants.APP_NAME, create_icon(), AppConstants.APP_NAME, menu)
-        icon.run()
-
-    def _upload_document(self):
-        import tkinter as tk
-        from tkinter import filedialog, simpledialog, messagebox
-        import pdfplumber
-        import datetime
+        Instructions:
+        - Extract all relevant information accurately
+        - Identify key sections and content types
+        - Use null for missing fields
+        - Return only the JSON object with no additional text, formatting, or code blocks
+        """
+        
         try:
-            log("[Upload] Starting document upload dialog")
+            response = self.llm_backend.generate_response(prompt, system_prompt)
+            
+            cleaned_response = response.strip()
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[7:]
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            
+            doc_data = json.loads(cleaned_response.strip())
+            return GenericDocument(**doc_data)
+            
+        except Exception as e:
+            self._logger.error(f"Document extraction failed: {e}")
+            return self._create_fallback_document(raw_content, doc_type)
+    
+    def _create_fallback_resume(self, raw_content: str) -> Resume:
+        lines = raw_content.split('\n')
+        name = next((line.strip() for line in lines[:5] if line.strip() and not '@' in line), "Unknown")
+        
+        return Resume(
+            personal_info=PersonalInfo(name=name),
+            summary=raw_content[:500],
+            work_experience=[],
+            education=[],
+            technical_skills=[],
+            soft_skills=[],
+            projects=[],
+            certifications=[],
+            languages=[]
+        )
+    
+    def _create_fallback_document(self, raw_content: str, doc_type: DocumentType) -> GenericDocument:
+        lines = raw_content.split('\n')
+        title = next((line.strip() for line in lines[:3] if line.strip()), "Untitled Document")
+        
+        return GenericDocument(
+            content_type=doc_type.value,
+            title=title,
+            key_points=[],
+            sections={},
+            metadata={}
+        )
+
+class LLMBackendFactory:
+    @staticmethod
+    def create(backend_type: str, settings: Dict[str, Any]) -> LLMBackend:
+        if backend_type == "ollama":
+            return OllamaBackend(
+                model=settings.get('model', 'qwen3:0.6b'),
+                base_url=settings.get('base_url', 'http://localhost:11434')
+            )
+        elif backend_type == "openai":
+            return OpenAIBackend(
+                model=settings.get('model', 'gpt-4-turbo-preview')
+            )
+        elif backend_type == "groq":
+            return GroqBackend(
+                model=settings.get('model', 'mixtral-8x7b-32768')
+            )
+        else:
+            raise ValueError(f"Unsupported backend type: {backend_type}")
+
+class JSONConfigManager:
+    def __init__(self, config_path: str):
+        self.config_path = Path(config_path)
+        self._logger = logging.getLogger(self.__class__.__name__)
+    
+    def load(self) -> AppConfig:
+        try:
+            if self.config_path.exists():
+                with open(self.config_path, 'r') as f:
+                    config_data = json.load(f)
+                return AppConfig(**config_data)
+            else:
+                config = AppConfig()
+                self.save(config)
+                return config
+        except Exception as e:
+            self._logger.warning(f"Error loading config: {e}, using defaults")
+            return AppConfig()
+    
+    def save(self, config: AppConfig) -> None:
+        try:
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.config_path, 'w') as f:
+                json.dump(config.dict(), f, indent=2)
+        except Exception as e:
+            self._logger.error(f"Error saving config: {e}")
+
+class SystemNotificationService:
+    def __init__(self, app_name: str = "JobOps"):
+        self.app_name = app_name
+        self._logger = logging.getLogger(self.__class__.__name__)
+    
+    def notify(self, title: str, message: str) -> None:
+        self._logger.info(f"Notification: {title} - {message}")
+        try:
+            notification.notify(
+                title=title,
+                message=message,
+                app_name=self.app_name,
+                timeout=3
+            )
+        except Exception as e:
+            self._logger.warning(f"Notification failed: {e}")
+
+class JobOpsApplication:
+    def __init__(self, base_dir: Optional[str] = None):
+        self.base_dir = Path(base_dir or CONSTANTS.USER_HOME_DIR)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        
+        self._setup_logging()
+        self._logger = logging.getLogger(self.__class__.__name__)
+        
+        config_path = self.base_dir / CONSTANTS.CONFIG_NAME
+        self.config_manager = JSONConfigManager(str(config_path))
+        self.config = self.config_manager.load()
+        
+        self._initialize_services()
+    
+    def _setup_logging(self):
+        log_file = self.base_dir / 'app.log'
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+    
+    def _initialize_services(self):
+        db_path = self.base_dir / CONSTANTS.DB_NAME
+        self.repository = SQLiteDocumentRepository(str(db_path))
+        
+        backend_settings = self.config.backend_settings[self.config.backend]
+        self.llm_backend = LLMBackendFactory.create(self.config.backend, backend_settings)
+
+        # Ensure Playwright browsers are installed if using Crawl4AI
+        if CRAWL4AI_AVAILABLE:
+            try:
+                from playwright.sync_api import sync_playwright
+                import shutil
+                # Check if chromium executable exists
+                chromium_path = os.path.expanduser(r"~/.cache/ms-playwright/chromium-*/chrome-*/chrome.exe")
+                # This is a rough check; Playwright's API is more robust
+                # Try launching a browser to see if it works
+                with sync_playwright() as p:
+                    try:
+                        browser = p.chromium.launch(headless=True)
+                        browser.close()
+                    except Exception:
+                        logging.info("Playwright browsers not found. Installing browsers, this may take a few minutes...")
+                        try:
+                            self.notification_service.notify(
+                                "JobOps",
+                                "Installing Playwright browsers. This may take a few minutes on first run."
+                            )
+                        except Exception:
+                            pass
+                        import subprocess
+                        subprocess.run(["playwright", "install"], check=True)
+            except ImportError:
+                pass
+            except Exception as e:
+                logging.warning(f"Could not verify or install Playwright browsers: {e}")
+            self.job_scraper = Crawl4AIJobScraper(self.llm_backend)
+        else:
+            self.job_scraper = WebJobScraper(self.llm_backend)
+        
+        self.letter_generator = ConcreteLetterGenerator(self.llm_backend)
+        self.notification_service = SystemNotificationService()
+        self.document_extractor = DocumentExtractor(self.llm_backend)
+    
+    def generate_motivation_letter(self, job_url: str, language: str = "en") -> str:
+        try:
+            job_data = self.job_scraper.scrape_job_description(job_url)
+            
+            resume = self.repository.get_latest_resume()
+            if not resume:
+                raise ValueError("No resume found. Please upload a resume first.")
+            
+            letter = self.letter_generator.generate(job_data, resume, language)
+            
+            output_dir = self.base_dir / 'motivations'
+            output_dir.mkdir(exist_ok=True)
+            filepath = self._save_letter(letter, output_dir)
+            
+            self.notification_service.notify(
+                "JobOps", 
+                f"Motivation letter generated: {filepath.name}"
+            )
+            
+            return str(filepath)
+            
+        except Exception as e:
+            self._logger.error(f"Error generating motivation letter: {e}")
+            self.notification_service.notify("JobOps Error", str(e))
+            raise
+    
+    def _save_letter(self, letter: MotivationLetter, output_dir: Path) -> Path:
+        company = letter.job_data.company.replace(' ', '_')
+        title = letter.job_data.title.replace(' ', '_')
+        timestamp = letter.generated_at.strftime('%Y%m%d_%H%M%S')
+        filename = f"motivation_{company}_{title}_{timestamp}.md"
+        filepath = output_dir / filename
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(letter.content)
+        
+        return filepath
+    
+    def upload_document(self, file_path: str, doc_type: DocumentType) -> Document:
+        try:
+            file_path = Path(file_path)
+            
+            if file_path.suffix.lower() == '.pdf' and PDF_AVAILABLE:
+                with pdfplumber.open(file_path) as pdf:
+                    raw_content = "\n".join(page.extract_text() or '' for page in pdf.pages)
+            else:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    raw_content = f.read()
+            
+            if doc_type == DocumentType.RESUME:
+                structured_obj = self.document_extractor.extract_resume(raw_content)
+                structured_content = structured_obj.json()
+            else:
+                structured_obj = self.document_extractor.extract_generic_document(raw_content, doc_type)
+                structured_content = structured_obj.json()
+            
+            document = Document(
+                type=doc_type,
+                filename=file_path.name,
+                raw_content=raw_content,
+                structured_content=structured_content
+            )
+            
+            self.repository.save(document)
+            
+            self.notification_service.notify(
+                "JobOps", 
+                f"Document uploaded: {document.filename}"
+            )
+            
+            return document
+            
+        except Exception as e:
+            self._logger.error(f"Error uploading document: {e}")
+            self.notification_service.notify("JobOps Error", str(e))
+            raise
+    
+    def run(self):
+        self._logger.info(f"Starting {CONSTANTS.APP_NAME} v{CONSTANTS.VERSION}")
+
+        def create_image():
+            img = Image.new('RGB', CONSTANTS.ICON_SIZE, color=(70, 130, 180))
+            d = ImageDraw.Draw(img)
+            d.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
+            d.text((22, 22), "J", fill=(70, 130, 180))
+            return img
+
+        def on_upload_resume(icon, item):
+            import tkinter as tk
+            from tkinter import filedialog, messagebox
             root = tk.Tk()
             root.withdraw()
-            filetypes = [
-                ("PDF files", "*.pdf"),
-                ("Markdown files", "*.md"),
-                ("Text files", "*.txt"),
-                ("All files", "*.*")
-            ]
-            filepath = filedialog.askopenfilename(title="Select Document", filetypes=filetypes)
-            log(f"[Upload] File selected: {filepath}")
-            if not filepath:
-                log("[Upload] No file selected, aborting upload")
-                root.destroy()
-                return
-            doc_type = simpledialog.askstring(
-                "Document Type",
-                f"Enter document type ({', '.join(DocumentType.ALL)}):",
-                initialvalue=DocumentType.RESUME,
-                parent=root
-            )
-            log(f"[Upload] Document type selected: {doc_type}")
-            if not doc_type or doc_type not in DocumentType.ALL:
-                log(f"[Upload] Invalid document type: {doc_type}", 'error')
-                messagebox.showerror("Error", f"Invalid document type. Must be one of: {', '.join(DocumentType.ALL)}", parent=root)
-                root.destroy()
-                return
-            try:
-                log(f"[Upload] Extracting content from file: {filepath}")
-                if filepath.lower().endswith('.pdf'):
-                    with pdfplumber.open(filepath) as pdf:
-                        raw_content = "\n".join(page.extract_text() or '' for page in pdf.pages)
-                else:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        raw_content = f.read()
-                log(f"[Upload] Content extracted successfully")
-            except Exception as e:
-                log(f"Upload extract error: {e}", 'error')
+            file_path = filedialog.askopenfilename(title="Select Resume File", filetypes=[("PDF or Text Files", "*.pdf *.txt")])
+            if file_path:
                 try:
-                    show_notification("JobOps Error", f"Failed to extract content: {e}")
-                except Exception as notify_e:
-                    log(f"Notification error: {notify_e}", 'error')
-                root.destroy()
-                return
-            try:
-                log(f"[Upload] Sending content to LLM for structuring")
-                prompt = f"""Extract and structure the following document as JSON. Identify fields such as name, contact, experience, education, skills, etc. If it's a resume, use a standard resume schema.\n\nDocument:\n{raw_content[:4000]}"""
-                structured_content = self.backend.generate_response(prompt)
-                log(f"[Upload] LLM structuring complete")
-            except Exception as e:
-                log(f"Upload LLM error: {e}", 'error')
-                try:
-                    show_notification("JobOps Error", f"Failed to structure document: {e}")
-                except Exception as notify_e:
-                    log(f"Notification error: {notify_e}", 'error')
-                root.destroy()
-                return
-            try:
-                log(f"[Upload] Inserting structured document into database")
-                conn = sqlite3.connect(get_db_path())
-                c = conn.cursor()
-                c.execute(
-                    "INSERT INTO documents (type, filename, raw_content, structured_content, uploaded_at) VALUES (?, ?, ?, ?, ?)",
-                    (doc_type, os.path.basename(filepath), raw_content, structured_content, datetime.datetime.now().isoformat())
-                )
-                conn.commit()
-                conn.close()
-                log(f"[Upload] Document inserted into database successfully")
-                messagebox.showinfo("Success", "Document uploaded and structured successfully!", parent=root)
-            except Exception as e:
-                log(f"Upload DB error: {e}", 'error')
-                try:
-                    show_notification("JobOps Error", f"Failed to save to database: {e}")
-                except Exception as notify_e:
-                    log(f"Notification error: {notify_e}", 'error')
-                root.destroy()
-                return
+                    doc = self.upload_document(file_path, DocumentType.RESUME)
+                    messagebox.showinfo("Success", f"Resume uploaded: {doc.filename}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Error uploading resume: {e}")
             root.destroy()
-        except Exception as e:
-            log(f"Upload dialog error: {e}", 'error')
-            try:
-                show_notification("JobOps Error", f"Upload dialog error: {e}")
-            except Exception as notify_e:
-                log(f"Notification error: {notify_e}", 'error')
 
-    def _health_check_backend(self):
-        log(f"[MotivationLetterApp] Performing health check for backend: {self.config['backend']}")
-        try:
-            if hasattr(self.backend, 'health_check'):
-                healthy = self.backend.health_check()
-                if healthy:
-                    log(f"[MotivationLetterApp] Health check passed for backend: {self.config['backend']}")
-                else:
-                    log(f"[MotivationLetterApp] Health check failed for backend: {self.config['backend']}", 'error')
-                    try:
-                        show_notification("JobOps Error", f"Health check failed for backend: {self.config['backend']}")
-                    except Exception as notify_e:
-                        log(f"Notification error: {notify_e}", 'error')
-            else:
-                log(f"[MotivationLetterApp] No health_check method for backend: {self.config['backend']}", 'warning')
-        except Exception as e:
-            log(f"[MotivationLetterApp] Exception during health check: {e}", 'error')
-            try:
-                show_notification("JobOps Error", f"Exception during health check: {e}")
-            except Exception as notify_e:
-                log(f"Notification error: {notify_e}", 'error')
+        def on_generate_letter(icon, item):
+            import tkinter as tk
+            from tkinter import simpledialog, messagebox
+            root = tk.Tk()
+            root.withdraw()
+            job_url = simpledialog.askstring("Job URL", "Enter the job posting URL:")
+            if job_url:
+                language = simpledialog.askstring("Language", "Enter language (en/nl, default 'en'):") or "en"
+                try:
+                    filepath = self.generate_motivation_letter(job_url, language)
+                    messagebox.showinfo("Success", f"Motivation letter generated: {filepath}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Error generating letter: {e}")
+            root.destroy()
 
-# =============================================================================
-# MAIN ENTRY POINT
-# =============================================================================
+        def on_exit(icon, item):
+            icon.stop()
+            print("Exiting application. Goodbye!")
+
+        menu = pystray.Menu(
+            pystray.MenuItem("Upload Resume", on_upload_resume),
+            pystray.MenuItem("Generate Motivation Letter", on_generate_letter),
+            pystray.MenuItem("Exit", on_exit)
+        )
+        icon = pystray.Icon(CONSTANTS.APP_NAME, create_image(), CONSTANTS.APP_NAME, menu)
+        icon.run()
 
 def main():
-    """Main entry point."""
     try:
-        log(f"Starting {AppConstants.APP_NAME} v{AppConstants.VERSION}")
-        
-        # Check dependencies
-        missing_deps = []
-        if not OPENAI_AVAILABLE:
-            missing_deps.append("openai")
-        if not OLLAMA_AVAILABLE:
-            missing_deps.append("ollama")
-        if not GROQ_AVAILABLE:
-            missing_deps.append("groq")
-        
-        if missing_deps:
-            log(f"Optional dependencies not installed: {', '.join(missing_deps)}")
-            print(f"Note: Some backends not available. Install with: pip install {' '.join(missing_deps)}")
-        
-        # Initialize and run application
-        app = MotivationLetterApp()
+        app = JobOpsApplication()
         app.run()
-        
     except KeyboardInterrupt:
-        log("Application interrupted by user")
+        logging.info("Application interrupted by user")
     except Exception as e:
-        log(f"Application error: {e}", 'error')
+        logging.error(f"Application error: {e}")
         raise
     finally:
-        log("Application ended")
-
-def get_latest_resume():
-    """Fetch the most recent resume(s) from the documents table. Returns a list of resumes (dicts)."""
-    conn = sqlite3.connect(get_db_path())
-    c = conn.cursor()
-    c.execute("SELECT structured_content FROM documents WHERE type = ? ORDER BY uploaded_at DESC", (DocumentType.RESUME,))
-    rows = c.fetchall()
-    conn.close()
-    resumes = []
-    for row in rows:
-        try:
-            import json as _json
-            data = _json.loads(row[0])
-            if isinstance(data, list):
-                resumes.extend(data)
-            else:
-                resumes.append(data)
-        except Exception:
-            continue
-    return resumes  # Return empty list if none found
+        logging.info("Application ended")
 
 if __name__ == "__main__":
     main()

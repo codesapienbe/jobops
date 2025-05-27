@@ -187,7 +187,7 @@ numpy>=1.21.0
 
 ## 📁 Project Structure
 
-```
+```text
 jobops/
 ├── jobops.py                        # Main application entry point
 ├── requirements.txt                 # Python dependencies
@@ -415,7 +415,7 @@ When reporting issues, please include:
 
 JobOps is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-```
+```license
 MIT License
 
 Copyright (c) 2025 JobOps Contributors
@@ -485,8 +485,7 @@ For enterprise deployments and custom integrations:
 
 ---
 
-**Built with ❤️ for job seekers worldwide**
-
-*Empowering career growth through intelligent automation*
+>> **Built with ❤️ for job seekers worldwide**
+>> *Empowering career growth through intelligent automation*
 
 **Version 1.0.0** | **Released 2025** | **Made with AI**
