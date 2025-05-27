@@ -967,7 +967,7 @@ class DocumentExtractor:
         {json.dumps(output_schema, indent=2)}
 
         Document content:
-        {raw_content[:4000]}
+        {raw_content[:10000]}
 
         Instructions:
         - Extract all relevant information accurately
@@ -980,8 +980,8 @@ class DocumentExtractor:
             response = self.llm_backend.generate_response(prompt, system_prompt)
             
             cleaned_response = response.strip()
-            if cleaned_response.startswith('```'):
-                cleaned_response = cleaned_response[7:]
+            if cleaned_response.startswith('```markdown'):
+                cleaned_response = cleaned_response[14:]
             if cleaned_response.endswith('```'):
                 cleaned_response = cleaned_response[:-3]
             
@@ -1378,7 +1378,7 @@ class JobOpsApplication:
 
         def on_generate_letter(icon, item):
             import tkinter as tk
-            from tkinter import simpledialog, messagebox
+            from tkinter import messagebox
             import threading
             import time
 
@@ -1410,31 +1410,90 @@ class JobOpsApplication:
                     filepath = self.generate_motivation_letter(
                         job_url, language, company=company, title=title, location=location
                     )
-                    root.after(0, lambda: messagebox.showinfo("Success", f"Motivation letter generated: {filepath}"))
+                    root.after(0, lambda: messagebox.showinfo("Success", f"Motivation letter generated and stored in database."))
                 except Exception as e:
                     root.after(0, lambda: messagebox.showerror("Error", f"Error generating letter: {e}"))
                 finally:
                     animating = False
                     root.after(0, root.destroy)
 
-            def ask_and_generate():
-                job_url = simpledialog.askstring("Job URL", "Enter the job posting URL:")
-                if job_url:
-                    company = simpledialog.askstring("Company Name", "Enter the company name (optional, speeds up generation):") or None
-                    title = simpledialog.askstring("Job Title", "Enter the job title (optional, speeds up generation):") or None
-                    location = simpledialog.askstring("Location", "Enter the job location (optional, speeds up generation):") or None
-                    language = simpledialog.askstring("Language", "Enter language (en/nl, default 'en'):") or "en"
+            # Wizard dialog implementation
+            class Wizard(tk.Toplevel):
+                def __init__(self, master):
+                    super().__init__(master)
+                    self.title("Generate Motivation Letter")
+                    self.geometry("400x250")
+                    self.resizable(False, False)
+                    self.steps = [
+                        {"label": "Job URL", "var": tk.StringVar()},
+                        {"label": "Company Name", "var": tk.StringVar()},
+                        {"label": "Job Title", "var": tk.StringVar()},
+                        {"label": "Location", "var": tk.StringVar()},
+                        {"label": "Language (en/nl)", "var": tk.StringVar(value="en")},
+                    ]
+                    self.current = 0
+                    self.widgets = {}
+                    self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+                    self.build_ui()
+                    self.show_step()
+
+                def build_ui(self):
+                    self.progress = tk.Label(self, text="", font=("Arial", 10))
+                    self.progress.pack(pady=(10, 0))
+                    self.label = tk.Label(self, text="", font=("Arial", 12))
+                    self.label.pack(pady=(20, 5))
+                    self.entry = tk.Entry(self, textvariable=self.steps[0]["var"], width=40)
+                    self.entry.pack(pady=(0, 10))
+                    self.button_frame = tk.Frame(self)
+                    self.button_frame.pack(pady=10)
+                    self.back_btn = tk.Button(self.button_frame, text="Back", command=self.prev_step, state=tk.DISABLED)
+                    self.back_btn.grid(row=0, column=0, padx=5)
+                    self.next_btn = tk.Button(self.button_frame, text="Next", command=self.next_step)
+                    self.next_btn.grid(row=0, column=1, padx=5)
+                    self.submit_btn = tk.Button(self.button_frame, text="Submit", command=self.on_submit)
+                    self.submit_btn.grid(row=0, column=2, padx=5)
+                    self.submit_btn.config(state=tk.DISABLED)
+
+                def show_step(self):
+                    step = self.steps[self.current]
+                    self.label.config(text=step["label"])
+                    self.entry.config(textvariable=step["var"])
+                    self.progress.config(text=f"Step {self.current+1} of {len(self.steps)}")
+                    self.entry.focus_set()
+                    self.back_btn.config(state=tk.NORMAL if self.current > 0 else tk.DISABLED)
+                    if self.current == len(self.steps) - 1:
+                        self.next_btn.config(state=tk.DISABLED)
+                        self.submit_btn.config(state=tk.NORMAL)
+                    else:
+                        self.next_btn.config(state=tk.NORMAL)
+                        self.submit_btn.config(state=tk.DISABLED)
+
+                def next_step(self):
+                    if self.current < len(self.steps) - 1:
+                        self.current += 1
+                        self.show_step()
+
+                def prev_step(self):
+                    if self.current > 0:
+                        self.current -= 1
+                        self.show_step()
+
+                def on_submit(self):
+                    values = [step["var"].get().strip() for step in self.steps]
+                    job_url, company, title, location, language = values
+                    self.destroy()
                     threading.Thread(
                         target=do_generate,
                         args=(job_url, company, title, location, language),
                         daemon=True
                     ).start()
-                else:
-                    root.destroy()
+
+                def on_cancel(self):
+                    self.destroy()
 
             root = tk.Tk()
             root.withdraw()
-            root.after(0, ask_and_generate)
+            wizard = Wizard(root)
             root.mainloop()
 
         def on_exit(icon, item):
