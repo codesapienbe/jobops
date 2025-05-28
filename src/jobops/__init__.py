@@ -348,7 +348,7 @@ class OpenAIBackend(BaseLLMBackend):
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=3000
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -389,7 +389,7 @@ class GroqBackend(BaseLLMBackend):
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=3000
             )
             return response.choices[0].message.content
         except Exception as e:
