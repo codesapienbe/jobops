@@ -327,14 +327,11 @@ class OllamaBackend(BaseLLMBackend):
             return False
 
 class OpenAIBackend(BaseLLMBackend):
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4-turbo-preview"):
+    def __init__(self, api_key: str, model: str = "gpt-4-turbo-preview"):
         if not OPENAI_AVAILABLE:
             raise ImportError("OpenAI package not available")
-        
-        api_key = api_key or os.getenv('OPENAI_API_KEY')
         if not api_key:
             raise ValueError("OpenAI API key required")
-        
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -371,14 +368,11 @@ class OpenAIBackend(BaseLLMBackend):
             return False
 
 class GroqBackend(BaseLLMBackend):
-    def __init__(self, api_key: Optional[str] = None, model: str = "mixtral-8x7b-32768"):
+    def __init__(self, api_key: str, model: str = "mixtral-8x7b-32768"):
         if not GROQ_AVAILABLE:
             raise ImportError("Groq package not available")
-        
-        api_key = api_key or os.getenv('GROQ_API_KEY')
         if not api_key:
             raise ValueError("Groq API key required")
-        
         self.client = Groq(api_key=api_key)
         self.model = model
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -1022,7 +1016,7 @@ class DocumentExtractor:
 
 class LLMBackendFactory:
     @staticmethod
-    def create(backend_type: str, settings: Dict[str, Any]) -> LLMBackend:
+    def create(backend_type: str, settings: Dict[str, Any], tokens: Dict[str, str]) -> LLMBackend:
         if backend_type == "ollama":
             return OllamaBackend(
                 model=settings.get('model', 'qwen3:0.6b'),
@@ -1030,10 +1024,12 @@ class LLMBackendFactory:
             )
         elif backend_type == "openai":
             return OpenAIBackend(
+                api_key=tokens.get('openai', ''),
                 model=settings.get('model', 'gpt-4-turbo-preview')
             )
         elif backend_type == "groq":
             return GroqBackend(
+                api_key=tokens.get('groq', ''),
                 model=settings.get('model', 'mixtral-8x7b-32768')
             )
         else:
@@ -1111,12 +1107,11 @@ class JobOpsApplication:
     
     def _initialize_services(self):
         db_path = self.base_dir / CONSTANTS.DB_NAME
-        # Use sqlite_timeout from config if present
         timeout = self.config.sqlite_timeout if hasattr(self.config, 'sqlite_timeout') else 30.0
         self.repository = SQLiteDocumentRepository(str(db_path), timeout=timeout)
-        
         backend_settings = self.config.backend_settings[self.config.backend]
-        self.llm_backend = LLMBackendFactory.create(self.config.backend, backend_settings)
+        tokens = self.config.app_settings.get('tokens', {})
+        self.llm_backend = LLMBackendFactory.create(self.config.backend, backend_settings, tokens)
 
         # Ensure Playwright browsers are installed if using Crawl4AI
         if CRAWL4AI_AVAILABLE:
@@ -1615,6 +1610,142 @@ class JobOpsApplication:
             self._threads.append(t)
             t.start()
 
+        def on_change_backend(icon, item):
+            import tkinter as tk
+            from tkinter import messagebox
+            import threading
+
+            def show_backend_dialog():
+                root = tk.Tk()
+                root.withdraw()
+                backends = list(self.config.backend_settings.keys())
+                current_backend = self.config.backend
+
+                class BackendDialog(tk.Toplevel):
+                    def __init__(self, master, app_self):
+                        super().__init__(master)
+                        self.app_self = app_self
+                        self.title("Backend")
+                        self.geometry("350x200")
+                        self.resizable(False, False)
+                        self.selected_backend = tk.StringVar(value=current_backend)
+                        self.build_ui()
+
+                    def build_ui(self):
+                        tk.Label(self, text="Select Backend:", font=("Arial", 12)).pack(pady=15)
+                        for backend in backends:
+                            tk.Radiobutton(self, text=backend.capitalize(), variable=self.selected_backend, value=backend).pack(anchor=tk.W, padx=30)
+                        btn_frame = tk.Frame(self)
+                        btn_frame.pack(pady=20)
+                        tk.Button(btn_frame, text="Save", command=self.on_save).pack(side=tk.LEFT, padx=10)
+                        tk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
+
+                    def on_save(self):
+                        new_backend = self.selected_backend.get()
+                        if new_backend != self.app_self.config.backend:
+                            self.app_self.config.backend = new_backend
+                            self.app_self.config_manager.save(self.app_self.config)
+                            # Re-initialize services
+                            backend_settings = self.app_self.config.backend_settings[self.app_self.config.backend]
+                            tokens = self.app_self.config.app_settings.get('tokens', {})
+                            self.app_self.llm_backend = LLMBackendFactory.create(self.app_self.config.backend, backend_settings, tokens)
+                            if CRAWL4AI_AVAILABLE:
+                                self.app_self.job_scraper = Crawl4AIJobScraper(self.app_self.llm_backend)
+                            else:
+                                self.app_self.job_scraper = WebJobScraper(self.app_self.llm_backend)
+                            self.app_self.letter_generator = ConcreteLetterGenerator(self.app_self.llm_backend)
+                            self.app_self.document_extractor = DocumentExtractor(self.app_self.llm_backend)
+                            self.app_self.notification_service.notify("JobOps", f"Backend changed to {new_backend}.")
+                            messagebox.showinfo("Backend", f"Backend changed to {new_backend}.")
+                        self.destroy()
+
+                BackendDialog(root, self)
+                root.mainloop()
+
+            t = threading.Thread(target=show_backend_dialog, daemon=True)
+            self._threads.append(t)
+            t.start()
+
+        def on_settings(icon, item):
+            import tkinter as tk
+            from tkinter import simpledialog, messagebox
+            import threading
+
+            def show_settings_dialog():
+                root = tk.Tk()
+                root.withdraw()
+                # Get current tokens from config
+                tokens = self.config.app_settings.get('tokens', {})
+                openai_token = tokens.get('openai', '')
+                groq_token = tokens.get('groq', '')
+                # Add more providers as needed
+
+                class SettingsDialog(tk.Toplevel):
+                    def __init__(self, master):
+                        super().__init__(master)
+                        self.title("API Tokens Settings")
+                        self.geometry("400x250")
+                        self.resizable(False, False)
+                        self.openai_var = tk.StringVar(value=openai_token)
+                        self.groq_var = tk.StringVar(value=groq_token)
+                        self.build_ui()
+
+                    def build_ui(self):
+                        row = 0
+                        tk.Label(self, text="OpenAI API Key:").grid(row=row, column=0, sticky="e", padx=10, pady=10)
+                        tk.Entry(self, textvariable=self.openai_var, width=40, show="*").grid(row=row, column=1, padx=10, pady=10)
+                        row += 1
+                        tk.Label(self, text="Groq API Key:").grid(row=row, column=0, sticky="e", padx=10, pady=10)
+                        tk.Entry(self, textvariable=self.groq_var, width=40, show="*").grid(row=row, column=1, padx=10, pady=10)
+                        row += 1
+                        # Add more providers here as needed
+                        btn_frame = tk.Frame(self)
+                        btn_frame.grid(row=row, column=0, columnspan=2, pady=20)
+                        tk.Button(btn_frame, text="Save", command=self.on_save).pack(side=tk.LEFT, padx=10)
+                        tk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
+
+                    def on_save(self):
+                        # Save tokens to config
+                        new_tokens = {
+                            'openai': self.openai_var.get().strip(),
+                            'groq': self.groq_var.get().strip(),
+                        }
+                        self.master.after(0, lambda: self.save_tokens(new_tokens))
+                        self.destroy()
+
+                    def save_tokens(self, new_tokens):
+                        self.master.withdraw()  # Hide the root window
+                        self.master.update()
+                        self.master.destroy()
+                        self._save_tokens(new_tokens)
+
+                    def _save_tokens(self, new_tokens):
+                        self = self  # for clarity
+                        # Update config and save
+                        self_ref = self  # for closure
+                        try:
+                            self_ref = self
+                            self_ref = None  # silence linter
+                        except Exception:
+                            pass
+                        self_ = self  # for closure
+                        # Actually update config
+                        self_ = None  # silence linter
+                        # Save tokens
+                        self_ = None
+                        # Actually update config
+                        self.config.app_settings['tokens'] = new_tokens
+                        self.config_manager.save(self.config)
+                        self.notification_service.notify("JobOps", "API tokens saved.")
+                        messagebox.showinfo("Settings", "API tokens saved successfully.")
+
+                SettingsDialog(root)
+                root.mainloop()
+
+            t = threading.Thread(target=show_settings_dialog, daemon=True)
+            self._threads.append(t)
+            t.start()
+
         def on_exit(icon, item):
             print("Exiting application. Goodbye!")
             try:
@@ -1639,6 +1770,8 @@ class JobOpsApplication:
             pystray.MenuItem("Upload", on_upload_resume),
             pystray.MenuItem("Generate", on_generate_letter),
             pystray.MenuItem("Download", on_download_cover_letter),
+            pystray.MenuItem("Backend", on_change_backend),
+            pystray.MenuItem("Settings", on_settings),
             pystray.MenuItem("Help", on_help_github_repo),
             pystray.MenuItem("Exit", on_exit)
         )
