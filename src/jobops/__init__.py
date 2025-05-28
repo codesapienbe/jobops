@@ -1094,7 +1094,8 @@ class JobOpsApplication:
         config_path = self.base_dir / CONSTANTS.CONFIG_NAME
         self.config_manager = JSONConfigManager(str(config_path))
         self.config = self.config_manager.load()
-        
+        self._stop_event = threading.Event()
+        self._threads = []
         self._initialize_services()
     
     def _setup_logging(self):
@@ -1355,8 +1356,13 @@ class JobOpsApplication:
                 anim_thread = threading.Thread(target=animate_icon, daemon=True)
                 animating = True
                 anim_thread.start()
+                self._threads.append(anim_thread)
                 try:
+                    if self._stop_event.is_set():
+                        return
                     doc = self.upload_document(file_path, DocumentType.RESUME)
+                    if self._stop_event.is_set():
+                        return
                     root.after(0, lambda: messagebox.showinfo("Success", f"Resume uploaded: {doc.filename}"))
                 except Exception as e:
                     root.after(0, lambda e=e: messagebox.showerror("Error", f"Error uploading resume: {e}"))
@@ -1406,10 +1412,15 @@ class JobOpsApplication:
                 anim_thread = threading.Thread(target=animate_icon, daemon=True)
                 animating = True
                 anim_thread.start()
+                self._threads.append(anim_thread)
                 try:
+                    if self._stop_event.is_set():
+                        return
                     filepath = self.generate_motivation_letter(
                         job_url, language, company=company, title=title, location=location
                     )
+                    if self._stop_event.is_set():
+                        return
                     root.after(0, lambda: messagebox.showinfo("Success", f"Motivation letter generated and stored in database."))
                 except Exception as e:
                     root.after(0, lambda: messagebox.showerror("Error", f"Error generating letter: {e}"))
@@ -1496,28 +1507,138 @@ class JobOpsApplication:
             wizard = Wizard(root)
             root.mainloop()
 
+        def on_download_cover_letter(icon, item):
+            import tkinter as tk
+            from tkinter import simpledialog, filedialog, messagebox
+            import threading
+            import datetime
+            import os
+            # Helper for PDF export
+            def export_pdf(markdown_content, pdf_filepath):
+                try:
+                    from reportlab.lib.pagesizes import letter
+                    from reportlab.pdfgen import canvas
+                    from reportlab.lib.utils import simpleSplit
+                    import markdown2
+                    import re
+                    html = markdown2.markdown(markdown_content)
+                    text = re.sub('<[^<]+?>', '', html)
+                    c = canvas.Canvas(str(pdf_filepath), pagesize=letter)
+                    width, height = letter
+                    margin = 40
+                    y = height - margin
+                    lines = simpleSplit(text, 'Helvetica', 12, width - 2*margin)
+                    c.setFont("Helvetica", 12)
+                    for line in lines:
+                        if y < margin:
+                            c.showPage()
+                            y = height - margin
+                            c.setFont("Helvetica", 12)
+                        c.drawString(margin, y, line)
+                        y -= 16
+                    c.save()
+                except Exception:
+                    try:
+                        from fpdf import FPDF
+                        pdf = FPDF()
+                        pdf.add_page()
+                        pdf.set_font("Arial", size=12)
+                        for line in markdown_content.split('\n'):
+                            pdf.cell(0, 10, txt=line, ln=1)
+                        pdf.output(str(pdf_filepath))
+                    except Exception:
+                        messagebox.showerror("Error", "Could not export PDF. Please install reportlab or fpdf.")
+            # Dialog for selecting cover letter and format
+            class DownloadDialog(tk.Toplevel):
+                def __init__(self, master, cover_letters):
+                    super().__init__(master)
+                    self.title("Download")
+                    self.geometry("500x350")
+                    self.cover_letters = cover_letters
+                    self.selected_idx = tk.IntVar(value=0)
+                    self.format_var = tk.StringVar(value="markdown")
+                    self.build_ui()
+                def build_ui(self):
+                    tk.Label(self, text="Select a cover letter to download:", font=("Arial", 12)).pack(pady=10)
+                    self.listbox = tk.Listbox(self, width=60, height=10)
+                    for i, doc in enumerate(self.cover_letters):
+                        dt = doc.uploaded_at.strftime('%Y-%m-%d %H:%M') if hasattr(doc, 'uploaded_at') else ''
+                        name = doc.filename or f"Cover Letter {i+1}"
+                        self.listbox.insert(tk.END, f"{name} ({dt})")
+                    self.listbox.pack(pady=5)
+                    self.listbox.select_set(0)
+                    tk.Label(self, text="Format:").pack(pady=(10,0))
+                    format_frame = tk.Frame(self)
+                    format_frame.pack()
+                    tk.Radiobutton(format_frame, text="Markdown", variable=self.format_var, value="markdown").pack(side=tk.LEFT, padx=10)
+                    tk.Radiobutton(format_frame, text="PDF", variable=self.format_var, value="pdf").pack(side=tk.LEFT, padx=10)
+                    btn_frame = tk.Frame(self)
+                    btn_frame.pack(pady=15)
+                    tk.Button(btn_frame, text="Download", command=self.on_download).pack(side=tk.LEFT, padx=10)
+                    tk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
+                def on_download(self):
+                    idx = self.listbox.curselection()
+                    if not idx:
+                        messagebox.showerror("Error", "Please select a cover letter.")
+                        return
+                    doc = self.cover_letters[idx[0]]
+                    fmt = self.format_var.get()
+                    ext = ".md" if fmt == "markdown" else ".pdf"
+                    default_name = (doc.filename or "Cover Letter") + ext
+                    file_path = filedialog.asksaveasfilename(defaultextension=ext, initialfile=default_name, filetypes=[("Markdown", "*.md"), ("PDF", "*.pdf"), ("All Files", "*.*")])
+                    if not file_path:
+                        return
+                    try:
+                        if fmt == "markdown":
+                            with open(file_path, 'w', encoding='utf-8') as f:
+                                f.write(doc.structured_content)
+                        else:
+                            export_pdf(doc.structured_content, file_path)
+                        messagebox.showinfo("Success", f"Cover letter saved to {os.path.basename(file_path)}")
+                        self.destroy()
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to save file: {e}")
+            def show_download_dialog():
+                if self._stop_event.is_set():
+                    return
+                root = tk.Tk()
+                root.withdraw()
+                # Fetch all cover letters from the DB
+                cover_letters = self.repository.get_by_type(DocumentType.COVER_LETTER)
+                if not cover_letters:
+                    messagebox.showinfo("No Cover Letters", "No cover letters found in the database.")
+                    root.destroy()
+                    return
+                DownloadDialog(root, cover_letters)
+                root.mainloop()
+            t = threading.Thread(target=show_download_dialog, daemon=True)
+            self._threads.append(t)
+            t.start()
+
         def on_exit(icon, item):
-            icon.stop()
             print("Exiting application. Goodbye!")
             try:
                 self.notification_service.notify("JobOps", "Exiting application. Goodbye!")
-                # KILL ALL THREADS
-                for thread in threading.enumerate():
-                    thread.join()
+                self._stop_event.set()
+                # Wait for all background threads to finish (with timeout)
+                for thread in self._threads:
+                    if thread.is_alive():
+                        thread.join(timeout=5)
                 # KILL ALL PROCESSES belongs to this application
                 for process in psutil.process_iter():
                     if process.name() == "jobops.exe":
                         process.kill()
             except Exception as e:
                 logging.error(f"Error notifying: {e}")
-            sys.exit()
-            
+            icon.stop()
+
         def on_help_github_repo(icon, item):
             webbrowser.open("https://github.com/codesapienbe/jobops-toolbar")
 
         menu = pystray.Menu(
             pystray.MenuItem("Upload", on_upload_resume),
             pystray.MenuItem("Generate", on_generate_letter),
+            pystray.MenuItem("Download", on_download_cover_letter),
             pystray.MenuItem("Help", on_help_github_repo),
             pystray.MenuItem("Exit", on_exit)
         )
