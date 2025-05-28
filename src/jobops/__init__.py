@@ -1442,6 +1442,7 @@ class JobOpsApplication:
                     self.protocol("WM_DELETE_WINDOW", self.on_cancel)
                     self.build_ui()
                     self.show_step()
+                    self.master = master  # Save reference to root
 
                 def build_ui(self):
                     self.progress = tk.Label(self, text="", font=("Arial", 10))
@@ -1459,6 +1460,8 @@ class JobOpsApplication:
                     self.submit_btn = tk.Button(self.button_frame, text="Submit", command=self.on_submit)
                     self.submit_btn.grid(row=0, column=2, padx=5)
                     self.submit_btn.config(state=tk.DISABLED)
+                    self.cancel_btn = tk.Button(self.button_frame, text="Cancel", command=self.on_cancel)
+                    self.cancel_btn.grid(row=0, column=3, padx=5)
 
                 def show_step(self):
                     step = self.steps[self.current]
@@ -1496,6 +1499,8 @@ class JobOpsApplication:
 
                 def on_cancel(self):
                     self.destroy()
+                    if self.master:
+                        self.master.destroy()
 
             root = tk.Tk()
             root.withdraw()
