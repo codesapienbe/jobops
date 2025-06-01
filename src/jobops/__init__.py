@@ -227,6 +227,7 @@ class Document(BaseModel):
     structured_content: str
     uploaded_at: datetime = Field(default_factory=datetime.now)
     reasoning_analysis: Optional[str] = None
+    job_data_json: Optional[str] = None  # new field
 
 class MotivationLetter(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
@@ -428,11 +429,13 @@ class SQLiteDocumentRepository:
                     raw_content TEXT,
                     structured_content TEXT,
                     uploaded_at TEXT,
-                    reasoning_analysis TEXT
+                    reasoning_analysis TEXT,
+                    job_data_json TEXT  -- new column
                 )
             ''')
+            # Add new column if upgrading
             try:
-                c.execute('ALTER TABLE documents ADD COLUMN reasoning_analysis TEXT')
+                c.execute('ALTER TABLE documents ADD COLUMN job_data_json TEXT')
             except sqlite3.OperationalError:
                 pass
             conn.commit()
@@ -442,12 +445,13 @@ class SQLiteDocumentRepository:
             c = conn.cursor()
             c.execute(
                 """INSERT OR REPLACE INTO documents 
-                   (id, type, filename, raw_content, structured_content, uploaded_at, reasoning_analysis) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (id, type, filename, raw_content, structured_content, uploaded_at, reasoning_analysis, job_data_json) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (document.id, document.type.value, document.filename,
                  document.raw_content, document.structured_content,
                  document.uploaded_at.isoformat(),
-                 getattr(document, 'reasoning_analysis', None))
+                 getattr(document, 'reasoning_analysis', None),
+                 getattr(document, 'job_data_json', None))
             )
             conn.commit()
         return document.id
@@ -469,6 +473,8 @@ class SQLiteDocumentRepository:
                 )
                 if len(row) > 6:
                     setattr(doc, 'reasoning_analysis', row[6])
+                if len(row) > 7:
+                    setattr(doc, 'job_data_json', row[7])
                 return doc
         return None
     
@@ -493,6 +499,8 @@ class SQLiteDocumentRepository:
                 )
                 if len(row) > 6:
                     setattr(doc, 'reasoning_analysis', row[6])
+                if len(row) > 7:
+                    setattr(doc, 'job_data_json', row[7])
                 documents.append(doc)
         return documents
     
@@ -1039,13 +1047,73 @@ class JSONConfigManager:
     def __init__(self, config_path: str):
         self.config_path = Path(config_path)
         self._logger = logging.getLogger(self.__class__.__name__)
-    
+
+    def _migrate_config(self, old_data: dict) -> dict:
+        """
+        Migrate old config data to the new config structure.
+        - Copies all existing fields.
+        - Adds new required fields with sensible defaults if missing.
+        - Prompts user for new required fields if needed (optional, currently uses defaults).
+        """
+        # Import AppConfig for defaults
+        from . import AppConfig
+        new_config = AppConfig().dict()
+        # Copy over existing fields
+        for k, v in old_data.items():
+            if k in new_config and isinstance(new_config[k], dict) and isinstance(v, dict):
+                # Merge dicts
+                new_config[k].update(v)
+            else:
+                new_config[k] = v
+        # Ensure all required fields are present
+        # (If you want to prompt the user for missing required fields, add logic here)
+        return new_config
+
     def load(self) -> AppConfig:
         try:
             if self.config_path.exists():
                 with open(self.config_path, 'r') as f:
                     config_data = json.load(f)
-                return AppConfig(**config_data)
+                from . import AppConfig
+                needs_migration = False
+                default_config = AppConfig().dict()
+                for key in default_config:
+                    if key not in config_data:
+                        needs_migration = True
+                        break
+                if needs_migration:
+                    # Prompt user for migration confirmation
+                    try:
+                        import tkinter as tk
+                        from tkinter import messagebox
+                        root = tk.Tk()
+                        root.withdraw()
+                        answer = messagebox.askyesno(
+                            "Config Migration Required",
+                            "Your configuration file is outdated.\nDo you want to migrate to the new version?\nA backup will be created."
+                        )
+                        root.destroy()
+                    except Exception:
+                        answer = True  # fallback: always migrate if GUI not available
+                    if not answer:
+                        self._logger.warning("User cancelled config migration. Using old config for this session only.")
+                        return AppConfig(**config_data)
+                    # Backup old config
+                    backup_path = self.config_path.with_suffix('.json.bak')
+                    import shutil
+                    shutil.copy2(self.config_path, backup_path)
+                    migrated_data = self._migrate_config(config_data)
+                    with open(self.config_path, 'w') as f:
+                        json.dump(migrated_data, f, indent=2)
+                    self._logger.info(f"Config migrated and backup created at {backup_path}")
+                    try:
+                        from . import SystemNotificationService
+                        SystemNotificationService().notify("JobOps", f"Config migrated. Backup saved as {backup_path.name}.")
+                    except Exception:
+                        pass
+                    return AppConfig(**migrated_data)
+                else:
+                    return AppConfig(**config_data)
             else:
                 config = AppConfig()
                 self.save(config)
@@ -1234,7 +1302,8 @@ class JobOpsApplication:
                 filename=filename,
                 raw_content=letter.content,
                 structured_content=structured_content,
-                reasoning_analysis=reasoning_analysis
+                reasoning_analysis=reasoning_analysis,
+                job_data_json=json.dumps(job_data.dict()) if job_data else None
             )
             self.repository.save(document)
 
@@ -1294,7 +1363,8 @@ class JobOpsApplication:
                 filename=file_path.name,
                 raw_content=raw_content,
                 structured_content=structured_content,
-                reasoning_analysis=reasoning_analysis
+                reasoning_analysis=reasoning_analysis,
+                job_data_json=json.dumps(job_data.dict()) if job_data else None
             )
             
             self.repository.save(document)
@@ -1381,7 +1451,10 @@ class JobOpsApplication:
             import tkinter as tk
             from tkinter import messagebox
             import threading
+            import os
             import time
+            from pathlib import Path
+            import json
 
             # Animation images
             def create_image(color):
@@ -1402,7 +1475,7 @@ class JobOpsApplication:
                     time.sleep(0.3)
                 icon.icon = img1  # restore original
 
-            def do_generate(job_url, company, title, location, language):
+            def do_generate(job_url):
                 nonlocal animating
                 anim_thread = threading.Thread(target=animate_icon, daemon=True)
                 animating = True
@@ -1411,92 +1484,221 @@ class JobOpsApplication:
                 try:
                     if self._stop_event.is_set():
                         return
-                    filepath = self.generate_motivation_letter(
-                        job_url, language, company=company, title=title, location=location
-                    )
-                    if self._stop_event.is_set():
-                        return
-                    root.after(0, lambda: messagebox.showinfo("Success", f"Motivation letter generated and stored in database."))
+                    language = self.config.app_settings.get('language', 'en')
+                    output_format = self.config.app_settings.get('output_format', 'pdf')
+                    job_data = None
+                    try:
+                        job_data = self.job_scraper.scrape_job_description(job_url)
+                    except Exception as e:
+                        job_data = None
+                    if job_data:
+                        result = self.letter_generator.generate(job_data, Resume(summary=""), language)
+                        import re
+                        llm_response = result.content
+                        think_match = re.search(r'<think>(.*?)</think>', llm_response, re.DOTALL | re.IGNORECASE)
+                        reasoning_analysis = think_match.group(1).strip() if think_match else None
+                        structured_content = re.sub(r'<think>.*?</think>', '', llm_response, flags=re.DOTALL | re.IGNORECASE).strip()
+                        full_name = self.config.app_settings.get('personal_info', {}).get('name', '').strip() or ''
+                        filename = f"{full_name} Cover Letter".strip() if full_name else "Cover Letter"
+                        from datetime import datetime
+                        from . import DocumentType, Document
+                        document = Document(
+                            type=DocumentType.COVER_LETTER,
+                            filename=filename,
+                            raw_content=result.content,
+                            structured_content=structured_content,
+                            reasoning_analysis=reasoning_analysis,
+                            job_data_json=json.dumps(job_data.dict()) if job_data else None
+                        )
+                        self.repository.save(document)
+                        self.notification_service.notify(
+                            "JobOps", 
+                            f"Motivation letter generated and stored in database."
+                        )
+                    else:
+                        result = self.generate_motivation_letter(job_url, language)
+                    cover_letters = self.repository.get_by_type(DocumentType.COVER_LETTER)
+                    cover_letters.sort(key=lambda d: d.uploaded_at, reverse=True)
+                    latest_doc = cover_letters[0] if cover_letters else None
+                    if latest_doc:
+                        desktop = Path.home() / 'Desktop'
+                        desktop.mkdir(exist_ok=True)
+                        safe_filename = (latest_doc.filename or "Cover Letter").replace(os.sep, "_").replace(" ", "_")
+                        pdf_path = desktop / f"{safe_filename}.pdf"
+                        def export_pdf(markdown_content, pdf_filepath):
+                            try:
+                                from reportlab.lib.pagesizes import letter
+                                from reportlab.pdfgen import canvas
+                                from reportlab.lib.utils import simpleSplit
+                                import markdown2
+                                import re
+                                html = markdown2.markdown(markdown_content)
+                                text = re.sub('<[^<]+?>', '', html)
+                                c = canvas.Canvas(str(pdf_filepath), pagesize=letter)
+                                width, height = letter
+                                margin = 40
+                                y = height - margin
+                                lines = simpleSplit(text, 'Helvetica', 12, width - 2*margin)
+                                c.setFont("Helvetica", 12)
+                                for line in lines:
+                                    if y < margin:
+                                        c.showPage()
+                                        y = height - margin
+                                        c.setFont("Helvetica", 12)
+                                    c.drawString(margin, y, line)
+                                    y -= 16
+                                c.save()
+                            except Exception:
+                                try:
+                                    from fpdf import FPDF
+                                    pdf = FPDF()
+                                    pdf.add_page()
+                                    pdf.set_font("Arial", size=12)
+                                    for line in markdown_content.split('\n'):
+                                        pdf.cell(0, 10, txt=line, ln=1)
+                                    pdf.output(str(pdf_filepath))
+                                except Exception:
+                                    messagebox.showerror("Error", "Could not export PDF. Please install reportlab or fpdf.")
+                        export_pdf(latest_doc.structured_content, pdf_path)
+                    def show_job_info_dialog(job_info, pdf_path):
+                        win = tk.Toplevel()
+                        win.title("Job/Company Info Summary")
+                        win.geometry("520x420")
+                        win.resizable(False, False)
+                        frame = tk.Frame(win)
+                        frame.pack(padx=20, pady=20, fill=tk.BOTH, expand=True)
+                        row = 0
+                        def add_row(label, value):
+                            nonlocal row
+                            tk.Label(frame, text=label+":", anchor="w", font=("Arial", 10, "bold")).grid(row=row, column=0, sticky="w", pady=2)
+                            tk.Label(frame, text=value or "-", anchor="w", font=("Arial", 10)).grid(row=row, column=1, sticky="w", pady=2)
+                            row += 1
+                        add_row("URL", job_info.get("url"))
+                        add_row("Title", job_info.get("title"))
+                        add_row("Company", job_info.get("company"))
+                        add_row("Location", job_info.get("location"))
+                        add_row("Company Profile URL", job_info.get("company_profile_url"))
+                        add_row("Company Profile", (job_info.get("company_profile") or "")[:200] + ("..." if job_info.get("company_profile") and len(job_info.get("company_profile")) > 200 else ""))
+                        add_row("Salary", job_info.get("salary"))
+                        add_row("Employment Type", job_info.get("employment_type"))
+                        add_row("Seniority Level", job_info.get("seniority_level"))
+                        add_row("Industry", job_info.get("industry"))
+                        add_row("Company Size", job_info.get("company_size"))
+                        add_row("Benefits", job_info.get("benefits"))
+                        tk.Label(frame, text="\nPDF saved to:", font=("Arial", 10, "bold")).grid(row=row, column=0, sticky="w", pady=8)
+                        tk.Label(frame, text=str(pdf_path), font=("Arial", 10)).grid(row=row, column=1, sticky="w", pady=8)
+                        row += 1
+                        def copy_to_clipboard():
+                            info_str = "\n".join(f"{k}: {v}" for k, v in job_info.items() if v)
+                            info_str += f"\nPDF: {pdf_path}"
+                            win.clipboard_clear()
+                            win.clipboard_append(info_str)
+                        btn = tk.Button(win, text="Copy Info to Clipboard", command=copy_to_clipboard)
+                        btn.pack(pady=10)
+                        tk.Button(win, text="Close", command=win.destroy).pack(pady=5)
+                    job_info = None
+                    if latest_doc and getattr(latest_doc, 'job_data_json', None):
+                        try:
+                            job_info = json.loads(latest_doc.job_data_json)
+                        except Exception:
+                            job_info = None
+                    if job_info:
+                        root.after(0, lambda: show_job_info_dialog(job_info, pdf_path))
+                    elif job_data:
+                        info = job_data
+                        summary = f"""
+Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
+                        summary += f"URL: {info.url}\n"
+                        summary += f"Title: {info.title}\n"
+                        summary += f"Company: {info.company}\n"
+                        if info.location:
+                            summary += f"Location: {info.location}\n"
+                        if info.company_profile_url:
+                            summary += f"Company Profile URL: {info.company_profile_url}\n"
+                        if info.company_profile:
+                            summary += f"Company Profile: {info.company_profile[:200]}...\n"
+                        if info.salary:
+                            summary += f"Salary: {info.salary}\n"
+                        if info.employment_type:
+                            summary += f"Employment Type: {info.employment_type}\n"
+                        if info.seniority_level:
+                            summary += f"Seniority Level: {info.seniority_level}\n"
+                        if info.industry:
+                            summary += f"Industry: {info.industry}\n"
+                        if info.company_size:
+                            summary += f"Company Size: {info.company_size}\n"
+                        if info.benefits:
+                            summary += f"Benefits: {info.benefits}\n"
+                        summary += f"\nPDF saved to: {pdf_path}"
+                        root.after(0, lambda: messagebox.showinfo("Success", summary))
+                    else:
+                        summary = f"Motivation letter generated and PDF saved to: {pdf_path}"
+                        root.after(0, lambda: messagebox.showinfo("Success", summary))
                 except Exception as e:
                     root.after(0, lambda: messagebox.showerror("Error", f"Error generating letter: {e}"))
                 finally:
                     animating = False
                     root.after(0, root.destroy)
 
-            # Wizard dialog implementation
-            class Wizard(tk.Toplevel):
+            # Single-entry dialog for job URL
+            class URLDialog(tk.Toplevel):
                 def __init__(self, master):
                     super().__init__(master)
                     self.title("Generate Motivation Letter")
-                    self.geometry("400x250")
+                    self.geometry("420x140")
                     self.resizable(False, False)
-                    self.steps = [
-                        {"label": "Job URL", "var": tk.StringVar()},
-                        {"label": "Company Name", "var": tk.StringVar()},
-                        {"label": "Job Title", "var": tk.StringVar()},
-                        {"label": "Location", "var": tk.StringVar()},
-                        {"label": "Language (en/nl)", "var": tk.StringVar(value="en")},
-                    ]
-                    self.current = 0
-                    self.widgets = {}
-                    self.protocol("WM_DELETE_WINDOW", self.on_cancel)
-                    self.build_ui()
-                    self.show_step()
-                    self.master = master  # Save reference to root
-
-                def build_ui(self):
-                    self.progress = tk.Label(self, text="", font=("Arial", 10))
-                    self.progress.pack(pady=(10, 0))
-                    self.label = tk.Label(self, text="", font=("Arial", 12))
-                    self.label.pack(pady=(20, 5))
-                    self.entry = tk.Entry(self, textvariable=self.steps[0]["var"], width=40)
+                    import re
+                    from urllib.parse import urlparse
+                    url_default = ""
+                    placeholder = "Paste a valid job URL here (e.g. https://...)"
+                    # Clipboard auto-fill with validation
+                    try:
+                        clipboard = master.clipboard_get()
+                        # Acceptable URI schemes
+                        valid_schemes = ("http", "https", "ftp", "ftps", "file")
+                        parsed = urlparse(clipboard)
+                        if parsed.scheme and parsed.scheme.lower() in valid_schemes:
+                            url_default = clipboard
+                        else:
+                            url_default = ""
+                    except Exception:
+                        url_default = ""
+                    self.url_var = tk.StringVar(value=url_default)
+                    tk.Label(self, text="Job URL:", font=("Arial", 12)).pack(pady=(20, 5))
+                    self.entry = tk.Entry(self, textvariable=self.url_var, width=50, fg='grey' if not url_default else 'black')
                     self.entry.pack(pady=(0, 10))
-                    self.button_frame = tk.Frame(self)
-                    self.button_frame.pack(pady=10)
-                    self.back_btn = tk.Button(self.button_frame, text="Back", command=self.prev_step, state=tk.DISABLED)
-                    self.back_btn.grid(row=0, column=0, padx=5)
-                    self.next_btn = tk.Button(self.button_frame, text="Next", command=self.next_step)
-                    self.next_btn.grid(row=0, column=1, padx=5)
-                    self.submit_btn = tk.Button(self.button_frame, text="Submit", command=self.on_submit)
-                    self.submit_btn.grid(row=0, column=2, padx=5)
-                    self.submit_btn.config(state=tk.DISABLED)
-                    self.cancel_btn = tk.Button(self.button_frame, text="Cancel", command=self.on_cancel)
-                    self.cancel_btn.grid(row=0, column=3, padx=5)
-
-                def show_step(self):
-                    step = self.steps[self.current]
-                    self.label.config(text=step["label"])
-                    self.entry.config(textvariable=step["var"])
-                    self.progress.config(text=f"Step {self.current+1} of {len(self.steps)}")
+                    # Placeholder logic
+                    if not url_default:
+                        self.entry.insert(0, placeholder)
+                        self.entry.config(fg='grey')
+                        def on_focus_in(event):
+                            if self.entry.get() == placeholder:
+                                self.entry.delete(0, tk.END)
+                                self.entry.config(fg='black')
+                        def on_focus_out(event):
+                            if not self.entry.get():
+                                self.entry.insert(0, placeholder)
+                                self.entry.config(fg='grey')
+                        self.entry.bind('<FocusIn>', on_focus_in)
+                        self.entry.bind('<FocusOut>', on_focus_out)
                     self.entry.focus_set()
-                    self.back_btn.config(state=tk.NORMAL if self.current > 0 else tk.DISABLED)
-                    if self.current == len(self.steps) - 1:
-                        self.next_btn.config(state=tk.DISABLED)
-                        self.submit_btn.config(state=tk.NORMAL)
-                    else:
-                        self.next_btn.config(state=tk.NORMAL)
-                        self.submit_btn.config(state=tk.DISABLED)
-
-                def next_step(self):
-                    if self.current < len(self.steps) - 1:
-                        self.current += 1
-                        self.show_step()
-
-                def prev_step(self):
-                    if self.current > 0:
-                        self.current -= 1
-                        self.show_step()
-
-                def on_submit(self):
-                    values = [step["var"].get().strip() for step in self.steps]
-                    job_url, company, title, location, language = values
+                    btn_frame = tk.Frame(self)
+                    btn_frame.pack(pady=10)
+                    tk.Button(btn_frame, text="Generate", command=self.on_generate).pack(side=tk.LEFT, padx=10)
+                    tk.Button(btn_frame, text="Cancel", command=self.on_cancel).pack(side=tk.LEFT, padx=10)
+                    self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+                    self.master = master
+                def on_generate(self):
+                    url = self.url_var.get().strip()
+                    # If placeholder is present, treat as empty
+                    if url == "Paste a valid job URL here (e.g. https://...)":
+                        url = ""
+                    if not url:
+                        from tkinter import messagebox
+                        messagebox.showerror("Error", "Please enter a job URL.")
+                        return
                     self.destroy()
-                    threading.Thread(
-                        target=do_generate,
-                        args=(job_url, company, title, location, language),
-                        daemon=True
-                    ).start()
-
+                    threading.Thread(target=do_generate, args=(url,), daemon=True).start()
                 def on_cancel(self):
                     self.destroy()
                     if self.master:
@@ -1504,7 +1706,7 @@ class JobOpsApplication:
 
             root = tk.Tk()
             root.withdraw()
-            wizard = Wizard(root)
+            URLDialog(root)
             root.mainloop()
 
         def on_download_cover_letter(icon, item):
@@ -1782,6 +1984,32 @@ class JobOpsApplication:
         )
         icon = pystray.Icon(CONSTANTS.APP_NAME, create_image(), CONSTANTS.APP_NAME, menu)
         icon.run()
+
+        # Global hotkey: Ctrl+Alt+J to open the motivation letter wizard
+        def start_hotkey_listener():
+            try:
+                from pynput import keyboard
+            except ImportError:
+                self._logger.warning("pynput not installed, global hotkey disabled.")
+                return
+            def on_activate():
+                # Use the same logic as the tray menu's Generate action
+                threading.Thread(target=lambda: on_generate_letter(None, None), daemon=True).start()
+            COMBO = {keyboard.Key.ctrl_l, keyboard.Key.alt_l, keyboard.KeyCode.from_char('j')}
+            current_keys = set()
+            def on_press(key):
+                if key in COMBO:
+                    current_keys.add(key)
+                if all(k in current_keys for k in COMBO):
+                    on_activate()
+            def on_release(key):
+                if key in current_keys:
+                    current_keys.remove(key)
+            listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+            listener.daemon = True
+            listener.start()
+            self._threads.append(listener)
+        start_hotkey_listener()
 
 def main():
     try:

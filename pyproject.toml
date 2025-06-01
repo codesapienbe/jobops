@@ -24,7 +24,8 @@ dependencies = [
     "crawl4ai",
     "reportlab",
     "markdown2",
-    "fpdf"
+    "fpdf",
+    "pyinstaller"
 ]
 
 [project.scripts]
