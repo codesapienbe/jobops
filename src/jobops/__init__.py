@@ -172,11 +172,14 @@ class JobInputDialog(QDialog):
         self.title_input = QLineEdit()
         self.location_input = QLineEdit()
         self.contact_input = QLineEdit()
+        self.requirements_input = QTextEdit()
+        self.requirements_input.setPlaceholderText("Paste job requirements here...")
         
         details_layout.addRow("Company Name:", self.company_input)
         details_layout.addRow("Job Title:", self.title_input)
         details_layout.addRow("Location:", self.location_input)
         details_layout.addRow("Contact Person:", self.contact_input)
+        details_layout.addRow("Requirements:", self.requirements_input)
         
         layout.addWidget(details_group)
         
@@ -222,6 +225,7 @@ class JobInputDialog(QDialog):
             'description': job_text,
             'company': self.company_input.text().strip(),
             'title': self.title_input.text().strip(),
+            'requirements': self.requirements_input.toPlainText().strip(),
             'location': self.location_input.text().strip(),
             'contact_info': self.contact_input.text().strip()
         }
