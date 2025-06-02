@@ -1,18 +1,18 @@
-from jobops.models import MotivationLetter, PersonalInfo, Resume, GenericDocument, DocumentType, JobData
+from jobops.models import MotivationLetter, PersonalInfo, GenericDocument, DocumentType, JobData
 import logging
 import json
 from jobops.clients import BaseLLMBackend
 from typing import Protocol
 
 class LetterGenerator(Protocol):
-    def generate(self, job_data: JobData, resume: Resume, language: str = "en") -> MotivationLetter: ...
+    def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter: ...
 
 class ConcreteLetterGenerator:
     def __init__(self, llm_backend: BaseLLMBackend):
         self.backend = llm_backend
         self._logger = logging.getLogger(self.__class__.__name__)
     
-    def generate(self, job_data: JobData, resume: Resume, language: str = "en") -> MotivationLetter:
+    def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter:
         self._logger.info(f"Generating motivation letter in language: {language}")
         
         system_prompt = self._create_system_prompt(job_data.company, language)
@@ -191,10 +191,7 @@ WYTYCZNE:
         
         return prompts.get(language, prompts["en"])
     
-    def _create_user_prompt(self, job_data: JobData, resume: Resume, language: str) -> str:
-        resume_summary = self._format_resume_for_prompt(resume)
-        
-        # Language-specific templates
+    def _create_user_prompt(self, job_data: JobData, resume: str, language: str) -> str:
         templates = {
             "en": {
                 "salutation": f"Dear {job_data.company} team," if job_data.company else "Dear Hiring Manager,",
@@ -205,7 +202,7 @@ WYTYCZNE:
                     "company": "Company:",
                     "description": "Description:",
                     "requirements": "Requirements:",
-                    "resume": "RESUME SUMMARY:",
+                    "resume": "RESUME:",
                     "instruction": "Create a personal, authentic letter that demonstrates genuine fit for this specific role."
                 }
             },
@@ -275,9 +272,7 @@ WYTYCZNE:
                 }
             }
         }
-        
         template = templates.get(language, templates["en"])
-        
         return f"""{template["intro"]}
 
 {template["salutation"]}
@@ -289,33 +284,9 @@ WYTYCZNE:
 {template["sections"]["requirements"]} {job_data.requirements}
 
 {template["sections"]["resume"]}
-{resume_summary}
+{resume}
 
 {template["sections"]["instruction"]}"""
-    
-    def _format_resume_for_prompt(self, resume: Resume) -> str:
-        parts = [
-            f"Name: {resume.personal_info.name or 'N/A'}",
-            f"Title: {resume.personal_info.title or 'N/A'}",
-            f"Experience: {resume.personal_info.experience_years or 'N/A'} years",
-            f"Summary: {resume.summary or 'N/A'}",
-        ]
-        
-        if resume.work_experience:
-            parts.append("Recent Experience:")
-            for exp in resume.work_experience[:3]:
-                parts.append(f"- {exp.position or 'N/A'} at {exp.company or 'N/A'} ({exp.period or 'N/A'})")
-        
-        if resume.technical_skills:
-            skills_list = ', '.join(resume.technical_skills[:10])
-            parts.append(f"Key Skills: {skills_list}")
-        
-        if resume.education:
-            parts.append("Education:")
-            for edu in resume.education[:2]:
-                parts.append(f"- {edu.degree or 'N/A'} from {edu.institution or 'N/A'}")
-        
-        return '\n'.join(parts)
 
 
 class DocumentExtractor:
@@ -323,13 +294,13 @@ class DocumentExtractor:
         self.llm_backend = llm_backend
         self._logger = logging.getLogger(self.__class__.__name__)
     
-    def extract_resume(self, raw_content: str, language: str = "en") -> Resume:
+    def extract_resume(self, raw_content: str, language: str = "en") -> str:
         system_prompt = """You are a professional resume optimization engine. Transform the raw input into a polished, ATS-friendly resume by:
 
 1. STRUCTURE: Enforce standard sections (Summary, Experience, Education, Skills)
 2. FORMATTING: Use clear headers, bullet points, and consistent spacing
 3. CLARITY: Fix grammar/syntax errors while preserving original meaning
-4. OPTIMIZATION: Highlight quantifiable achievements (e.g. "Increased X by Y%")
+4. OPTIMIZATION: Highlight quantifiable achievements (e.g. 'Increased X by Y%')
 5. HONESTY: Never add/remove content - only reorganize existing information
 6. READABILITY: Ensure 1-2 page length with clean typography (10-12pt fonts)
 
@@ -351,19 +322,10 @@ REQUIREMENTS:
 
         try:
             cleaned_text = self.llm_backend.generate_response(prompt, system_prompt).strip()
-            return Resume(
-                summary=cleaned_text,
-                work_experience=[],
-                education=[],
-                technical_skills=[],
-                soft_skills=[],
-                projects=[],
-                certifications=[],
-                languages=[]
-            )
+            return cleaned_text
         except Exception as e:
             self._logger.error(f"Resume cleaning failed: {e}")
-            return self._create_fallback_resume(raw_content)
+            return raw_content[:500]
 
     def extract_generic_document(self, raw_content: str, doc_type: DocumentType) -> GenericDocument:
         output_schema = GenericDocument.model_json_schema()
@@ -399,19 +361,6 @@ RULES:
         except Exception as e:
             self._logger.error(f"Document extraction failed: {e}")
             return self._create_fallback_document(raw_content, doc_type)
-
-    def _create_fallback_resume(self, raw_content: str) -> Resume:
-        return Resume(
-            personal_info=PersonalInfo(name=self._extract_name(raw_content)),
-            summary=raw_content[:500],
-            work_experience=[],
-            education=[],
-            technical_skills=[],
-            soft_skills=[],
-            projects=[],
-            certifications=[],
-            languages=[]
-        )
 
     def _create_fallback_document(self, raw_content: str, doc_type: DocumentType) -> GenericDocument:
         return GenericDocument(

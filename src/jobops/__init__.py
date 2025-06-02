@@ -465,7 +465,7 @@ class GenerateWorker(QThread):
             if repository is None or generator is None:
                 raise Exception("Application is missing repository or generator.")
 
-            # Get the latest resume
+            # Get the latest resume (now markdown string)
             resume = repository.get_latest_resume()
             if resume is None:
                 raise Exception("No resume found. Please upload your resume first.")
@@ -477,7 +477,7 @@ class GenerateWorker(QThread):
             else:
                 job_data_obj = self.job_data
 
-            # Generate the motivation letter
+            # Generate the motivation letter (resume is markdown string)
             letter = generator.generate(job_data_obj, resume)
             result = letter.content
             self.finished.emit(result)

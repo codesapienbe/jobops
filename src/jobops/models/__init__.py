@@ -68,32 +68,6 @@ class Language(BaseModel):
     name: Optional[str] = Field(None, description="Language name")
     proficiency: Optional[str] = Field(None, description="Proficiency level")
 
-class Resume(BaseModel):
-    id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
-    personal_info: PersonalInfo = Field(default_factory=PersonalInfo)
-    summary: Optional[str] = Field(None, description="Professional summary or objective")
-    work_experience: List[WorkExperience] = Field(default_factory=list)
-    education: List[Education] = Field(default_factory=list)
-    technical_skills: List[str] = Field(default_factory=list)
-    soft_skills: List[str] = Field(default_factory=list)
-    projects: List[Project] = Field(default_factory=list)
-    certifications: List[Certification] = Field(default_factory=list)
-    languages: List[Language] = Field(default_factory=list)
-    publications: List[str] = Field(default_factory=list)
-    awards: List[str] = Field(default_factory=list)
-    volunteer_experience: List[str] = Field(default_factory=list)
-    interests: List[str] = Field(default_factory=list)
-    references: Optional[str] = Field(None, description="References section")
-    additional_sections: Dict[str, Any] = Field(default_factory=dict, description="Any other sections")
-    created_at: datetime = Field(default_factory=datetime.now)
-    
-    @root_validator(pre=True)
-    def handle_invalid_values(cls, values):
-        for key, value in values.items():
-            if isinstance(value, str) and value.lower() in {'n/a', 'none', '', 'null'}:
-                values[key] = None
-        return values
-
 class GenericDocument(BaseModel):
     content_type: Optional[str] = Field(None, description="Type of document content")
     title: Optional[str] = Field(None, description="Document title")
@@ -156,7 +130,7 @@ class Document(BaseModel):
 class MotivationLetter(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
     job_data: JobData
-    resume: Resume
+    resume: str  # Now just a markdown string
     content: str
     language: str = "en"
     generated_at: datetime = Field(default_factory=datetime.now)

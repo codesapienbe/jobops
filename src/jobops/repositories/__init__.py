@@ -3,14 +3,14 @@ import json
 import logging  
 from pathlib import Path
 from typing import Protocol, List, Optional
-from jobops.models import Document, DocumentType, Resume
+from jobops.models import Document, DocumentType
 import sqlite3
 
 class DocumentRepository(Protocol):
     def save(self, document: Document) -> str: ...
     def get_by_id(self, doc_id: str) -> Optional[Document]: ...
     def get_by_type(self, doc_type: DocumentType) -> List[Document]: ...
-    def get_latest_resume(self) -> Optional[Resume]: ...
+    def get_latest_resume(self) -> Optional[str]: ...
     def delete(self, doc_id: str) -> bool: ...
 
 
@@ -110,15 +110,10 @@ class SQLiteDocumentRepository:
                 documents.append(doc)
         return documents
     
-    def get_latest_resume(self) -> Optional[Resume]:
+    def get_latest_resume(self) -> Optional[str]:
         documents = self.get_by_type(DocumentType.RESUME)
         if documents:
-            try:
-                resume_data = json.loads(documents[0].structured_content)
-                return Resume(**resume_data)
-            except (json.JSONDecodeError, ValueError) as e:
-                self._logger.error(f"Error parsing resume data: {e}")
-                return None
+            return documents[0].structured_content  # Markdown content
         return None
     
     def delete(self, doc_id: str) -> bool:
