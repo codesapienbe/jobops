@@ -10,6 +10,7 @@ from typing_extensions import Protocol
 import webbrowser
 import concurrent.futures
 import asyncio
+import json
 
 import psutil
 from plyer import notification
@@ -211,7 +212,8 @@ class JobOpsApplication:
                 filename=filename,
                 raw_content=letter.content,
                 structured_content=structured_content,
-                reasoning_analysis=reasoning_analysis
+                reasoning_analysis=reasoning_analysis,
+                job_data_json=json.dumps(job_data.dict())
             )
             self.repository.save(document)
 
@@ -473,7 +475,8 @@ class JobOpsApplication:
                             filename=filename,
                             raw_content=result.content,
                             structured_content=structured_content,
-                            reasoning_analysis=reasoning_analysis
+                            reasoning_analysis=reasoning_analysis,
+                            job_data_json=json.dumps(job_data.dict())
                         )
                         self.repository.save(document)
                         self.notification_service.notify(
@@ -623,68 +626,19 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                     self.title("Generate Motivation Letter")
                     self.geometry("600x340")
                     self.resizable(True, True)
-                    import re
-                    from urllib.parse import urlparse
                     self.mode = tk.StringVar(value="url")
-                    placeholder_url = "Paste a valid job URL here (e.g. https://...)"
-                    placeholder_text = "Paste the full job description text here..."
-                    # Try to autofill from clipboard
-                    try:
-                        clipboard = master.clipboard_get()
-                    except Exception:
-                        clipboard = ""
-                    # Heuristic: if clipboard looks like a URL, use it for URL mode
-                    def is_url(text):
-                        try:
-                            parsed = urlparse(text)
-                            return parsed.scheme in ("http", "https", "ftp", "ftps", "file")
-                        except Exception:
-                            return False
-                    url_default = clipboard if is_url(clipboard) else ""
-                    text_default = clipboard if (not url_default and len(clipboard) > 40) else ""
                     # --- UI ---
                     radio_frame = tk.Frame(self)
                     radio_frame.pack(pady=(18, 0))
                     tk.Radiobutton(radio_frame, text="Job URL", variable=self.mode, value="url", command=self.switch_mode).pack(side=tk.LEFT, padx=10)
                     tk.Radiobutton(radio_frame, text="Job Description Text", variable=self.mode, value="text", command=self.switch_mode).pack(side=tk.LEFT, padx=10)
-                    # URL input
-                    self.url_var = tk.StringVar(value=url_default or placeholder_url)
-                    self.url_entry = tk.Entry(self, textvariable=self.url_var, width=60, fg='black' if url_default else 'grey')
+                    # URL input (always empty, no placeholder, no clipboard logic)
+                    self.url_var = tk.StringVar(value="")
+                    self.url_entry = tk.Entry(self, textvariable=self.url_var, width=60)
                     self.url_entry.pack(pady=(10, 0))
-                    # Text input (multi-line, always editable)
+                    # Text input (multi-line, always editable, no placeholder)
                     self.text_label = tk.Label(self, text="Paste the full job description text below:")
                     self.text_widget = tk.Text(self, width=70, height=10, wrap=tk.WORD)
-                    if text_default:
-                        self.text_widget.insert("1.0", text_default)
-                    # Clipboard paste support (Ctrl+V and right-click)
-                    def paste_clipboard(event=None):
-                        try:
-                            clipboard = self.clipboard_get()
-                            self.text_widget.insert(tk.INSERT, clipboard)
-                        except Exception:
-                            pass
-                        return "break"
-                    self.text_widget.bind("<Control-v>", paste_clipboard)
-                    self.text_widget.bind("<Control-V>", paste_clipboard)
-                    # Right-click menu for paste
-                    def show_context_menu(event):
-                        menu = tk.Menu(self, tearoff=0)
-                        menu.add_command(label="Paste", command=paste_clipboard)
-                        menu.tk_popup(event.x_root, event.y_root)
-                    self.text_widget.bind("<Button-3>", show_context_menu)
-                    # Remove placeholder logic for text_widget
-                    def url_focus_in(event):
-                        if self.url_var.get() == placeholder_url:
-                            self.url_var.set("")
-                            self.url_entry.config(fg='black')
-                    def url_focus_out(event):
-                        if not self.url_var.get():
-                            self.url_var.set(placeholder_url)
-                            self.url_entry.config(fg='grey')
-                        else:
-                            self.url_entry.config(fg='black')
-                    self.url_entry.bind('<FocusIn>', url_focus_in)
-                    self.url_entry.bind('<FocusOut>', url_focus_out)
                     # --- Job fields (Company, Title, Location, Contact Person) ---
                     fields_frame = tk.Frame(self)
                     fields_frame.pack(pady=(8, 0), fill=tk.X)
@@ -719,30 +673,6 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                     self.focus_force()
                     self.grab_set()
                     self.after(200, lambda: self.attributes('-topmost', False))
-                    # Clipboard watcher for URL auto-fill
-                    self._last_clipboard = None
-                    self._clipboard_polling = True
-                    def poll_clipboard():
-                        if not self._clipboard_polling:
-                            return
-                        try:
-                            clipboard = self.clipboard_get()
-                            from urllib.parse import urlparse
-                            def is_url(text):
-                                try:
-                                    parsed = urlparse(text)
-                                    return parsed.scheme in ("http", "https", "ftp", "ftps", "file")
-                                except Exception:
-                                    return False
-                            if self.mode.get() == "url" and is_url(clipboard):
-                                if (self.url_var.get() == placeholder_url or not self.url_var.get() or self.url_var.get() == self._last_clipboard):
-                                    self.url_var.set(clipboard)
-                                    self.url_entry.config(fg='black')
-                                self._last_clipboard = clipboard
-                        except Exception:
-                            pass
-                        self.after(500, poll_clipboard)
-                    poll_clipboard()
                 def switch_mode(self):
                     if self.mode.get() == "url":
                         self.url_entry.pack(pady=(10, 0))
@@ -758,40 +688,18 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                     mode = self.mode.get()
                     if mode == "url":
                         url = self.url_var.get().strip()
-                        if url == "Paste a valid job URL here (e.g. https://...)":
-                            url = ""
                         if not url:
                             from tkinter import messagebox
                             messagebox.showerror("Error", "Please enter a job URL.")
                             return
-                        # Crawl4AI: fetch job description from URL
-                        job_data = None
-                        try:
-                            job_data = self.master.job_scraper.scrape_job_description(url)
-                        except Exception as e:
-                            job_data = None
-                        job_text = job_data.description if job_data and hasattr(job_data, 'description') else ""
-                        # Auto-fill fields if possible
-                        if job_data:
-                            self.company_var.set(getattr(job_data, 'company', '') or '')
-                            self.title_var.set(getattr(job_data, 'title', '') or '')
-                            self.location_var.set(getattr(job_data, 'location', '') or '')
-                            self.contact_var.set(getattr(job_data, 'contact_info', '') or '')
+                        job_text = ""
                     else:
                         job_text = self.text_widget.get("1.0", tk.END).strip()
-                        if job_text == "Paste the full job description text here...":
-                            job_text = ""
                         if not job_text:
                             from tkinter import messagebox
                             messagebox.showerror("Error", "Please paste the job description text.")
                             return
                         url = None
-                        # Extract and auto-fill fields from pasted text
-                        extracted = self.extract_job_fields(job_text)
-                        self.company_var.set(extracted.get('company', ''))
-                        self.title_var.set(extracted.get('title', ''))
-                        self.location_var.set(extracted.get('location', ''))
-                        self.contact_var.set(extracted.get('contact_info', ''))
                     # Always use the current values from the entry fields
                     job_data = type('JobData', (object,), {
                         'company': self.company_var.get(),
@@ -803,57 +711,11 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                     })()
                     self.destroy()
                     threading.Thread(target=do_generate, args=(url, job_data), daemon=True).start()
-                def extract_job_fields(self, text):
-                    # Try LLM extraction if available, fallback to regex
-                    try:
-                        llm = self.master.llm_backend
-                        prompt = f"""
-Extract the following fields from the job description below. Return as JSON with keys: company, title, location, contact_info. If not found, use empty string.
-
-Job Description:
-{text}
-"""
-                        import json
-                        response = llm.generate_response(prompt, system_prompt="You are an expert at extracting job fields from unstructured text. Return only valid JSON.")
-                        data = json.loads(response)
-                        return {
-                            'company': data.get('company', ''),
-                            'title': data.get('title', ''),
-                            'location': data.get('location', ''),
-                            'contact_info': data.get('contact_info', '')
-                        }
-                    except Exception:
-                        # Fallback regex extraction
-                        import re
-                        company = ""
-                        title = ""
-                        location = ""
-                        contact_info = ""
-                        # Simple regex patterns (can be improved)
-                        company_match = re.search(r'Company[:\s]+(.+)', text, re.IGNORECASE)
-                        if company_match:
-                            company = company_match.group(1).split('\n')[0].strip()
-                        title_match = re.search(r'(Job Title|Position)[:\s]+(.+)', text, re.IGNORECASE)
-                        if title_match:
-                            title = title_match.group(2).split('\n')[0].strip()
-                        location_match = re.search(r'Location[:\s]+(.+)', text, re.IGNORECASE)
-                        if location_match:
-                            location = location_match.group(1).split('\n')[0].strip()
-                        contact_match = re.search(r'Contact[:\s]+(.+)', text, re.IGNORECASE)
-                        if contact_match:
-                            contact_info = contact_match.group(1).split('\n')[0].strip()
-                        return {
-                            'company': company,
-                            'title': title,
-                            'location': location,
-                            'contact_info': contact_info
-                        }
                 def on_cancel(self):
                     # Prevent multiple calls
                     if hasattr(self, '_cancelled') and self._cancelled:
                         return
                     self._cancelled = True
-                    self._clipboard_polling = False
                     try:
                         self.grab_release()
                     except Exception:
@@ -1237,7 +1099,6 @@ def main():
             import urllib.parse
             # Load user profile info
             config_path = Path.home() / ".jobops" / "config.json"
-            import json
             if config_path.exists():
                 with open(config_path, "r", encoding="utf-8") as f:
                     config = json.load(f)
