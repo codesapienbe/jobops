@@ -25,7 +25,9 @@ dependencies = [
     "reportlab",
     "markdown2",
     "fpdf",
-    "pyinstaller"
+    "pyinstaller",
+    "fastapi",
+    "uvicorn"
 ]
 
 [project.scripts]
