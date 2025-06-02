@@ -8,6 +8,8 @@ from typing import Optional, Literal
 from pathlib import Path
 from typing_extensions import Protocol
 import webbrowser
+import concurrent.futures
+import asyncio
 
 import psutil
 from plyer import notification
@@ -389,6 +391,20 @@ class JobOpsApplication:
                 animating = True
                 anim_thread.start()
                 self._threads.append(anim_thread)
+                watchdog_triggered = threading.Event()
+                def watchdog():
+                    import time
+                    time.sleep(30)
+                    if not watchdog_triggered.is_set():
+                        self._logger.warning("Generation is taking too long. Triggering fallback and notifying user.")
+                        try:
+                            root.after(0, lambda: messagebox.showwarning("Timeout", "Generation is taking longer than expected. Using fallback extraction."))
+                        except Exception:
+                            pass
+                        watchdog_triggered.set()
+                watchdog_thread = threading.Thread(target=watchdog, daemon=True)
+                watchdog_thread.start()
+                self._threads.append(watchdog_thread)
                 try:
                     if self._stop_event.is_set():
                         return
@@ -396,14 +412,52 @@ class JobOpsApplication:
                     output_format = self.config.app_settings.get('output_format', 'pdf')
                     self._logger.info("Extracting job fields and preparing data...")
                     # Use provided job_data if available, otherwise scrape
+                    fallback_used = False
                     if job_data is None and job_url:
                         try:
-                            job_data = self.job_scraper.scrape_job_description(job_url)
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                future = executor.submit(self.job_scraper.scrape_job_description, job_url)
+                                try:
+                                    job_data = future.result(timeout=25)
+                                except concurrent.futures.TimeoutError:
+                                    self._logger.warning("scrape_job_description timed out, using fallback.")
+                                    fallback_used = True
+                                    # Use fallback extraction
+                                    markdown_content = ""
+                                    try:
+                                        markdown_content = asyncio.run(self.job_scraper._crawl_url(job_url))
+                                    except Exception as e:
+                                        self._logger.error(f"Crawl4AI fallback failed: {e}")
+                                    job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
                         except Exception as e:
-                            job_data = None
+                            self._logger.error(f"Error in scrape_job_description: {e}")
+                            fallback_used = True
+                            markdown_content = ""
+                            try:
+                                markdown_content = asyncio.run(self.job_scraper._crawl_url(job_url))
+                            except Exception as e:
+                                self._logger.error(f"Crawl4AI fallback failed: {e}")
+                            job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
                     if job_data:
                         self._logger.info("Generating motivation letter with LLM...")
-                        result = self.letter_generator.generate(job_data, Resume(summary=""), language)
+                        try:
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                future = executor.submit(self.letter_generator.generate, job_data, Resume(summary=""), language)
+                                try:
+                                    result = future.result(timeout=25)
+                                except concurrent.futures.TimeoutError:
+                                    self._logger.warning("LLM generation timed out, using fallback scrape.")
+                                    fallback_used = True
+                                    # Use fallback extraction for job_data
+                                    markdown_content = getattr(job_data, 'description', "")
+                                    job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
+                                    result = self.letter_generator.generate(job_data, Resume(summary=""), language)
+                        except Exception as e:
+                            self._logger.error(f"Error in LLM generation: {e}")
+                            fallback_used = True
+                            markdown_content = getattr(job_data, 'description', "")
+                            job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
+                            result = self.letter_generator.generate(job_data, Resume(summary=""), language)
                         import re
                         llm_response = result.content
                         think_match = re.search(r'<think>(.*?)</think>', llm_response, re.DOTALL | re.IGNORECASE)
@@ -426,6 +480,11 @@ class JobOpsApplication:
                             "JobOps", 
                             f"Motivation letter generated and stored in database."
                         )
+                        if fallback_used:
+                            try:
+                                root.after(0, lambda: messagebox.showinfo("Fallback Used", "Fallback extraction was used due to timeout or error."))
+                            except Exception:
+                                pass
                     else:
                         self._logger.info("Falling back to generate_motivation_letter...")
                         result = self.generate_motivation_letter(job_url, language)
@@ -547,9 +606,14 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                         summary = f"Motivation letter generated and PDF saved to: {pdf_path}"
                         root.after(0, lambda: messagebox.showinfo("Success", summary))
                 except Exception as e:
-                    root.after(0, lambda e=e: messagebox.showerror("Error", f"Error generating letter: {e}"))
+                    self._logger.error(f"Error generating letter: {e}")
+                    try:
+                        root.after(0, lambda e=e: messagebox.showerror("Error", f"Error generating letter: {e}"))
+                    except Exception:
+                        pass
                 finally:
                     animating = False
+                    watchdog_triggered.set()
                     root.after(0, root.destroy)
 
             # Single-entry dialog for job URL
@@ -557,8 +621,8 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                 def __init__(self, master):
                     super().__init__(master)
                     self.title("Generate Motivation Letter")
-                    self.geometry("520x260")
-                    self.resizable(False, False)
+                    self.geometry("600x340")
+                    self.resizable(True, True)
                     import re
                     from urllib.parse import urlparse
                     self.mode = tk.StringVar(value="url")
@@ -587,16 +651,28 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                     self.url_var = tk.StringVar(value=url_default or placeholder_url)
                     self.url_entry = tk.Entry(self, textvariable=self.url_var, width=60, fg='black' if url_default else 'grey')
                     self.url_entry.pack(pady=(10, 0))
-                    # Text input
-                    self.text_widget = tk.Text(self, width=60, height=6, wrap=tk.WORD)
+                    # Text input (multi-line, always editable)
+                    self.text_label = tk.Label(self, text="Paste the full job description text below:")
+                    self.text_widget = tk.Text(self, width=70, height=10, wrap=tk.WORD)
                     if text_default:
                         self.text_widget.insert("1.0", text_default)
-                        self.text_widget.config(fg='black')
-                    else:
-                        self.text_widget.insert("1.0", placeholder_text)
-                        self.text_widget.config(fg='grey')
-                    self.text_widget.pack(pady=(10, 0))
-                    # Placeholder logic for URL
+                    # Clipboard paste support (Ctrl+V and right-click)
+                    def paste_clipboard(event=None):
+                        try:
+                            clipboard = self.clipboard_get()
+                            self.text_widget.insert(tk.INSERT, clipboard)
+                        except Exception:
+                            pass
+                        return "break"
+                    self.text_widget.bind("<Control-v>", paste_clipboard)
+                    self.text_widget.bind("<Control-V>", paste_clipboard)
+                    # Right-click menu for paste
+                    def show_context_menu(event):
+                        menu = tk.Menu(self, tearoff=0)
+                        menu.add_command(label="Paste", command=paste_clipboard)
+                        menu.tk_popup(event.x_root, event.y_root)
+                    self.text_widget.bind("<Button-3>", show_context_menu)
+                    # Remove placeholder logic for text_widget
                     def url_focus_in(event):
                         if self.url_var.get() == placeholder_url:
                             self.url_var.set("")
@@ -609,19 +685,6 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                             self.url_entry.config(fg='black')
                     self.url_entry.bind('<FocusIn>', url_focus_in)
                     self.url_entry.bind('<FocusOut>', url_focus_out)
-                    # Placeholder logic for Text
-                    def text_focus_in(event):
-                        if self.text_widget.get("1.0", tk.END).strip() == placeholder_text:
-                            self.text_widget.delete("1.0", tk.END)
-                            self.text_widget.config(fg='black')
-                    def text_focus_out(event):
-                        if not self.text_widget.get("1.0", tk.END).strip():
-                            self.text_widget.insert("1.0", placeholder_text)
-                            self.text_widget.config(fg='grey')
-                        else:
-                            self.text_widget.config(fg='black')
-                    self.text_widget.bind('<FocusIn>', text_focus_in)
-                    self.text_widget.bind('<FocusOut>', text_focus_out)
                     # Buttons
                     btn_frame = tk.Frame(self)
                     btn_frame.pack(pady=12)
@@ -632,7 +695,6 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                     self.protocol("WM_DELETE_WINDOW", self.on_cancel)
                     self.bind_all('<Escape>', lambda event: self.on_cancel())
                     self.url_entry.bind('<Return>', lambda event: self.on_generate())
-                    self.text_widget.bind('<Return>', lambda event: self.on_generate())
                     self.switch_mode()
                     self.url_entry.focus_set()
                     self.master = master
@@ -645,11 +707,13 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                 def switch_mode(self):
                     if self.mode.get() == "url":
                         self.url_entry.pack(pady=(10, 0))
+                        self.text_label.pack_forget()
                         self.text_widget.pack_forget()
                         self.url_entry.focus_set()
                     else:
-                        self.text_widget.pack(pady=(10, 0))
                         self.url_entry.pack_forget()
+                        self.text_label.pack(pady=(10, 0))
+                        self.text_widget.pack(pady=(0, 0), fill=tk.BOTH, expand=True)
                         self.text_widget.focus_set()
                 def on_generate(self):
                     mode = self.mode.get()
@@ -1108,6 +1172,43 @@ def main():
         logging.info("Application interrupted by user")
     except Exception as e:
         logging.error(f"Application error: {e}")
+        # --- Error reporting dialog ---
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            import webbrowser
+            import urllib.parse
+            # Load user profile info
+            config_path = Path.home() / ".jobops" / "config.json"
+            import json
+            if config_path.exists():
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                profile = config.get("app_settings", {}).get("personal_info", {})
+            else:
+                profile = {}
+            profile_str = "\n".join(f"{k}: {v}" for k, v in profile.items())
+            # Get last 100 lines of log
+            log_path = Path.home() / ".jobops" / "app.log"
+            if log_path.exists():
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()
+                log_tail = "".join(lines[-100:])
+            else:
+                log_tail = "(log file not found)"
+            # Compose email body
+            body = f"""An error occurred in JobOps.\n\nError message:\n{e}\n\nUser profile:\n{profile_str}\n\nLast 100 lines of log:\n{log_tail}\n\nPlease attach the full app.log file if possible.\n"""
+            body = urllib.parse.quote(body)
+            subject = urllib.parse.quote("JobOps Error Report")
+            mailto = f"mailto:ymus@tuta.io?subject={subject}&body={body}"
+            # Show dialog
+            root = tk.Tk()
+            root.withdraw()
+            if messagebox.askyesno("JobOps Error", "An unexpected error occurred. Would you like to report this to the developers? This will open your email client with the error details. Please attach the log file if possible."):
+                webbrowser.open(mailto)
+            root.destroy()
+        except Exception as ee:
+            logging.error(f"Error in error reporting dialog: {ee}")
         raise
     finally:
         logging.info("Application ended")
