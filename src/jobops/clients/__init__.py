@@ -30,7 +30,7 @@ class BaseLLMBackend(Protocol):
     def health_check(self) -> bool: pass
 
 class OllamaBackend(BaseLLMBackend):
-    def __init__(self, model: str = "qwen3:0.6b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "qwen3:8b", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
         ollama.base_url = base_url
@@ -96,7 +96,7 @@ class OpenAIBackend(BaseLLMBackend):
             return False
 
 class GroqBackend(BaseLLMBackend):
-    def __init__(self, api_key: str, model: str = "mixtral-8x7b-32768", base_url: str = "https://api.groq.com/openai/v1"):
+    def __init__(self, api_key: str, model: str = "qwen3:8b", base_url: str = "https://api.groq.com/openai/v1"):
         if not api_key:
             raise ValueError("Groq API key required")
         from groq import Groq
