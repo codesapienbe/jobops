@@ -685,6 +685,21 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                             self.url_entry.config(fg='black')
                     self.url_entry.bind('<FocusIn>', url_focus_in)
                     self.url_entry.bind('<FocusOut>', url_focus_out)
+                    # --- Job fields (Company, Title, Location, Contact Person) ---
+                    fields_frame = tk.Frame(self)
+                    fields_frame.pack(pady=(8, 0), fill=tk.X)
+                    tk.Label(fields_frame, text="Company Name:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+                    tk.Label(fields_frame, text="Job Title:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+                    tk.Label(fields_frame, text="Location:").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+                    tk.Label(fields_frame, text="Contact Person:").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+                    self.company_var = tk.StringVar()
+                    self.title_var = tk.StringVar()
+                    self.location_var = tk.StringVar()
+                    self.contact_var = tk.StringVar()
+                    tk.Entry(fields_frame, textvariable=self.company_var, width=40).grid(row=0, column=1, padx=5, pady=2)
+                    tk.Entry(fields_frame, textvariable=self.title_var, width=40).grid(row=1, column=1, padx=5, pady=2)
+                    tk.Entry(fields_frame, textvariable=self.location_var, width=40).grid(row=2, column=1, padx=5, pady=2)
+                    tk.Entry(fields_frame, textvariable=self.contact_var, width=40).grid(row=3, column=1, padx=5, pady=2)
                     # Buttons
                     btn_frame = tk.Frame(self)
                     btn_frame.pack(pady=12)
@@ -704,6 +719,30 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                     self.focus_force()
                     self.grab_set()
                     self.after(200, lambda: self.attributes('-topmost', False))
+                    # Clipboard watcher for URL auto-fill
+                    self._last_clipboard = None
+                    self._clipboard_polling = True
+                    def poll_clipboard():
+                        if not self._clipboard_polling:
+                            return
+                        try:
+                            clipboard = self.clipboard_get()
+                            from urllib.parse import urlparse
+                            def is_url(text):
+                                try:
+                                    parsed = urlparse(text)
+                                    return parsed.scheme in ("http", "https", "ftp", "ftps", "file")
+                                except Exception:
+                                    return False
+                            if self.mode.get() == "url" and is_url(clipboard):
+                                if (self.url_var.get() == placeholder_url or not self.url_var.get() or self.url_var.get() == self._last_clipboard):
+                                    self.url_var.set(clipboard)
+                                    self.url_entry.config(fg='black')
+                                self._last_clipboard = clipboard
+                        except Exception:
+                            pass
+                        self.after(500, poll_clipboard)
+                    poll_clipboard()
                 def switch_mode(self):
                     if self.mode.get() == "url":
                         self.url_entry.pack(pady=(10, 0))
@@ -732,6 +771,12 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                         except Exception as e:
                             job_data = None
                         job_text = job_data.description if job_data and hasattr(job_data, 'description') else ""
+                        # Auto-fill fields if possible
+                        if job_data:
+                            self.company_var.set(getattr(job_data, 'company', '') or '')
+                            self.title_var.set(getattr(job_data, 'title', '') or '')
+                            self.location_var.set(getattr(job_data, 'location', '') or '')
+                            self.contact_var.set(getattr(job_data, 'contact_info', '') or '')
                     else:
                         job_text = self.text_widget.get("1.0", tk.END).strip()
                         if job_text == "Paste the full job description text here...":
@@ -741,10 +786,21 @@ Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
                             messagebox.showerror("Error", "Please paste the job description text.")
                             return
                         url = None
-                    # Extract company, title, location, contact info using LLM or regex
-                    extracted = self.extract_job_fields(job_text)
-                    # Compose job_data for downstream use
-                    job_data = type('JobData', (object,), extracted)()
+                        # Extract and auto-fill fields from pasted text
+                        extracted = self.extract_job_fields(job_text)
+                        self.company_var.set(extracted.get('company', ''))
+                        self.title_var.set(extracted.get('title', ''))
+                        self.location_var.set(extracted.get('location', ''))
+                        self.contact_var.set(extracted.get('contact_info', ''))
+                    # Always use the current values from the entry fields
+                    job_data = type('JobData', (object,), {
+                        'company': self.company_var.get(),
+                        'title': self.title_var.get(),
+                        'location': self.location_var.get(),
+                        'contact_info': self.contact_var.get(),
+                        'description': job_text,
+                        'url': url
+                    })()
                     self.destroy()
                     threading.Thread(target=do_generate, args=(url, job_data), daemon=True).start()
                 def extract_job_fields(self, text):
@@ -797,6 +853,7 @@ Job Description:
                     if hasattr(self, '_cancelled') and self._cancelled:
                         return
                     self._cancelled = True
+                    self._clipboard_polling = False
                     try:
                         self.grab_release()
                     except Exception:
