@@ -27,7 +27,9 @@ dependencies = [
     "fpdf",
     "pyinstaller",
     "fastapi",
-    "uvicorn"
+    "uvicorn",
+    "PySide6",        # Qt GUI framework
+    "PyQt6",          # Alternative Qt GUI framework
 ]
 
 [project.scripts]

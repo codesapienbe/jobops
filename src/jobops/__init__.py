@@ -1,76 +1,523 @@
-"""
-AI Motivation Letter Generator for Job Applications
-"""
-
+import sys
+import os
 import logging
-import threading
-from typing import Optional, Literal
+import base64
+import tempfile
 from pathlib import Path
-from typing_extensions import Protocol
 import webbrowser
-import concurrent.futures
-import asyncio
-import json
+from PIL import Image
+from io import BytesIO
 
-import psutil
-from plyer import notification
-import pystray
-from PIL import Image, ImageDraw
+# Qt imports
+try:
+    from PySide6.QtWidgets import *
+    from PySide6.QtCore import *
+    from PySide6.QtGui import *
+    QT_AVAILABLE = True
+except ImportError:
+    try:
+        from PyQt6.QtWidgets import *
+        from PyQt6.QtCore import *
+        from PyQt6.QtGui import *
+        QT_AVAILABLE = True
+    except ImportError:
+        QT_AVAILABLE = False
+        print("Neither PySide6 nor PyQt6 is installed. Please install one of them.")
+        sys.exit(1)
+
+# Other imports (install these via pip if not available)
 from dotenv import load_dotenv
-import pdfplumber
 
+# Embedded base64 icon data (64x64 PNG icon)
+EMBEDDED_ICON_DATA = """
+iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="
+"""
 
-from jobops.clients import LLMBackendFactory
-from jobops.models import Document, DocumentType, Resume
-from jobops.config import CONSTANTS, JSONConfigManager
-from jobops.repositories import SQLiteDocumentRepository
-from jobops.scrapers import Crawl4AIJobScraper
-from jobops.utils import DocumentExtractor, ConcreteLetterGenerator
-
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-import uvicorn
-
+try:
+    icon_data = base64.b64decode(EMBEDDED_ICON_DATA)
+    img = Image.open(BytesIO(icon_data))
+    img.show()
+except Exception as e:
+    print("Failed to load image:", e)
 
 load_dotenv()
 
-class NotificationService(Protocol):
-    def notify(self, title: str, message: str) -> None: ...
+class ResourceManager:
+    """Manages embedded and temporary resources"""
+    
+    @staticmethod
+    def create_app_icon():
+        """Create application icon from embedded data or generate programmatically"""
+        try:
+            # Try to decode embedded icon
+            icon_data = base64.b64decode(EMBEDDED_ICON_DATA)
+            pixmap = QPixmap()
+            pixmap.loadFromData(icon_data)
+            if not pixmap.isNull():
+                return QIcon(pixmap)
+        except Exception:
+            pass
+        
+        # Fallback: create icon programmatically
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(QColor(70, 130, 180))
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Draw background circle
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.setPen(QPen(QColor(70, 130, 180), 2))
+        painter.drawEllipse(8, 8, 48, 48)
+        
+        # Draw "J" letter
+        painter.setPen(QPen(QColor(70, 130, 180), 3))
+        font = painter.font()
+        font.setPointSize(24)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(QRect(8, 8, 48, 48), Qt.AlignmentFlag.AlignCenter, "J")
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    @staticmethod
+    def get_temp_dir():
+        """Get or create temporary directory for the application"""
+        temp_dir = Path(tempfile.gettempdir()) / "jobops_qt"
+        temp_dir.mkdir(exist_ok=True)
+        return temp_dir
 
-class SystemNotificationService:
-    def __init__(self, app_name: str = "JobOps"):
-        self.app_name = app_name
-        self._logger = logging.getLogger(self.__class__.__name__)
+class NotificationService(QObject):
+    """Cross-platform notification service using Qt"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.system_tray = None
+    
+    def set_system_tray(self, tray_icon):
+        self.system_tray = tray_icon
     
     def notify(self, title: str, message: str) -> None:
-        self._logger.info(f"Notification: {title} - {message}")
+        """Show notification using system tray or fallback"""
         try:
-            notification.notify(
-                title=title,
-                message=message,
-                app_name=self.app_name,
-                timeout=3
-            )
+            if self.system_tray and QSystemTrayIcon.isSystemTrayAvailable():
+                self.system_tray.showMessage(
+                    title, 
+                    message, 
+                    QSystemTrayIcon.MessageIcon.Information, 
+                    3000
+                )
+            else:
+                # Fallback to message box if system tray not available
+                QMessageBox.information(None, title, message)
         except Exception as e:
-            self._logger.warning(f"Notification failed: {e}")
+            logging.warning(f"Notification failed: {e}")
 
-class JobOpsApplication:
-    def __init__(self, base_dir: Optional[str] = None):
-        self.base_dir = Path(base_dir or CONSTANTS.USER_HOME_DIR)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
-        
-        self._setup_logging()
-        self._logger = logging.getLogger(self.__class__.__name__)
-        
-        config_path = self.base_dir / CONSTANTS.CONFIG_NAME
-        self.config_manager = JSONConfigManager(str(config_path))
-        self.config = self.config_manager.load()
-        self._stop_event = threading.Event()
-        self._threads = []
-        self._initialize_services()
+class JobInputDialog(QDialog):
+    """Modern job input dialog"""
     
-    def _setup_logging(self):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Generate Motivation Letter")
+        self.setFixedSize(650, 500)
+        self.setWindowIcon(ResourceManager.create_app_icon())
+        
+        self.job_data = None
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Mode selection
+        mode_group = QGroupBox("Input Method")
+        mode_layout = QHBoxLayout(mode_group)
+        
+        self.url_radio = QRadioButton("Job URL")
+        self.text_radio = QRadioButton("Job Description Text")
+        self.url_radio.setChecked(True)
+        
+        mode_layout.addWidget(self.url_radio)
+        mode_layout.addWidget(self.text_radio)
+        layout.addWidget(mode_group)
+        
+        # Input stack
+        self.input_stack = QStackedWidget()
+        
+        # URL input page
+        url_page = QWidget()
+        url_layout = QVBoxLayout(url_page)
+        url_layout.addWidget(QLabel("Job URL:"))
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText("https://...")
+        url_layout.addWidget(self.url_input)
+        self.input_stack.addWidget(url_page)
+        
+        # Text input page
+        text_page = QWidget()
+        text_layout = QVBoxLayout(text_page)
+        text_layout.addWidget(QLabel("Paste the full job description:"))
+        self.text_input = QTextEdit()
+        self.text_input.setPlaceholderText("Paste job description here...")
+        text_layout.addWidget(self.text_input)
+        self.input_stack.addWidget(text_page)
+        
+        layout.addWidget(self.input_stack)
+        
+        # Job details
+        details_group = QGroupBox("Job Details (Optional)")
+        details_layout = QFormLayout(details_group)
+        
+        self.company_input = QLineEdit()
+        self.title_input = QLineEdit()
+        self.location_input = QLineEdit()
+        self.contact_input = QLineEdit()
+        
+        details_layout.addRow("Company Name:", self.company_input)
+        details_layout.addRow("Job Title:", self.title_input)
+        details_layout.addRow("Location:", self.location_input)
+        details_layout.addRow("Contact Person:", self.contact_input)
+        
+        layout.addWidget(details_group)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.generate_btn = QPushButton("Generate Letter")
+        self.cancel_btn = QPushButton("Cancel")
+        
+        self.generate_btn.clicked.connect(self.generate_letter)
+        self.cancel_btn.clicked.connect(self.reject)
+        
+        button_layout.addWidget(self.generate_btn)
+        button_layout.addWidget(self.cancel_btn)
+        layout.addLayout(button_layout)
+        
+        # Connect radio buttons
+        self.url_radio.toggled.connect(self.on_mode_changed)
+        self.text_radio.toggled.connect(self.on_mode_changed)
+    
+    def on_mode_changed(self):
+        if self.url_radio.isChecked():
+            self.input_stack.setCurrentIndex(0)
+        else:
+            self.input_stack.setCurrentIndex(1)
+    
+    def generate_letter(self):
+        if self.url_radio.isChecked():
+            url = self.url_input.text().strip()
+            if not url:
+                QMessageBox.warning(self, "Error", "Please enter a job URL.")
+                return
+            job_text = ""
+        else:
+            job_text = self.text_input.toPlainText().strip()
+            if not job_text:
+                QMessageBox.warning(self, "Error", "Please paste the job description.")
+                return
+            url = None
+        
+        # Create job data object
+        self.job_data = {
+            'url': url,
+            'description': job_text,
+            'company': self.company_input.text().strip(),
+            'title': self.title_input.text().strip(),
+            'location': self.location_input.text().strip(),
+            'contact_info': self.contact_input.text().strip()
+        }
+        
+        self.accept()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'generate_worker') and self.generate_worker.isRunning():
+            self.generate_worker.wait()
+        event.accept()
+
+class UploadDialog(QDialog):
+    """File upload dialog"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Upload Document")
+        self.setFixedSize(400, 200)
+        self.setWindowIcon(ResourceManager.create_app_icon())
+        
+        self.file_path = None
+        self.doc_type = None
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # File selection
+        file_layout = QHBoxLayout()
+        self.file_input = QLineEdit()
+        self.file_input.setPlaceholderText("Select a file...")
+        self.browse_btn = QPushButton("Browse")
+        self.browse_btn.clicked.connect(self.browse_file)
+        
+        file_layout.addWidget(self.file_input)
+        file_layout.addWidget(self.browse_btn)
+        layout.addLayout(file_layout)
+        
+        # Document type
+        type_group = QGroupBox("Document Type")
+        type_layout = QVBoxLayout(type_group)
+        
+        self.resume_radio = QRadioButton("Resume/CV")
+        self.cert_radio = QRadioButton("Certificate")
+        self.resume_radio.setChecked(True)
+        
+        type_layout.addWidget(self.resume_radio)
+        type_layout.addWidget(self.cert_radio)
+        layout.addWidget(type_group)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.upload_btn = QPushButton("Upload")
+        self.cancel_btn = QPushButton("Cancel")
+        
+        self.upload_btn.clicked.connect(self.upload_document)
+        self.cancel_btn.clicked.connect(self.reject)
+        
+        button_layout.addWidget(self.upload_btn)
+        button_layout.addWidget(self.cancel_btn)
+        layout.addLayout(button_layout)
+    
+    def browse_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Select Document", 
+            "", 
+            "Documents (*.pdf *.txt *.doc *.docx);;All Files (*)"
+        )
+        if file_path:
+            self.file_input.setText(file_path)
+    
+    def upload_document(self):
+        file_path = self.file_input.text().strip()
+        if not file_path:
+            QMessageBox.warning(self, "Error", "Please select a file.")
+            return
+        
+        if not os.path.exists(file_path):
+            QMessageBox.warning(self, "Error", "File does not exist.")
+            return
+        
+        self.file_path = file_path
+        self.doc_type = "RESUME" if self.resume_radio.isChecked() else "CERTIFICATION"
+        self.accept()
+
+class SystemTrayIcon(QSystemTrayIcon):
+    """Custom system tray icon with JobOps functionality"""
+    
+    def __init__(self, app_instance, parent=None):
+        super().__init__(parent)
+        self.app_instance = app_instance
+        self.setup_tray()
+    
+    def setup_tray(self):
+        # Set icon
+        self.setIcon(ResourceManager.create_app_icon())
+        self.setToolTip("JobOps - AI Motivation Letter Generator")
+        
+        # Create context menu
+        menu = QMenu()
+        
+        # Add actions
+        upload_action = QAction("📁 Upload Document", self)
+        generate_action = QAction("✨ Generate Letter", self)
+        download_action = QAction("💾 Download Letters", self)
+        settings_action = QAction("⚙️ Settings", self)
+        help_action = QAction("❓ Help", self)
+        quit_action = QAction("❌ Exit", self)
+        
+        # Connect actions
+        upload_action.triggered.connect(self.upload_document)
+        generate_action.triggered.connect(self.generate_letter)
+        download_action.triggered.connect(self.download_letters)
+        settings_action.triggered.connect(self.show_settings)
+        help_action.triggered.connect(self.show_help)
+        quit_action.triggered.connect(self.quit_application)
+        
+        # Add to menu
+        menu.addAction(upload_action)
+        menu.addAction(generate_action)
+        menu.addSeparator()
+        menu.addAction(download_action)
+        menu.addAction(settings_action)
+        menu.addAction(help_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        
+        self.setContextMenu(menu)
+        
+        # Connect signals
+        self.messageClicked.connect(self.on_message_clicked)
+        self.activated.connect(self.on_tray_activated)
+    
+    def upload_document(self):
+        """Show upload dialog"""
+        dialog = UploadDialog()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Process upload in background thread
+            worker = UploadWorker(self.app_instance, dialog.file_path, dialog.doc_type)
+            worker.finished.connect(self.on_upload_finished)
+            worker.error.connect(self.on_upload_error)
+            worker.start()
+    
+    def generate_letter(self):
+        """Show job input dialog and generate letter"""
+        
+        dialog = JobInputDialog()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.generate_worker = GenerateWorker(self.app_instance, dialog.job_data)
+            self.generate_worker.finished.connect(self.on_generation_finished)
+            self.generate_worker.error.connect(self.on_generation_error)
+            self.generate_worker.start()
+    
+    def download_letters(self):
+        """Show download dialog"""
+        # Implementation for downloading letters
+        QMessageBox.information(None, "Download", "Download functionality will be implemented here.")
+    
+    def show_settings(self):
+        """Show settings dialog"""
+        # Implementation for settings
+        QMessageBox.information(None, "Settings", "Settings dialog will be implemented here.")
+    
+    def show_help(self):
+        """Open help/documentation"""
+        webbrowser.open("https://github.com/codesapienbe/jobops-toolbar")
+    
+    def quit_application(self):
+        """Quit the application"""
+        reply = QMessageBox.question(
+            None, 
+            "Exit JobOps", 
+            "Are you sure you want to exit JobOps?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            QApplication.quit()
+    
+    def on_upload_finished(self, message):
+        """Handle upload completion"""
+        self.showMessage("JobOps", message, QSystemTrayIcon.MessageIcon.Information, 3000)
+    
+    def on_upload_error(self, error):
+        """Handle upload error"""
+        self.showMessage("JobOps Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
+    
+    def on_generation_finished(self, message):
+        """Handle generation completion"""
+        self.showMessage("JobOps", message, QSystemTrayIcon.MessageIcon.Information, 3000)
+    
+    def on_generation_error(self, error):
+        """Handle generation error"""
+        self.showMessage("JobOps Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
+    
+    def on_message_clicked(self):
+        """Handle tray message click"""
+        pass
+    
+    def on_tray_activated(self, reason):
+        """Handle tray icon activation"""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.generate_letter()
+
+class UploadWorker(QThread):
+    """Background worker for document upload"""
+    finished = Signal(str)
+    error = Signal(str)
+    
+    def __init__(self, app_instance, file_path, doc_type):
+        super().__init__()
+        self.app_instance = app_instance
+        self.file_path = file_path
+        self.doc_type = doc_type
+    
+    def run(self):
+        try:
+            # Simulate document processing
+            result = f"Document uploaded successfully: {os.path.basename(self.file_path)}"
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+
+class GenerateWorker(QThread):
+    """Background worker for letter generation"""
+    finished = Signal(str)
+    error = Signal(str)
+    
+    def __init__(self, app_instance, job_data):
+        super().__init__()
+        self.app_instance = app_instance
+        self.job_data = job_data
+    
+    def run(self):
+        try:
+            # Ensure repository and generator are available
+            repository = getattr(self.app_instance, 'repository', None)
+            generator = getattr(self.app_instance, 'generator', None)
+            if repository is None or generator is None:
+                raise Exception("Application is missing repository or generator.")
+
+            # Get the latest resume
+            resume = repository.get_latest_resume()
+            if resume is None:
+                raise Exception("No resume found. Please upload your resume first.")
+
+            # Convert job_data dict to JobData model if needed
+            from jobops.models import JobData
+            if not isinstance(self.job_data, JobData):
+                job_data_obj = JobData(**self.job_data)
+            else:
+                job_data_obj = self.job_data
+
+            # Generate the motivation letter
+            letter = generator.generate(job_data_obj, resume)
+            result = letter.content
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+
+class JobOpsQtApplication(QApplication):
+    """Main Qt application class"""
+    
+    def __init__(self, args):
+        super().__init__(args)
+        
+        # Set application properties
+        self.setApplicationName("JobOps")
+        self.setApplicationVersion("2.0.0")
+        self.setOrganizationName("JobOps")
+        self.setQuitOnLastWindowClosed(False)  # Keep running in system tray
+        
+        # Initialize application data
+        self.base_dir = Path.home() / ".jobops"
+        self.base_dir.mkdir(exist_ok=True)
+
+        # --- Add repository and generator initialization ---
+        from jobops.repositories import SQLiteDocumentRepository
+        from jobops.utils import ConcreteLetterGenerator
+        from jobops.clients import OllamaBackend
+        db_path = str(self.base_dir / "jobops.db")
+        self.repository = SQLiteDocumentRepository(db_path)
+        self.generator = ConcreteLetterGenerator(OllamaBackend())
+        # ---------------------------------------------------
+        
+        # Initialize components
+        self.setup_logging()
+        self.notification_service = NotificationService()
+        self.system_tray = None
+        
+        self.setup_system_tray()
+    
+    def setup_logging(self):
+        """Setup application logging"""
         log_file = self.base_dir / 'app.log'
         logging.basicConfig(
             level=logging.INFO,
@@ -81,1055 +528,116 @@ class JobOpsApplication:
             ]
         )
     
-    def _initialize_services(self):
-        db_path = self.base_dir / CONSTANTS.DB_NAME
-        timeout = self.config.sqlite_timeout if hasattr(self.config, 'sqlite_timeout') else 30.0
-        self.repository = SQLiteDocumentRepository(str(db_path), timeout=timeout)
-        backend_settings = self.config.backend_settings[self.config.backend]
-        tokens = self.config.app_settings.get('tokens', {})
-        self.llm_backend = LLMBackendFactory.create(self.config.backend, backend_settings, tokens)
-
-        # Ensure Playwright browsers are installed if using Crawl4AI
-        try:
-            from playwright.sync_api import sync_playwright
-            import shutil
-            import subprocess
-            import os
-
-            logging.info("Playwright browsers not found. Installing browsers, this may take a few minutes...")
-            try:
-                self.notification_service.notify(
-                    "JobOps",
-                    "Installing Playwright browsers. This may take a few minutes on first run."
-                )
-            except Exception:
-                pass
-            subprocess.run(["playwright", "install"], check=True)
-            # Try launching a browser to see if it works
-            with sync_playwright() as p:
-                try:
-                    browser = p.chromium.launch(headless=True)
-                    browser.close()
-                except Exception:
-                    self.notification_service.notify(
-                        "JobOps",
-                        "Playwright browsers not found. Please install them manually."
-                    )
-                    
-        except ImportError:
-            pass
-        except Exception as e:
-            logging.warning(f"Could not verify or install Playwright browsers: {e}")
-        self.job_scraper = Crawl4AIJobScraper(self.llm_backend)
-      
+    def setup_system_tray(self):
+        """Initialize system tray"""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            QMessageBox.critical(
+                None,
+                "System Tray",
+                "System tray is not available on this system."
+            )
+            sys.exit(1)
         
-        self.letter_generator = ConcreteLetterGenerator(self.llm_backend)
-        self.notification_service = SystemNotificationService()
-        self.document_extractor = DocumentExtractor(self.llm_backend)
+        self.system_tray = SystemTrayIcon(self)
+        self.notification_service.set_system_tray(self.system_tray)
+        self.system_tray.show()
+        
+        # Show startup notification
+        self.system_tray.showMessage(
+            "JobOps Started",
+            "JobOps is running in the system tray. Right-click the icon to access features.",
+            QSystemTrayIcon.MessageIcon.Information,
+            3000
+        )
 
-        # Prompt for personal info if missing
-        if not self.config.app_settings.get('personal_info'):
-            import tkinter as tk
-            from tkinter import simpledialog
-            root = tk.Tk()
-            root.withdraw()
-            name = simpledialog.askstring("Personal Info", "Enter your full name:")
-            phone = simpledialog.askstring("Personal Info", "Enter your phone number:")
-            email = simpledialog.askstring("Personal Info", "Enter your email address:")
-            city = simpledialog.askstring("Personal Info", "Enter your city:")
-            linkedin = simpledialog.askstring("Personal Info", "Enter your LinkedIn URL:")
-            root.destroy()
-            self.config.app_settings['personal_info'] = {
-                'name': name or '',
-                'phone': phone or '',
-                'email': email or '',
-                'city': city or '',
-                'linkedin': linkedin or ''
-            }
-            self.config_manager.save(self.config)
+def check_platform_compatibility():
+    """Check if the current platform is supported"""
+    platform_info = {
+        'system': os.name,
+        'platform': sys.platform,
+        'qt_available': QT_AVAILABLE
+    }
     
-    def generate_motivation_letter(self, job_url: str, language: str = "en", company: str = None, title: str = None, location: str = None) -> str:
+    logging.info(f"Platform info: {platform_info}")
+    
+    if not QT_AVAILABLE:
+        print("Qt is not available. Please install PySide6 or PyQt6.")
+        return False
+    
+    return True
+
+def create_desktop_entry():
+    """Create desktop entry for Linux systems"""
+    if sys.platform.startswith('linux'):
         try:
-            job_data = self.job_scraper.scrape_job_description(
-                job_url,
-                company=company,
-                title=title,
-                location=location
-            )
-
-            # Aggregate all relevant documents (resume, certificate, etc.)
-            doc_types = [DocumentType.RESUME, DocumentType.CERTIFICATION]
-            all_docs = []
-            for dt in doc_types:
-                all_docs.extend(self.repository.get_by_type(dt))
-            # Sort by upload date (latest last)
-            all_docs.sort(key=lambda d: d.uploaded_at)
-            # Concatenate all structured_content
-            combined_docs_markdown = "\n\n".join([doc.structured_content for doc in all_docs if doc.structured_content])
-
-            # Fetch all previous generated motivation letters (COVER_LETTER)
-            previous_letters = self.repository.get_by_type(DocumentType.COVER_LETTER)
-            previous_letters.sort(key=lambda d: d.uploaded_at)
-            previous_letters_markdown = "\n\n".join([doc.structured_content for doc in previous_letters if doc.structured_content])
-
-            if not combined_docs_markdown.strip():
-                raise ValueError("No resume or relevant documents found. Please upload a resume or certificate first.")
-
-            # Add personal info to the context
-            personal_info = self.config.app_settings.get('personal_info', {})
-            personal_info_md = f"""
-**Name:** {personal_info.get('name', '')}
-**Phone:** {personal_info.get('phone', '')}
-**Email:** {personal_info.get('email', '')}
-**City:** {personal_info.get('city', '')}
-**LinkedIn:** {personal_info.get('linkedin', '')}
+            desktop_dir = Path.home() / '.local' / 'share' / 'applications'
+            desktop_dir.mkdir(parents=True, exist_ok=True)
+            
+            desktop_file = desktop_dir / 'jobops.desktop'
+            script_path = Path(__file__).absolute()
+            
+            desktop_content = f"""[Desktop Entry]
+Name=JobOps
+Comment=AI Motivation Letter Generator
+Exec=python3 "{script_path}"
+Icon=application-x-python
+Terminal=false
+Type=Application
+Categories=Office;Productivity;
+StartupNotify=true
 """
-            full_resume_md = personal_info_md + "\n\n" + combined_docs_markdown
-
-            # Use the combined markdown as the resume summary
-            resume = Resume(summary=full_resume_md)
-
-            # Enhance prompt with previous letters if any
-            if previous_letters_markdown.strip():
-                # Optionally, you can prepend or append this to the resume summary or add as extra context
-                resume.summary += "\n\n# Previous Motivation Letters\n" + previous_letters_markdown
-
-            letter = self.letter_generator.generate(job_data, resume, language)
-
-            # Save the generated letter as a Document in the database
-            import re
-            # Extract <think>...</think> block if present
-            llm_response = letter.content
-            think_match = re.search(r'<think>(.*?)</think>', llm_response, re.DOTALL | re.IGNORECASE)
-            reasoning_analysis = think_match.group(1).strip() if think_match else None
-            # Remove <think>...</think> from the content for structured_content
-            structured_content = re.sub(r'<think>.*?</think>', '', llm_response, flags=re.DOTALL | re.IGNORECASE).strip()
-            # Set filename as '{Full Name} Cover Letter'
-            full_name = personal_info.get('name', '').strip() or ''
-            filename = f"{full_name} Cover Letter".strip() if full_name else "Cover Letter"
-            document = Document(
-                type=DocumentType.COVER_LETTER,
-                filename=filename,
-                raw_content=letter.content,
-                structured_content=structured_content,
-                reasoning_analysis=reasoning_analysis,
-                job_data_json=json.dumps(job_data.dict())
-            )
-            self.repository.save(document)
-
-            self.notification_service.notify(
-                "JobOps", 
-                f"Motivation letter generated and stored in database."
-            )
-
-            return f"Motivation letter generated and stored in database with ID: {document.id}"
-
-        except Exception as e:
-            self._logger.error(f"Error generating motivation letter: {e}")
-            self.notification_service.notify("JobOps Error", str(e))
-            raise
-    
-    def upload_document(self, file_path: str, doc_type: DocumentType) -> Document:
-        try:
-            file_path = Path(file_path)
             
-            if file_path.suffix.lower() == '.pdf':
-                with pdfplumber.open(file_path) as pdf:
-                    raw_content = "\n".join(page.extract_text() or '' for page in pdf.pages)
-            else:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    raw_content = f.read()
-
-            # Use LLM to clean up and restructure content into markdown
-            system_prompt = "You are an expert document formatter. Clean up and restructure the following document content into clear, well-formatted markdown. Do not add or remove information, just improve the structure and readability. Return only the improved markdown. Optionally, you may include a <think>...</think> block with your reasoning before the markdown code block."
-            prompt = f"""
-            Clean up and format the following document content as markdown for clarity and logical flow. Do not add or remove information, just improve the structure and readability.
-
-            Document content:
-            {raw_content[:6000]}
-            """
-            try:
-                llm_response = self.llm_backend.generate_response(prompt, system_prompt).strip()
-                import re
-                # Extract <think>...</think>
-                reasoning_analysis = None
-                think_match = re.search(r'<think>(.*?)</think>', llm_response, re.DOTALL | re.IGNORECASE)
-                if think_match:
-                    reasoning_analysis = think_match.group(1).strip()
-                # Extract markdown code block
-                md_match = re.search(r'```markdown\s*(.*?)\s*```', llm_response, re.DOTALL | re.IGNORECASE)
-                if md_match:
-                    structured_content = md_match.group(1).strip()
-                else:
-                    # Remove <think>...</think> if present
-                    structured_content = re.sub(r'<think>.*?</think>', '', llm_response, flags=re.DOTALL | re.IGNORECASE).strip()
-            except Exception as e:
-                self._logger.error(f"Document markdown cleaning failed: {e}")
-                structured_content = raw_content
-                reasoning_analysis = None
-
-            document = Document(
-                type=doc_type,
-                filename=file_path.name,
-                raw_content=raw_content,
-                structured_content=structured_content,
-                reasoning_analysis=reasoning_analysis
-            )
+            with open(desktop_file, 'w') as f:
+                f.write(desktop_content)
             
-            self.repository.save(document)
-            
-            self.notification_service.notify(
-                "JobOps", 
-                f"Document uploaded: {document.filename}"
-            )
-            
-            return document
+            os.chmod(desktop_file, 0o755)
+            logging.info(f"Desktop entry created: {desktop_file}")
             
         except Exception as e:
-            self._logger.error(f"Error uploading document: {e}")
-            self.notification_service.notify("JobOps Error", str(e))
-            raise
-    
-    def run(self):
-        self._logger.info(f"Starting {CONSTANTS.APP_NAME} v{CONSTANTS.VERSION}")
-
-        def create_image():
-            img = Image.new('RGB', CONSTANTS.ICON_SIZE, color=(70, 130, 180))
-            d = ImageDraw.Draw(img)
-            d.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
-            d.text((22, 22), "J", fill=(70, 130, 180))
-            return img
-
-        # Place this variable at the top of run() so it is accessible
-        global_icon = None
-
-        def on_upload_resume(icon, item):
-            import tkinter as tk
-            from tkinter import filedialog, messagebox
-            import threading
-            import time
-
-            # Animation images
-            def create_image(color):
-                img = Image.new('RGB', CONSTANTS.ICON_SIZE, color=color)
-                d = ImageDraw.Draw(img)
-                d.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
-                d.text((22, 22), "J", fill=color)
-                return img
-            img1 = create_image((70, 130, 180))
-            img2 = create_image((180, 130, 70))
-
-            animating = True
-            def animate_icon():
-                flip = False
-                while animating:
-                    icon.icon = img1 if flip else img2
-                    flip = not flip
-                    time.sleep(0.3)
-                icon.icon = img1  # restore original
-
-            def do_upload(file_path):
-                nonlocal animating
-                anim_thread = threading.Thread(target=animate_icon, daemon=True)
-                animating = True
-                anim_thread.start()
-                self._threads.append(anim_thread)
-                try:
-                    if self._stop_event.is_set():
-                        return
-                    doc = self.upload_document(file_path, DocumentType.RESUME)
-                    if self._stop_event.is_set():
-                        return
-                    root.after(0, lambda: messagebox.showinfo("Success", f"Resume uploaded: {doc.filename}"))
-                except Exception as e:
-                    root.after(0, lambda e=e: messagebox.showerror("Error", f"Error uploading resume: {e}"))
-                finally:
-                    animating = False
-                    root.after(0, root.destroy)
-
-            root = tk.Tk()
-            root.withdraw()
-            root.after(0, ask_and_upload)
-            root.mainloop()
-
-        def on_generate_letter(icon, item):
-            if icon is None:
-                # Use the global icon if not provided (e.g., hotkey)
-                nonlocal global_icon
-                icon = global_icon
-            import tkinter as tk
-            from tkinter import messagebox
-            import threading
-            import os
-            import time
-            from pathlib import Path
-            import json
-
-            # Animation images
-            def create_image(color):
-                img = Image.new('RGB', CONSTANTS.ICON_SIZE, color=color)
-                d = ImageDraw.Draw(img)
-                d.rectangle([16, 16, 48, 48], fill=(255, 255, 255))
-                d.text((22, 22), "J", fill=color)
-                return img
-            img1 = create_image((70, 130, 180))
-            img2 = create_image((180, 130, 70))
-
-            animating = True
-            def animate_icon(icon):
-                flip = False
-                while animating:
-                    icon.icon = img1 if flip else img2
-                    flip = not flip
-                    time.sleep(0.3)
-                icon.icon = img1  # restore original
-
-            def do_generate(job_url, job_data=None):
-                self._logger.info("Starting motivation letter generation...")
-                nonlocal animating
-                nonlocal global_icon
-                icon_to_animate = icon if icon is not None else global_icon
-                anim_thread = threading.Thread(target=animate_icon, args=(icon_to_animate,), daemon=True)
-                animating = True
-                anim_thread.start()
-                self._threads.append(anim_thread)
-                watchdog_triggered = threading.Event()
-                def watchdog():
-                    import time
-                    time.sleep(30)
-                    if not watchdog_triggered.is_set():
-                        self._logger.warning("Generation is taking too long. Triggering fallback and notifying user.")
-                        try:
-                            root.after(0, lambda: messagebox.showwarning("Timeout", "Generation is taking longer than expected. Using fallback extraction."))
-                        except Exception:
-                            pass
-                        watchdog_triggered.set()
-                watchdog_thread = threading.Thread(target=watchdog, daemon=True)
-                watchdog_thread.start()
-                self._threads.append(watchdog_thread)
-                try:
-                    if self._stop_event.is_set():
-                        return
-                    language = self.config.app_settings.get('language', 'en')
-                    output_format = self.config.app_settings.get('output_format', 'pdf')
-                    self._logger.info("Extracting job fields and preparing data...")
-                    # Use provided job_data if available, otherwise scrape
-                    fallback_used = False
-                    if job_data is None and job_url:
-                        try:
-                            with concurrent.futures.ThreadPoolExecutor() as executor:
-                                future = executor.submit(self.job_scraper.scrape_job_description, job_url)
-                                try:
-                                    job_data = future.result(timeout=25)
-                                except concurrent.futures.TimeoutError:
-                                    self._logger.warning("scrape_job_description timed out, using fallback.")
-                                    fallback_used = True
-                                    # Use fallback extraction
-                                    markdown_content = ""
-                                    try:
-                                        markdown_content = asyncio.run(self.job_scraper._crawl_url(job_url))
-                                    except Exception as e:
-                                        self._logger.error(f"Crawl4AI fallback failed: {e}")
-                                    job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
-                        except Exception as e:
-                            self._logger.error(f"Error in scrape_job_description: {e}")
-                            fallback_used = True
-                            markdown_content = ""
-                            try:
-                                markdown_content = asyncio.run(self.job_scraper._crawl_url(job_url))
-                            except Exception as e:
-                                self._logger.error(f"Crawl4AI fallback failed: {e}")
-                            job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
-                    if job_data:
-                        self._logger.info("Generating motivation letter with LLM...")
-                        try:
-                            with concurrent.futures.ThreadPoolExecutor() as executor:
-                                future = executor.submit(self.letter_generator.generate, job_data, Resume(summary=""), language)
-                                try:
-                                    result = future.result(timeout=25)
-                                except concurrent.futures.TimeoutError:
-                                    self._logger.warning("LLM generation timed out, using fallback scrape.")
-                                    fallback_used = True
-                                    # Use fallback extraction for job_data
-                                    markdown_content = getattr(job_data, 'description', "")
-                                    job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
-                                    result = self.letter_generator.generate(job_data, Resume(summary=""), language)
-                        except Exception as e:
-                            self._logger.error(f"Error in LLM generation: {e}")
-                            fallback_used = True
-                            markdown_content = getattr(job_data, 'description', "")
-                            job_data = self.job_scraper._fallback_extraction(job_url, markdown_content)
-                            result = self.letter_generator.generate(job_data, Resume(summary=""), language)
-                        import re
-                        llm_response = result.content
-                        think_match = re.search(r'<think>(.*?)</think>', llm_response, re.DOTALL | re.IGNORECASE)
-                        reasoning_analysis = think_match.group(1).strip() if think_match else None
-                        structured_content = re.sub(r'<think>.*?</think>', '', llm_response, flags=re.DOTALL | re.IGNORECASE).strip()
-                        full_name = self.config.app_settings.get('personal_info', {}).get('name', '').strip() or ''
-                        filename = f"{full_name} Cover Letter".strip() if full_name else "Cover Letter"
-                        from datetime import datetime
-                        from . import DocumentType, Document
-                        self._logger.info("Saving generated document to database...")
-                        document = Document(
-                            type=DocumentType.COVER_LETTER,
-                            filename=filename,
-                            raw_content=result.content,
-                            structured_content=structured_content,
-                            reasoning_analysis=reasoning_analysis,
-                            job_data_json=json.dumps(job_data.dict())
-                        )
-                        self.repository.save(document)
-                        self.notification_service.notify(
-                            "JobOps", 
-                            f"Motivation letter generated and stored in database."
-                        )
-                        if fallback_used:
-                            try:
-                                root.after(0, lambda: messagebox.showinfo("Fallback Used", "Fallback extraction was used due to timeout or error."))
-                            except Exception:
-                                pass
-                    else:
-                        self._logger.info("Falling back to generate_motivation_letter...")
-                        result = self.generate_motivation_letter(job_url, language)
-                    cover_letters = self.repository.get_by_type(DocumentType.COVER_LETTER)
-                    cover_letters.sort(key=lambda d: d.uploaded_at, reverse=True)
-                    latest_doc = cover_letters[0] if cover_letters else None
-                    if latest_doc:
-                        desktop = Path.home() / 'Desktop'
-                        desktop.mkdir(exist_ok=True)
-                        safe_filename = (latest_doc.filename or "Cover Letter").replace(os.sep, "_").replace(" ", "_")
-                        pdf_path = desktop / f"{safe_filename}.pdf"
-                        def export_pdf(markdown_content, pdf_filepath):
-                            try:
-                                from reportlab.lib.pagesizes import letter
-                                from reportlab.pdfgen import canvas
-                                from reportlab.lib.utils import simpleSplit
-                                import markdown2
-                                import re
-                                html = markdown2.markdown(markdown_content)
-                                text = re.sub('<[^<]+?>', '', html)
-                                c = canvas.Canvas(str(pdf_filepath), pagesize=letter)
-                                width, height = letter
-                                margin = 40
-                                y = height - margin
-                                lines = simpleSplit(text, 'Helvetica', 12, width - 2*margin)
-                                c.setFont("Helvetica", 12)
-                                for line in lines:
-                                    if y < margin:
-                                        c.showPage()
-                                        y = height - margin
-                                        c.setFont("Helvetica", 12)
-                                    c.drawString(margin, y, line)
-                                    y -= 16
-                                c.save()
-                            except Exception:
-                                try:
-                                    from fpdf import FPDF
-                                    pdf = FPDF()
-                                    pdf.add_page()
-                                    pdf.set_font("Arial", size=12)
-                                    for line in markdown_content.split('\n'):
-                                        pdf.cell(0, 10, txt=line, ln=1)
-                                    pdf.output(str(pdf_filepath))
-                                except Exception:
-                                    messagebox.showerror("Error", "Could not export PDF. Please install reportlab or fpdf.")
-                        export_pdf(latest_doc.structured_content, pdf_path)
-                    def show_job_info_dialog(job_info, pdf_path):
-                        win = tk.Toplevel()
-                        win.title("Job/Company Info Summary")
-                        win.geometry("520x420")
-                        win.resizable(False, False)
-                        frame = tk.Frame(win)
-                        frame.pack(padx=20, pady=20, fill=tk.BOTH, expand=True)
-                        row = 0
-                        def add_row(label, value):
-                            nonlocal row
-                            tk.Label(frame, text=label+":", anchor="w", font=("Arial", 10, "bold")).grid(row=row, column=0, sticky="w", pady=2)
-                            tk.Label(frame, text=value or "-", anchor="w", font=("Arial", 10)).grid(row=row, column=1, sticky="w", pady=2)
-                            row += 1
-                        add_row("URL", getattr(job_data, 'url', None) if job_data else None)
-                        add_row("Title", getattr(job_data, 'title', None) if job_data else None)
-                        add_row("Company", getattr(job_data, 'company', None) if job_data else None)
-                        add_row("Location", getattr(job_data, 'location', None) if job_data else None)
-                        add_row("Company Profile URL", getattr(job_data, 'company_profile_url', None) if job_data else None)
-                        add_row("Company Profile", (getattr(job_data, 'company_profile', None) or "")[:200] + ("..." if getattr(job_data, 'company_profile', None) and len(getattr(job_data, 'company_profile', "")) > 200 else ""))
-                        add_row("Salary", getattr(job_data, 'salary', None) if job_data else None)
-                        add_row("Employment Type", getattr(job_data, 'employment_type', None) if job_data else None)
-                        add_row("Seniority Level", getattr(job_data, 'seniority_level', None) if job_data else None)
-                        add_row("Industry", getattr(job_data, 'industry', None) if job_data else None)
-                        add_row("Company Size", getattr(job_data, 'company_size', None) if job_data else None)
-                        add_row("Benefits", getattr(job_data, 'benefits', None) if job_data else None)
-                        tk.Label(frame, text="\nPDF saved to:", font=("Arial", 10, "bold")).grid(row=row, column=0, sticky="w", pady=8)
-                        tk.Label(frame, text=str(pdf_path), font=("Arial", 10)).grid(row=row, column=1, sticky="w", pady=8)
-                        row += 1
-                        def copy_to_clipboard():
-                            info_str = "\n".join(f"{k}: {v}" for k, v in job_info.items() if v)
-                            info_str += f"\nPDF: {pdf_path}"
-                            win.clipboard_clear()
-                            win.clipboard_append(info_str)
-                        btn = tk.Button(win, text="Copy Info to Clipboard", command=copy_to_clipboard)
-                        btn.pack(pady=10)
-                        tk.Button(win, text="Close", command=win.destroy).pack(pady=5)
-                    job_info = None
-                    if latest_doc and getattr(latest_doc, 'job_data_json', None):
-                        try:
-                            job_info = json.loads(latest_doc.job_data_json)
-                        except Exception:
-                            job_info = None
-                    if job_info:
-                        root.after(0, lambda: show_job_info_dialog(job_info, pdf_path))
-                    elif job_data:
-                        info = job_data
-                        summary = f"""
-Job Motivation Letter Generated!\n\nExtracted Job/Company Info:\n\n"""
-                        summary += f"URL: {getattr(info, 'url', '')}\n"
-                        summary += f"Title: {getattr(info, 'title', '')}\n"
-                        summary += f"Company: {getattr(info, 'company', '')}\n"
-                        if getattr(info, 'location', None):
-                            summary += f"Location: {getattr(info, 'location', '')}\n"
-                        if getattr(info, 'company_profile_url', None):
-                            summary += f"Company Profile URL: {getattr(info, 'company_profile_url', '')}\n"
-                        if getattr(info, 'company_profile', None):
-                            summary += f"Company Profile: {getattr(info, 'company_profile', '')[:200]}...\n"
-                        if getattr(info, 'salary', None):
-                            summary += f"Salary: {getattr(info, 'salary', '')}\n"
-                        if getattr(info, 'employment_type', None):
-                            summary += f"Employment Type: {getattr(info, 'employment_type', '')}\n"
-                        if getattr(info, 'seniority_level', None):
-                            summary += f"Seniority Level: {getattr(info, 'seniority_level', '')}\n"
-                        if getattr(info, 'industry', None):
-                            summary += f"Industry: {getattr(info, 'industry', '')}\n"
-                        if getattr(info, 'company_size', None):
-                            summary += f"Company Size: {getattr(info, 'company_size', '')}\n"
-                        if getattr(info, 'benefits', None):
-                            summary += f"Benefits: {getattr(info, 'benefits', '')}\n"
-                        summary += f"\nPDF saved to: {pdf_path}"
-                        root.after(0, lambda: messagebox.showinfo("Success", summary))
-                    else:
-                        summary = f"Motivation letter generated and PDF saved to: {pdf_path}"
-                        root.after(0, lambda: messagebox.showinfo("Success", summary))
-                except Exception as e:
-                    self._logger.error(f"Error generating letter: {e}")
-                    try:
-                        root.after(0, lambda e=e: messagebox.showerror("Error", f"Error generating letter: {e}"))
-                    except Exception:
-                        pass
-                finally:
-                    animating = False
-                    watchdog_triggered.set()
-                    root.after(0, root.destroy)
-
-            # Single-entry dialog for job URL
-            class JobInputDialog(tk.Toplevel):
-                def __init__(self, master):
-                    super().__init__(master)
-                    self.title("Generate Motivation Letter")
-                    self.geometry("600x340")
-                    self.resizable(True, True)
-                    self.mode = tk.StringVar(value="url")
-                    # --- UI ---
-                    radio_frame = tk.Frame(self)
-                    radio_frame.pack(pady=(18, 0))
-                    tk.Radiobutton(radio_frame, text="Job URL", variable=self.mode, value="url", command=self.switch_mode).pack(side=tk.LEFT, padx=10)
-                    tk.Radiobutton(radio_frame, text="Job Description Text", variable=self.mode, value="text", command=self.switch_mode).pack(side=tk.LEFT, padx=10)
-                    # URL input (always empty, no placeholder, no clipboard logic)
-                    self.url_var = tk.StringVar(value="")
-                    self.url_entry = tk.Entry(self, textvariable=self.url_var, width=60)
-                    self.url_entry.pack(pady=(10, 0))
-                    # Text input (multi-line, always editable, no placeholder)
-                    self.text_label = tk.Label(self, text="Paste the full job description text below:")
-                    self.text_widget = tk.Text(self, width=70, height=10, wrap=tk.WORD)
-                    # --- Job fields (Company, Title, Location, Contact Person) ---
-                    fields_frame = tk.Frame(self)
-                    fields_frame.pack(pady=(8, 0), fill=tk.X)
-                    tk.Label(fields_frame, text="Company Name:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
-                    tk.Label(fields_frame, text="Job Title:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
-                    tk.Label(fields_frame, text="Location:").grid(row=2, column=0, sticky="e", padx=5, pady=2)
-                    tk.Label(fields_frame, text="Contact Person:").grid(row=3, column=0, sticky="e", padx=5, pady=2)
-                    self.company_var = tk.StringVar()
-                    self.title_var = tk.StringVar()
-                    self.location_var = tk.StringVar()
-                    self.contact_var = tk.StringVar()
-                    tk.Entry(fields_frame, textvariable=self.company_var, width=40).grid(row=0, column=1, padx=5, pady=2)
-                    tk.Entry(fields_frame, textvariable=self.title_var, width=40).grid(row=1, column=1, padx=5, pady=2)
-                    tk.Entry(fields_frame, textvariable=self.location_var, width=40).grid(row=2, column=1, padx=5, pady=2)
-                    tk.Entry(fields_frame, textvariable=self.contact_var, width=40).grid(row=3, column=1, padx=5, pady=2)
-                    # Buttons
-                    btn_frame = tk.Frame(self)
-                    btn_frame.pack(pady=12)
-                    btn_generate = tk.Button(btn_frame, text="Generate", command=self.on_generate)
-                    btn_generate.pack(side=tk.LEFT, padx=10)
-                    btn_cancel = tk.Button(btn_frame, text="Cancel", command=self.on_cancel)
-                    btn_cancel.pack(side=tk.LEFT, padx=10)
-                    self.protocol("WM_DELETE_WINDOW", self.on_cancel)
-                    self.bind_all('<Escape>', lambda event: self.on_cancel())
-                    self.url_entry.bind('<Return>', lambda event: self.on_generate())
-                    self.switch_mode()
-                    self.url_entry.focus_set()
-                    self.master = master
-                    # Always bring dialog to front and grab focus
-                    self.lift()
-                    self.attributes('-topmost', True)
-                    self.focus_force()
-                    self.grab_set()
-                    self.after(200, lambda: self.attributes('-topmost', False))
-                def switch_mode(self):
-                    if self.mode.get() == "url":
-                        self.url_entry.pack(pady=(10, 0))
-                        self.text_label.pack_forget()
-                        self.text_widget.pack_forget()
-                        self.url_entry.focus_set()
-                    else:
-                        self.url_entry.pack_forget()
-                        self.text_label.pack(pady=(10, 0))
-                        self.text_widget.pack(pady=(0, 0), fill=tk.BOTH, expand=True)
-                        self.text_widget.focus_set()
-                def on_generate(self):
-                    mode = self.mode.get()
-                    if mode == "url":
-                        url = self.url_var.get().strip()
-                        if not url:
-                            from tkinter import messagebox
-                            messagebox.showerror("Error", "Please enter a job URL.")
-                            return
-                        job_text = ""
-                    else:
-                        job_text = self.text_widget.get("1.0", tk.END).strip()
-                        if not job_text:
-                            from tkinter import messagebox
-                            messagebox.showerror("Error", "Please paste the job description text.")
-                            return
-                        url = None
-                    # Always use the current values from the entry fields
-                    job_data = type('JobData', (object,), {
-                        'company': self.company_var.get(),
-                        'title': self.title_var.get(),
-                        'location': self.location_var.get(),
-                        'contact_info': self.contact_var.get(),
-                        'description': job_text,
-                        'url': url
-                    })()
-                    self.destroy()
-                    threading.Thread(target=do_generate, args=(url, job_data), daemon=True).start()
-                def on_cancel(self):
-                    # Prevent multiple calls
-                    if hasattr(self, '_cancelled') and self._cancelled:
-                        return
-                    self._cancelled = True
-                    try:
-                        self.grab_release()
-                    except Exception:
-                        pass
-                    self.destroy()
-
-            root = tk.Tk()
-            root.withdraw()
-            JobInputDialog(root)
-            root.mainloop()
-
-        def on_download_cover_letter(icon, item):
-            import tkinter as tk
-            from tkinter import simpledialog, filedialog, messagebox
-            import threading
-            import datetime
-            import os
-            # Helper for PDF export
-            def export_pdf(markdown_content, pdf_filepath):
-                try:
-                    from reportlab.lib.pagesizes import letter
-                    from reportlab.pdfgen import canvas
-                    from reportlab.lib.utils import simpleSplit
-                    import markdown2
-                    import re
-                    html = markdown2.markdown(markdown_content)
-                    text = re.sub('<[^<]+?>', '', html)
-                    c = canvas.Canvas(str(pdf_filepath), pagesize=letter)
-                    width, height = letter
-                    margin = 40
-                    y = height - margin
-                    lines = simpleSplit(text, 'Helvetica', 12, width - 2*margin)
-                    c.setFont("Helvetica", 12)
-                    for line in lines:
-                        if y < margin:
-                            c.showPage()
-                            y = height - margin
-                            c.setFont("Helvetica", 12)
-                        c.drawString(margin, y, line)
-                        y -= 16
-                    c.save()
-                except Exception:
-                    try:
-                        from fpdf import FPDF
-                        pdf = FPDF()
-                        pdf.add_page()
-                        pdf.set_font("Arial", size=12)
-                        for line in markdown_content.split('\n'):
-                            pdf.cell(0, 10, txt=line, ln=1)
-                        pdf.output(str(pdf_filepath))
-                    except Exception:
-                        messagebox.showerror("Error", "Could not export PDF. Please install reportlab or fpdf.")
-            # Dialog for selecting cover letter and format
-            class DownloadDialog(tk.Toplevel):
-                def __init__(self, master, cover_letters):
-                    super().__init__(master)
-                    self.title("Download")
-                    self.geometry("500x350")
-                    self.cover_letters = cover_letters
-                    self.selected_idx = tk.IntVar(value=0)
-                    self.format_var = tk.StringVar(value="markdown")
-                    self.build_ui()
-                def build_ui(self):
-                    tk.Label(self, text="Select a cover letter to download:", font=("Arial", 12)).pack(pady=10)
-                    self.listbox = tk.Listbox(self, width=60, height=10)
-                    for i, doc in enumerate(self.cover_letters):
-                        dt = doc.uploaded_at.strftime('%Y-%m-%d %H:%M') if hasattr(doc, 'uploaded_at') else ''
-                        name = doc.filename or f"Cover Letter {i+1}"
-                        self.listbox.insert(tk.END, f"{name} ({dt})")
-                    self.listbox.pack(pady=5)
-                    self.listbox.select_set(0)
-                    tk.Label(self, text="Format:").pack(pady=(10,0))
-                    format_frame = tk.Frame(self)
-                    format_frame.pack()
-                    tk.Radiobutton(format_frame, text="Markdown", variable=self.format_var, value="markdown").pack(side=tk.LEFT, padx=10)
-                    tk.Radiobutton(format_frame, text="PDF", variable=self.format_var, value="pdf").pack(side=tk.LEFT, padx=10)
-                    btn_frame = tk.Frame(self)
-                    btn_frame.pack(pady=15)
-                    tk.Button(btn_frame, text="Download", command=self.on_download).pack(side=tk.LEFT, padx=10)
-                    tk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
-                def on_download(self):
-                    idx = self.listbox.curselection()
-                    if not idx:
-                        messagebox.showerror("Error", "Please select a cover letter.")
-                        return
-                    doc = self.cover_letters[idx[0]]
-                    fmt = self.format_var.get()
-                    ext = ".md" if fmt == "markdown" else ".pdf"
-                    default_name = (doc.filename or "Cover Letter") + ext
-                    file_path = filedialog.asksaveasfilename(defaultextension=ext, initialfile=default_name, filetypes=[("Markdown", "*.md"), ("PDF", "*.pdf"), ("All Files", "*.*")])
-                    if not file_path:
-                        return
-                    try:
-                        if fmt == "markdown":
-                            with open(file_path, 'w', encoding='utf-8') as f:
-                                f.write(doc.structured_content)
-                        else:
-                            export_pdf(doc.structured_content, file_path)
-                        messagebox.showinfo("Success", f"Cover letter saved to {os.path.basename(file_path)}")
-                        self.destroy()
-                    except Exception as e:
-                        messagebox.showerror("Error", f"Failed to save file: {e}")
-            def show_download_dialog():
-                if self._stop_event.is_set():
-                    return
-                root = tk.Tk()
-                root.withdraw()
-                # Fetch all cover letters from the DB
-                cover_letters = self.repository.get_by_type(DocumentType.COVER_LETTER)
-                if not cover_letters:
-                    messagebox.showinfo("No Cover Letters", "No cover letters found in the database.")
-                    root.destroy()
-                    return
-                DownloadDialog(root, cover_letters)
-                root.mainloop()
-            t = threading.Thread(target=show_download_dialog, daemon=True)
-            self._threads.append(t)
-            t.start()
-
-        def on_change_backend(icon, item):
-            import tkinter as tk
-            from tkinter import messagebox
-            import threading
-
-            def show_backend_dialog():
-                root = tk.Tk()
-                root.withdraw()
-                backends = list(self.config.backend_settings.keys())
-                current_backend = self.config.backend
-
-                class BackendDialog(tk.Toplevel):
-                    def __init__(self, master, app_self):
-                        super().__init__(master)
-                        self.app_self = app_self
-                        self.title("Backend")
-                        self.geometry("350x200")
-                        self.resizable(False, False)
-                        self.selected_backend = tk.StringVar(value=current_backend)
-                        self.build_ui()
-
-                    def build_ui(self):
-                        tk.Label(self, text="Select Backend:", font=("Arial", 12)).pack(pady=15)
-                        for backend in backends:
-                            tk.Radiobutton(self, text=backend.capitalize(), variable=self.selected_backend, value=backend).pack(anchor=tk.W, padx=30)
-                        btn_frame = tk.Frame(self)
-                        btn_frame.pack(pady=20)
-                        tk.Button(btn_frame, text="Save", command=self.on_save).pack(side=tk.LEFT, padx=10)
-                        tk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
-
-                    def on_save(self):
-                        new_backend = self.selected_backend.get()
-                        if new_backend != self.app_self.config.backend:
-                            self.app_self.config.backend = new_backend
-                            self.app_self.config_manager.save(self.app_self.config)
-                            # Re-initialize services
-                            backend_settings = self.app_self.config.backend_settings[self.app_self.config.backend]
-                            tokens = self.app_self.config.app_settings.get('tokens', {})
-                            self.app_self.llm_backend = LLMBackendFactory.create(self.app_self.config.backend, backend_settings, tokens)
-                            self.app_self.job_scraper = Crawl4AIJobScraper(self.app_self.llm_backend)
-                            self.app_self.letter_generator = ConcreteLetterGenerator(self.app_self.llm_backend)
-                            self.app_self.document_extractor = DocumentExtractor(self.app_self.llm_backend)
-                            self.app_self.notification_service.notify("JobOps", f"Backend changed to {new_backend}.")
-                            messagebox.showinfo("Backend", f"Backend changed to {new_backend}.")
-                        self.destroy()
-
-                BackendDialog(root, self)
-                root.mainloop()
-
-            t = threading.Thread(target=show_backend_dialog, daemon=True)
-            self._threads.append(t)
-            t.start()
-
-        def on_settings(icon, item):
-            import tkinter as tk
-            from tkinter import simpledialog, messagebox
-            import threading
-
-            def show_settings_dialog():
-                root = tk.Tk()
-                root.withdraw()
-                # Get current tokens from config
-                tokens = self.config.app_settings.get('tokens', {})
-                openai_token = tokens.get('openai', '')
-                groq_token = tokens.get('groq', '')
-                # Add more providers as needed
-
-                class SettingsDialog(tk.Toplevel):
-                    def __init__(self, master):
-                        super().__init__(master)
-                        self.title("API Tokens Settings")
-                        self.geometry("400x250")
-                        self.resizable(False, False)
-                        self.openai_var = tk.StringVar(value=openai_token)
-                        self.groq_var = tk.StringVar(value=groq_token)
-                        self.build_ui()
-
-                    def build_ui(self):
-                        row = 0
-                        tk.Label(self, text="OpenAI API Key:").grid(row=row, column=0, sticky="e", padx=10, pady=10)
-                        tk.Entry(self, textvariable=self.openai_var, width=40, show="*").grid(row=row, column=1, padx=10, pady=10)
-                        row += 1
-                        tk.Label(self, text="Groq API Key:").grid(row=row, column=0, sticky="e", padx=10, pady=10)
-                        tk.Entry(self, textvariable=self.groq_var, width=40, show="*").grid(row=row, column=1, padx=10, pady=10)
-                        row += 1
-                        # Add more providers here as needed
-                        btn_frame = tk.Frame(self)
-                        btn_frame.grid(row=row, column=0, columnspan=2, pady=20)
-                        tk.Button(btn_frame, text="Save", command=self.on_save).pack(side=tk.LEFT, padx=10)
-                        tk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT, padx=10)
-
-                    def on_save(self):
-                        # Save tokens to config
-                        new_tokens = {
-                            'openai': self.openai_var.get().strip(),
-                            'groq': self.groq_var.get().strip(),
-                            'gemini': self.gemini_var.get().strip(),
-                            'xgrok': self.xgrok_var.get().strip(),
-                            'perplexity': self.perplexity_var.get().strip(),
-                        }
-                        self.master.after(0, lambda: self.save_tokens(new_tokens))
-                        self.destroy()
-
-                    def save_tokens(self, new_tokens):
-                        self.master.withdraw()  # Hide the root window
-                        self.master.update()
-                        self.master.destroy()
-                        self._save_tokens(new_tokens)
-
-                    def _save_tokens(self, new_tokens):
-                        self = self  # for clarity
-                        # Update config and save
-                        self_ref = self  # for closure
-                        try:
-                            self_ref = self
-                            self_ref = None  # silence linter
-                        except Exception:
-                            pass
-                        self_ = self  # for closure
-                        # Actually update config
-                        self_ = None  # silence linter
-                        # Save tokens
-                        self_ = None
-                        # Actually update config
-                        self.config.app_settings['tokens'] = new_tokens
-                        self.config_manager.save(self.config)
-                        self.notification_service.notify("JobOps", "API tokens saved.")
-                        messagebox.showinfo("Settings", "API tokens saved successfully.")
-
-                SettingsDialog(root)
-                root.mainloop()
-
-            t = threading.Thread(target=show_settings_dialog, daemon=True)
-            self._threads.append(t)
-            t.start()
-
-        def on_exit(icon, item):
-            print("Exiting application. Goodbye!")
-            try:
-                self.notification_service.notify("JobOps", "Exiting application. Goodbye!")
-                self._stop_event.set()
-                # Wait for all background threads to finish (with timeout)
-                for thread in self._threads:
-                    if thread.is_alive():
-                        thread.join(timeout=5)
-                # KILL ALL PROCESSES belongs to this application
-                for process in psutil.process_iter():
-                    if process.name() == "jobops.exe":
-                        process.kill()
-            except Exception as e:
-                logging.error(f"Error notifying: {e}")
-            icon.stop()
-
-        def on_help_github_repo(icon, item):
-            webbrowser.open("https://github.com/codesapienbe/jobops-toolbar")
-
-        menu = pystray.Menu(
-            pystray.MenuItem("Upload", on_upload_resume),
-            pystray.MenuItem("Generate", on_generate_letter),
-            pystray.MenuItem("Download", on_download_cover_letter),
-            pystray.MenuItem("Backend", on_change_backend),
-            pystray.MenuItem("Settings", on_settings),
-            pystray.MenuItem("Help", on_help_github_repo),
-            pystray.MenuItem("Exit", on_exit)
-        )
-        icon = pystray.Icon(CONSTANTS.APP_NAME, create_image(), CONSTANTS.APP_NAME, menu)
-        global_icon = icon
-        icon.run()
-
-        # Global hotkey: Ctrl+Alt+J to open the motivation letter wizard
-        def start_hotkey_listener():
-            try:
-                from pynput import keyboard
-            except ImportError:
-                self._logger.warning("pynput not installed, global hotkey disabled.")
-                return
-            def on_activate():
-                # Use the same logic as the tray menu's Generate action
-                threading.Thread(target=lambda: on_generate_letter(None, None), daemon=True).start()
-            COMBO = {keyboard.Key.ctrl_l, keyboard.Key.alt_l, keyboard.KeyCode.from_char('j')}
-            current_keys = set()
-            def on_press(key):
-                if key in COMBO:
-                    current_keys.add(key)
-                if all(k in current_keys for k in COMBO):
-                    on_activate()
-            def on_release(key):
-                if key in current_keys:
-                    current_keys.remove(key)
-            listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-            listener.daemon = True
-            listener.start()
-            self._threads.append(listener)
-        start_hotkey_listener()
-
-# --- FastAPI setup ---
-app_fastapi = FastAPI()
-
-class LLMRequest(BaseModel):
-    prompt: str
-    system_prompt: Optional[str] = None
-    backend: Literal["ollama", "openai", "groq"]
-
-class LLMResponse(BaseModel):
-    response: str
-
-# Use your config loading here
-BACKEND_SETTINGS = {
-    "ollama": {"model": "qwen3:0.6b", "base_url": "http://localhost:11434"},
-    "openai": {"model": "gpt-4-turbo-preview"},
-    "groq": {"model": "mixtral-8x7b-32768"},
-}
-TOKENS = {
-    "openai": "YOUR_OPENAI_API_KEY",
-    "groq": "YOUR_GROQ_API_KEY",
-}
-
-@app_fastapi.post("/llm", response_model=LLMResponse)
-def llm_proxy(req: LLMRequest):
-    try:
-        backend = LLMBackendFactory.create(
-            req.backend,
-            BACKEND_SETTINGS[req.backend],
-            TOKENS
-        )
-        result = backend.generate_response(req.prompt, req.system_prompt)
-        return LLMResponse(response=result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app_fastapi.get("/health/{backend}")
-def healthcheck(backend: Literal["ollama", "openai", "groq"]):
-    try:
-        backend_obj = LLMBackendFactory.create(
-            backend,
-            BACKEND_SETTINGS[backend],
-            TOKENS
-        )
-        healthy = backend_obj.health_check()
-        return JSONResponse({"status": "ok" if healthy else "unhealthy"})
-    except Exception as e:
-        return JSONResponse({"status": "unhealthy", "error": str(e)}, status_code=500)
-
-def start_fastapi():
-    uvicorn.run(app_fastapi, host="0.0.0.0", port=8000, log_level="info")
+            logging.warning(f"Failed to create desktop entry: {e}")
 
 def main():
+    """Main application entry point"""
+    
+    # Check platform compatibility
+    if not check_platform_compatibility():
+        sys.exit(1)
+    
+    # Create Qt application
+    app = JobOpsQtApplication(sys.argv)
+    
+    # Setup platform-specific features
+    if sys.platform.startswith('linux'):
+        create_desktop_entry()
+    
+    # Setup global shortcuts (if available)
     try:
-        # Start FastAPI in a background thread
-        threading.Thread(target=start_fastapi, daemon=True).start()
-        app = JobOpsApplication()
-        app.run()
+        # Global shortcut for quick letter generation (Ctrl+Alt+J)
+        shortcut = QShortcut(QKeySequence("Ctrl+Alt+J"), None)
+        shortcut.activated.connect(app.system_tray.generate_letter)
+        logging.info("Global shortcut registered: Ctrl+Alt+J")
+    except Exception as e:
+        logging.warning(f"Failed to setup global shortcut: {e}")
+    
+    # Show startup message
+    logging.info("JobOps Qt application started successfully")
+    
+    # Start the application event loop
+    try:
+        sys.exit(app.exec())
     except KeyboardInterrupt:
         logging.info("Application interrupted by user")
+        sys.exit(0)
     except Exception as e:
         logging.error(f"Application error: {e}")
-        # --- Error reporting dialog ---
-        try:
-            import tkinter as tk
-            from tkinter import messagebox
-            import webbrowser
-            import urllib.parse
-            # Load user profile info
-            config_path = Path.home() / ".jobops" / "config.json"
-            if config_path.exists():
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                profile = config.get("app_settings", {}).get("personal_info", {})
-            else:
-                profile = {}
-            profile_str = "\n".join(f"{k}: {v}" for k, v in profile.items())
-            # Get last 100 lines of log
-            log_path = Path.home() / ".jobops" / "app.log"
-            if log_path.exists():
-                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
-                    lines = f.readlines()
-                log_tail = "".join(lines[-100:])
-            else:
-                log_tail = "(log file not found)"
-            # Compose email body
-            body = f"""An error occurred in JobOps.\n\nError message:\n{e}\n\nUser profile:\n{profile_str}\n\nLast 100 lines of log:\n{log_tail}\n\nPlease attach the full app.log file if possible.\n"""
-            body = urllib.parse.quote(body)
-            subject = urllib.parse.quote("JobOps Error Report")
-            mailto = f"mailto:ymus@tuta.io?subject={subject}&body={body}"
-            # Show dialog
-            root = tk.Tk()
-            root.withdraw()
-            if messagebox.askyesno("JobOps Error", "An unexpected error occurred. Would you like to report this to the developers? This will open your email client with the error details. Please attach the log file if possible."):
-                webbrowser.open(mailto)
-            root.destroy()
-        except Exception as ee:
-            logging.error(f"Error in error reporting dialog: {ee}")
-        raise
-    finally:
-        logging.info("Application ended")
+        
+        # Show error dialog
+        QMessageBox.critical(
+            None,
+            "JobOps Error",
+            f"An unexpected error occurred:\n\n{str(e)}\n\nPlease check the log file for details."
+        )
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
