@@ -674,7 +674,7 @@ class JobOpsQtApplication(QApplication):
         try:
             self._init_config_and_generator()
             self.setup_logging()
-            self.notification_service.show_notification(
+            self.notification_service.notify(
                 "JobOps Config Reloaded",
                 "Settings have been reloaded from config.json."
             )
