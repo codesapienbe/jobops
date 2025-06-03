@@ -228,35 +228,37 @@ class PerplexityBackend(BaseLLMBackend):
 class LLMBackendFactory:
     @staticmethod
     def create(backend_type: str, settings: Dict[str, Any], tokens: Dict[str, str]) -> BaseLLMBackend:
+        # Force model for all backends
+        forced_model = 'llama3:8b'
         if backend_type == "ollama":
             return OllamaBackend(
-                model=settings.get('model', 'qwen3:0.6b'),
+                model=forced_model,
                 base_url=settings.get('base_url', 'http://localhost:11434')
             )
         elif backend_type == "openai":
             return OpenAIBackend(
                 api_key=tokens.get('openai', ''),
-                model=settings.get('model', 'gpt-4-turbo-preview')
+                model=forced_model
             )
         elif backend_type == "groq":
             return GroqBackend(
                 api_key=tokens.get('groq', ''),
-                model=settings.get('model', 'mixtral-8x7b-32768')
+                model=forced_model
             )
         elif backend_type == "gemini":
             return GoogleGeminiBackend(
                 api_key=tokens.get('gemini', ''),
-                model=settings.get('model', 'gemini-pro')
+                model=forced_model
             )
         elif backend_type == "xgrok":
             return XGrokBackend(
                 api_key=tokens.get('xgrok', ''),
-                model=settings.get('model', 'grok-1')
+                model=forced_model
             )
         elif backend_type == "perplexity":
             return PerplexityBackend(
                 api_key=tokens.get('perplexity', ''),
-                model=settings.get('model', 'pplx-7b-online')
+                model=forced_model
             )
         else:
             raise ValueError(f"Unsupported backend type: {backend_type}")

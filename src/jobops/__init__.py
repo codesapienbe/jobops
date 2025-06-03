@@ -51,8 +51,9 @@ class JobInputDialog(QDialog):
     """Modern job input dialog"""
     job_data_ready = Signal(dict)
     
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, app_instance=None):
+        super().__init__()
+        self.app_instance = app_instance
         self.setWindowTitle("Generate Motivation Letter")
         self.setFixedSize(650, 500)
         self.setWindowIcon(ResourceManager.create_app_icon())
@@ -370,7 +371,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     
     def generate_letter(self):
         logging.info("User triggered: Generate Letter dialog")
-        dialog = JobInputDialog()
+        dialog = JobInputDialog(self.app_instance)
         dialog.job_data_ready.connect(self._start_generate_worker)
         dialog.exec()
     
@@ -554,7 +555,9 @@ class GenerateWorker(QThread):
                 job_data_obj = self.job_data
 
             logging.info(f"Generating letter for job: {job_data_obj}")
-            letter = generator.generate(job_data_obj, resume)
+            # Use output_language from app_instance
+            output_language = getattr(self.app_instance, 'output_language', 'en')
+            letter = generator.generate(job_data_obj, resume, language=output_language)
 
             motivations_dir = os.path.expanduser("~/.jobops/motivations")
             import re
@@ -562,8 +565,19 @@ class GenerateWorker(QThread):
             safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', job_data_obj.title or "letter")
             timestamp = (letter.generated_at if hasattr(letter, 'generated_at') else datetime.datetime.now()).strftime('%Y%m%d_%H%M%S')
             pdf_filename = f"{safe_title}_{timestamp}.pdf"
+            md_filename = f"{safe_title}_{timestamp}.md"
             pdf_path = os.path.join(motivations_dir, pdf_filename)
-            export_letter_to_pdf(letter.content, pdf_path)
+            md_path = os.path.join(motivations_dir, md_filename)
+
+            # Export based on output_format
+            output_format = getattr(self.app_instance, 'output_format', 'pdf')
+            if output_format == 'markdown':
+                with open(md_path, 'w', encoding='utf-8') as f:
+                    f.write(letter.content)
+                export_path = md_path
+            else:
+                export_letter_to_pdf(letter.content, pdf_path)
+                export_path = pdf_path
 
             reasoning_analysis = extract_reasoning_analysis(letter.content)
             job_data_clean = clean_job_data_dict(job_data_obj.dict())
@@ -574,7 +588,7 @@ class GenerateWorker(QThread):
                 raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
             doc = Document(
                 type=DocumentType.COVER_LETTER,
-                filename=pdf_path,
+                filename=export_path,
                 raw_content=letter.content,
                 structured_content=letter.content,
                 uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None,
@@ -582,8 +596,8 @@ class GenerateWorker(QThread):
                 job_data_json=_json.dumps(job_data_clean, default=default_encoder)
             )
             repository.save(doc)
-            logging.info("Letter generation, PDF export, and storage completed.")
-            self.finished.emit("Motivation letter generated, exported to PDF, and saved to database.")
+            logging.info("Letter generation, export, and storage completed.")
+            self.finished.emit(f"Motivation letter generated, exported to {output_format}, and saved to database.")
         except Exception as e:
             logging.error(f"Exception in GenerateWorker: {e}")
             self.error.emit(str(e))
@@ -628,7 +642,12 @@ class JobOpsQtApplication(QApplication):
         self.generator = ConcreteLetterGenerator(backend)
         # ---------------------------------------------------
         
-        # Initialize components
+        # Output format and debug level from config
+        self.output_format = app_settings.get("output_format", "pdf").lower()
+        self.debug = config.get("debug", False)
+        # Language settings
+        self.interface_language = app_settings.get("interface_language", "en")
+        self.output_language = app_settings.get("output_language", "en")
         self.setup_logging()
         self.notification_service = NotificationService()
         self.system_tray = None
@@ -638,8 +657,9 @@ class JobOpsQtApplication(QApplication):
     def setup_logging(self):
         """Setup application logging"""
         log_file = self.base_dir / 'app.log'
+        log_level = logging.DEBUG if getattr(self, 'debug', False) else logging.INFO
         logging.basicConfig(
-            level=logging.INFO,
+            level=log_level,
             format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
             handlers=[
                 logging.FileHandler(log_file, encoding='utf-8'),
