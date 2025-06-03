@@ -102,6 +102,9 @@ class JobData(BaseModel):
     scraped_at: datetime = Field(default_factory=datetime.now)
     company_profile_url: Optional[str] = None
     company_profile: Optional[str] = None
+    job_responsibilities: Optional[str] = None
+    candidate_profile: Optional[str] = None
+    company_offers: Optional[str] = None
     
     @validator('url')
     def validate_url(cls, v):
@@ -139,8 +142,8 @@ class AppConfig(BaseModel):
     backend: str = "ollama"
     backend_settings: Dict[str, Dict[str, Any]] = {
         'ollama': {'model': 'qwen3:8b', 'base_url': 'http://localhost:11434'},
-        'openai': {'model': 'gpt-4-turbo-preview', 'base_url': 'https://api.openai.com/v1'},
-        'groq': {'model': 'mixtral-8x7b-32768', 'base_url': 'https://api.groq.com/openai/v1'}
+        'openai': {'model': 'gpt-4o-mini', 'base_url': 'https://api.openai.com/v1'},
+        'groq': {'model': 'llama-3.3-70b-versatile', 'base_url': 'https://api.groq.com/openai/v1'}
     }
     app_settings: Dict[str, Any] = {
         'language': 'en',

@@ -48,7 +48,7 @@ except Exception as e:
 load_dotenv()
 
 class JobInputDialog(QDialog):
-    """Job input dialog: user provides URL (as a link) and markdown manually."""
+    """Job input dialog: user provides URL (as a link) and markdown manually. Auto-fills fields using LLM on markdown focus out."""
     job_data_ready = Signal(dict)
     
     def __init__(self, app_instance=None):
@@ -73,10 +73,18 @@ class JobInputDialog(QDialog):
 
         # Markdown job description (user-provided)
         layout.addWidget(QLabel("Job Description (Markdown, required):"))
+        markdown_layout = QHBoxLayout()
         self.markdown_edit = QTextEdit()
         self.markdown_edit.setPlaceholderText("Paste or write the job description here in markdown format...")
         self.markdown_edit.setMinimumHeight(300)
-        layout.addWidget(self.markdown_edit)
+        markdown_layout.addWidget(self.markdown_edit)
+        self.edit_markdown_btn = QPushButton("Edit")
+        self.edit_markdown_btn.setFixedWidth(50)
+        self.edit_markdown_btn.setVisible(False)
+        self.edit_markdown_btn.clicked.connect(self._enable_markdown_edit)
+        markdown_layout.addWidget(self.edit_markdown_btn)
+        layout.addLayout(markdown_layout)
+        self.markdown_edit.focusOutEvent = self._on_markdown_focus_out
 
         # Editable fields (optional, for user convenience)
         details_group = QGroupBox("Job Details (Optional, for autofill)")
@@ -87,11 +95,21 @@ class JobInputDialog(QDialog):
         self.contact_input = QLineEdit()
         self.requirements_input = QTextEdit()
         self.requirements_input.setPlaceholderText("Paste job requirements here or leave blank...")
+        # New fields for advanced requirements
+        self.job_responsibilities_input = QTextEdit()
+        self.job_responsibilities_input.setPlaceholderText("Main tasks and responsibilities...")
+        self.candidate_profile_input = QTextEdit()
+        self.candidate_profile_input.setPlaceholderText("Required skills, experience, and personal traits...")
+        self.company_offers_input = QTextEdit()
+        self.company_offers_input.setPlaceholderText("What the company offers (salary, perks, etc)...")
         details_layout.addRow("Company Name:", self.company_input)
         details_layout.addRow("Job Title:", self.title_input)
         details_layout.addRow("Location:", self.location_input)
         details_layout.addRow("Contact Person:", self.contact_input)
         details_layout.addRow("Requirements:", self.requirements_input)
+        details_layout.addRow("Job Responsibilities:", self.job_responsibilities_input)
+        details_layout.addRow("Candidate Profile:", self.candidate_profile_input)
+        details_layout.addRow("Company Offers:", self.company_offers_input)
         layout.addWidget(details_group)
 
         # Buttons
@@ -104,6 +122,96 @@ class JobInputDialog(QDialog):
         button_layout.addWidget(self.cancel_btn)
         layout.addLayout(button_layout)
 
+    def _on_markdown_focus_out(self, event):
+        markdown = self.markdown_edit.toPlainText().strip()
+        url = self.url_input.text().strip()
+        if not markdown:
+            return QTextEdit.focusOutEvent(self.markdown_edit, event)
+        # Notify user to wait
+        wait_dialog = QMessageBox(self)
+        wait_dialog.setWindowTitle("Auto-filling Fields")
+        wait_dialog.setText("Detecting company name, job title, location, etc. Please wait...")
+        wait_dialog.setStandardButtons(QMessageBox.NoButton)
+        wait_dialog.show()
+        QApplication.processEvents()
+        try:
+            from jobops.clients import BaseLLMBackend
+            backend = getattr(self.app_instance, 'generator', None)
+            llm_backend = getattr(backend, 'llm_backend', None)
+            if not llm_backend:
+                raise Exception("No LLM backend available for extraction.")
+            import json
+            from jobops.models import JobData
+            output_schema = {
+                "company": "",
+                "title": "",
+                "location": "",
+                "job_responsibilities": "",   # Main tasks and responsibilities
+                "candidate_profile": "",      # Required skills, experience, and personal traits
+                "company_offers": "",         # What the company offers (salary, perks, etc)
+                "requirements": "",
+                "contact_info": ""
+            }
+            prompt = f"""
+            Extract the following fields from the job posting markdown and return ONLY valid JSON matching this schema:
+
+            {json.dumps(output_schema, indent=2)}
+
+            Job posting content:
+            {markdown[:10000]}
+
+            Return only the JSON object with no additional text, formatting, or code blocks.
+            """
+            from jobops.models import JobData
+            import re
+
+            response = llm_backend.generate_response(prompt)
+            
+            # Extract JSON using regex pattern matching
+            json_pattern = r'```(?:json)?\s*({[\s\S]*?})\s*```'
+            match = re.search(json_pattern, response)
+            
+            if not match:
+                raise Exception("No valid JSON found in LLM response")
+            import json
+            json_str = match.group(1)
+            job_info_dict = json.loads(json_str)
+            # Always use the user-provided URL
+            job_info_dict['url'] = self.url_input.text().strip()
+            # Ensure all required fields are present
+            for field in ['url', 'title', 'company', 'description', 'requirements']:
+                if field not in job_info_dict or not job_info_dict[field]:
+                    job_info_dict[field] = ''
+            # Remove scraped_at if missing or not a valid datetime string
+            if 'scraped_at' in job_info_dict and not job_info_dict['scraped_at']:
+                del job_info_dict['scraped_at']
+            try:
+                job_info = JobData(**job_info_dict)
+                # Fill fields if present
+                self.company_input.setText(getattr(job_info, 'company', '') or '')
+                self.title_input.setText(getattr(job_info, 'title', '') or '')
+                self.location_input.setText(getattr(job_info, 'location', '') or '')
+                self.requirements_input.setPlainText(getattr(job_info, 'requirements', '') or '')
+                self.contact_input.setText(getattr(job_info, 'contact_info', '') or '')
+                self.job_responsibilities_input.setPlainText(getattr(job_info, 'job_responsibilities', '') or '')
+                self.candidate_profile_input.setPlainText(getattr(job_info, 'candidate_profile', '') or '')
+                self.company_offers_input.setPlainText(getattr(job_info, 'company_offers', '') or '')
+                # Set markdown to read-only and show edit button
+                self.markdown_edit.setReadOnly(True)
+                self.edit_markdown_btn.setVisible(True)
+            except Exception as e:
+                QMessageBox.warning(self, "Auto-fill Error", f"Could not auto-fill fields: {e}\nYou can fill them manually.")
+                # Do not stop the dialog, just let the user edit fields manually
+        except Exception as e:
+            QMessageBox.warning(self, "Auto-fill Error", f"Could not auto-fill fields: {e}")
+        finally:
+            wait_dialog.done(0)
+        return QTextEdit.focusOutEvent(self.markdown_edit, event)
+
+    def _enable_markdown_edit(self):
+        self.markdown_edit.setReadOnly(False)
+        self.edit_markdown_btn.setVisible(False)
+
     def generate_letter(self):
         url = self.url_input.text().strip()
         markdown = self.markdown_edit.toPlainText().strip()
@@ -112,6 +220,9 @@ class JobInputDialog(QDialog):
         location = self.location_input.text().strip()
         contact = self.contact_input.text().strip()
         requirements = self.requirements_input.toPlainText().strip()
+        job_responsibilities = self.job_responsibilities_input.toPlainText().strip()
+        candidate_profile = self.candidate_profile_input.toPlainText().strip()
+        company_offers = self.company_offers_input.toPlainText().strip()
         if not markdown:
             QMessageBox.warning(self, "Error", "Job description in markdown is required.")
             return
@@ -122,7 +233,10 @@ class JobInputDialog(QDialog):
             'title': title,
             'requirements': requirements,
             'location': location,
-            'contact_info': contact
+            'contact_info': contact,
+            'job_responsibilities': job_responsibilities,
+            'candidate_profile': candidate_profile,
+            'company_offers': company_offers
         }
         self.job_data_ready.emit(self.job_data)
         self.accept()

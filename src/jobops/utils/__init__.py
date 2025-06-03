@@ -113,12 +113,13 @@ class ConcreteLetterGenerator:
         self.llm_backend = llm_backend  # Expose for crawl4ai integration
         self._logger = logging.getLogger(self.__class__.__name__)
     
-    def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter:
+    def generate(self, job_data: JobData, resume: str, language: str = None) -> MotivationLetter:
         self._logger.info(f"Generating motivation letter in language: {language}")
         # --- DYNAMIC PROMPT GENERATION ---
         # Load applicant info from config if available
         config_path = os.path.expanduser(os.path.join('~', '.jobops', 'config.json'))
         applicant_name = applicant_phone = applicant_email = applicant_linkedin = city = ""
+        config_language = None
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = _json.load(f)
@@ -128,6 +129,7 @@ class ConcreteLetterGenerator:
             applicant_email = info.get('email', '')
             applicant_linkedin = info.get('linkedin', '')
             city = info.get('city', '')
+            config_language = config.get('app_settings', {}).get('output_language') or config.get('app_settings', {}).get('interface_language')
         except Exception as e:
             self._logger.warning(f"Could not load personal_info for prompt: {e}")
         import datetime
@@ -138,6 +140,8 @@ class ConcreteLetterGenerator:
         contact_name = getattr(job_data, 'contact_info', None) or None
         job_description = job_data.description or ""
         requirements = job_data.requirements or ""
+        # Use config language if not explicitly provided
+        used_language = language or config_language or "en"
         # Build the prompt
         user_prompt = build_motivation_letter_prompt(
             applicant_name=applicant_name,
@@ -152,7 +156,7 @@ class ConcreteLetterGenerator:
             contact_name=contact_name,
             job_description=job_description,
             requirements=requirements,
-            language=language
+            language=used_language
         )
         # System prompt can be minimal or empty, as all instructions are in user prompt
         system_prompt = ""  # Optionally, you can keep a short system prompt for LLM context
@@ -162,7 +166,7 @@ class ConcreteLetterGenerator:
                 job_data=job_data,
                 resume=resume,
                 content=content,
-                language=language
+                language=used_language
             )
         except Exception as e:
             self._logger.error(f"Error generating motivation letter: {e}")
@@ -551,6 +555,7 @@ def get_personal_info_footer():
         with open(config_path, 'r', encoding='utf-8') as f:
             config = _json.load(f)
         info = config.get('app_settings', {}).get('personal_info', {})
+        # Use only one line per info, no duplicates, and match requested order
         lines = []
         if info.get('name'):
             lines.append(info['name'])
@@ -562,8 +567,14 @@ def get_personal_info_footer():
             lines.append(info['city'])
         if info.get('linkedin'):
             lines.append(info['linkedin'])
-        # Only one line per info, no extra blank lines
-        return '\n'.join(lines)
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_lines = []
+        for line in lines:
+            if line not in seen:
+                unique_lines.append(line)
+                seen.add(line)
+        return '\n'.join(unique_lines)
     except Exception as e:
         logging.warning(f"Could not load personal_info for footer: {e}")
         return ''
