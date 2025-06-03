@@ -4,26 +4,20 @@ import json as _json
 from jobops.clients import BaseLLMBackend
 from typing import Protocol
 import re
-from fpdf import FPDF
 import os
 import base64
 import tempfile
 from pathlib import Path
-import webbrowser
-from PIL import Image
-from io import BytesIO
 from PySide6.QtWidgets import QSystemTrayIcon, QMessageBox
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QPen
 from PySide6.QtCore import QObject, QRect, Qt, Signal
 import sys
-import urllib.request
 from opentelemetry import trace
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.units import mm
-import io
 import textwrap
 import threading
 import time
@@ -116,6 +110,7 @@ Sincerely,
 class ConcreteLetterGenerator:
     def __init__(self, llm_backend: BaseLLMBackend):
         self.backend = llm_backend
+        self.llm_backend = llm_backend  # Expose for crawl4ai integration
         self._logger = logging.getLogger(self.__class__.__name__)
     
     def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter:
@@ -577,6 +572,10 @@ def clean_multiple_blank_lines(text: str) -> str:
     """Collapse multiple blank lines into a single blank line."""
     import re
     return re.sub(r'\n{3,}', '\n\n', text)
+
+def remove_think_blocks(text: str) -> str:
+    import re
+    return re.sub(r'<think>.*?</think>', '', text or '', flags=re.DOTALL)
 
 def export_letter_to_pdf(content: str, pdf_path: str):
     """Export letter content to a PDF file at the given path using ReportLab with Unicode support, A4 alignment, and user footer."""

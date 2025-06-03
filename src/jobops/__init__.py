@@ -48,142 +48,84 @@ except Exception as e:
 load_dotenv()
 
 class JobInputDialog(QDialog):
-    """Modern job input dialog"""
+    """Job input dialog: user provides URL (as a link) and markdown manually."""
     job_data_ready = Signal(dict)
     
     def __init__(self, app_instance=None):
         super().__init__()
         self.app_instance = app_instance
         self.setWindowTitle("Generate Motivation Letter")
-        self.setFixedSize(650, 500)
+        self.setFixedSize(700, 700)
         self.setWindowIcon(ResourceManager.create_app_icon())
-        
         self.job_data = None
-        self.setup_ui()
-        # Clipboard watchdog for job URLs
-        self.clipboard_watchdog = ClipboardJobUrlWatchdog(self)
-        self.clipboard_watchdog.url_detected.connect(self.on_trusted_job_url_detected)
-    
-    def setup_ui(self):
+        self._setup_ui()
+
+    def _setup_ui(self):
         layout = QVBoxLayout(self)
-        
-        # Mode selection
-        mode_group = QGroupBox("Input Method")
-        mode_layout = QHBoxLayout(mode_group)
-        
-        self.url_radio = QRadioButton("Job URL")
-        self.text_radio = QRadioButton("Job Description Text")
-        self.url_radio.setChecked(True)
-        
-        mode_layout.addWidget(self.url_radio)
-        mode_layout.addWidget(self.text_radio)
-        layout.addWidget(mode_group)
-        
-        # Input stack
-        self.input_stack = QStackedWidget()
-        
-        # URL input page
-        url_page = QWidget()
-        url_layout = QVBoxLayout(url_page)
-        url_layout.addWidget(QLabel("Job URL:"))
+
+        # URL input (just stored as a link)
+        url_layout = QHBoxLayout()
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("https://...")
+        self.url_input.setPlaceholderText("Paste job URL here (optional, for reference)...")
+        url_layout.addWidget(QLabel("Job URL:"))
         url_layout.addWidget(self.url_input)
-        self.input_stack.addWidget(url_page)
-        
-        # Text input page
-        text_page = QWidget()
-        text_layout = QVBoxLayout(text_page)
-        text_layout.addWidget(QLabel("Paste the full job description:"))
-        self.text_input = QTextEdit()
-        self.text_input.setPlaceholderText("Paste job description here...")
-        text_layout.addWidget(self.text_input)
-        self.input_stack.addWidget(text_page)
-        
-        layout.addWidget(self.input_stack)
-        
-        # Job details
-        details_group = QGroupBox("Job Details (Optional)")
+        layout.addLayout(url_layout)
+
+        # Markdown job description (user-provided)
+        layout.addWidget(QLabel("Job Description (Markdown, required):"))
+        self.markdown_edit = QTextEdit()
+        self.markdown_edit.setPlaceholderText("Paste or write the job description here in markdown format...")
+        self.markdown_edit.setMinimumHeight(300)
+        layout.addWidget(self.markdown_edit)
+
+        # Editable fields (optional, for user convenience)
+        details_group = QGroupBox("Job Details (Optional, for autofill)")
         details_layout = QFormLayout(details_group)
-        
         self.company_input = QLineEdit()
         self.title_input = QLineEdit()
         self.location_input = QLineEdit()
         self.contact_input = QLineEdit()
         self.requirements_input = QTextEdit()
-        self.requirements_input.setPlaceholderText("Paste job requirements here...")
-        
+        self.requirements_input.setPlaceholderText("Paste job requirements here or leave blank...")
         details_layout.addRow("Company Name:", self.company_input)
         details_layout.addRow("Job Title:", self.title_input)
         details_layout.addRow("Location:", self.location_input)
         details_layout.addRow("Contact Person:", self.contact_input)
         details_layout.addRow("Requirements:", self.requirements_input)
-        
         layout.addWidget(details_group)
-        
+
         # Buttons
         button_layout = QHBoxLayout()
         self.generate_btn = QPushButton("Generate Letter")
         self.cancel_btn = QPushButton("Cancel")
-        
         self.generate_btn.clicked.connect(self.generate_letter)
         self.cancel_btn.clicked.connect(self.reject)
-        
         button_layout.addWidget(self.generate_btn)
         button_layout.addWidget(self.cancel_btn)
         layout.addLayout(button_layout)
-        
-        # Connect radio buttons
-        self.url_radio.toggled.connect(self.on_mode_changed)
-        self.text_radio.toggled.connect(self.on_mode_changed)
-    
-    def on_mode_changed(self):
-        if self.url_radio.isChecked():
-            self.input_stack.setCurrentIndex(0)
-        else:
-            self.input_stack.setCurrentIndex(1)
-    
+
     def generate_letter(self):
-        if self.url_radio.isChecked():
-            url = self.url_input.text().strip()
-            if not url:
-                QMessageBox.warning(self, "Error", "Please enter a job URL.")
-                return
-            job_text = ""
-        else:
-            job_text = self.text_input.toPlainText().strip()
-            if not job_text:
-                QMessageBox.warning(self, "Error", "Please paste the job description.")
-                return
-            url = None
-        
-        # Create job data object
+        url = self.url_input.text().strip()
+        markdown = self.markdown_edit.toPlainText().strip()
+        company = self.company_input.text().strip()
+        title = self.title_input.text().strip()
+        location = self.location_input.text().strip()
+        contact = self.contact_input.text().strip()
+        requirements = self.requirements_input.toPlainText().strip()
+        if not markdown:
+            QMessageBox.warning(self, "Error", "Job description in markdown is required.")
+            return
         self.job_data = {
             'url': url,
-            'description': job_text,
-            'company': self.company_input.text().strip(),
-            'title': self.title_input.text().strip(),
-            'requirements': self.requirements_input.toPlainText().strip(),
-            'location': self.location_input.text().strip(),
-            'contact_info': self.contact_input.text().strip()
+            'description': markdown,
+            'company': company,
+            'title': title,
+            'requirements': requirements,
+            'location': location,
+            'contact_info': contact
         }
         self.job_data_ready.emit(self.job_data)
         self.accept()
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self.clipboard_watchdog.start()
-
-    def closeEvent(self, event):
-        self.clipboard_watchdog.stop()
-        if hasattr(self, 'generate_worker') and self.generate_worker.isRunning():
-            self.generate_worker.wait()
-        event.accept()
-
-    def on_trusted_job_url_detected(self, url):
-        self.url_input.setText(url)
-        self.url_radio.setChecked(True)
-        self.input_stack.setCurrentIndex(0)
 
 class UploadDialog(QDialog):
     """File upload dialog"""
