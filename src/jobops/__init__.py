@@ -687,7 +687,7 @@ class JobOpsQtApplication(QApplication):
         # ---------------------------------------------------
         
         # Output format and debug level from config
-        self.output_format = self._config.get("output_format", "pdf").lower()
+        self.output_format = self._config.get("output_format", "markdown").lower()
         self.debug = self._config.get("debug", False)
         # Language settings
         self.interface_language = self._config.get("interface_language", "en")
@@ -719,7 +719,7 @@ class JobOpsQtApplication(QApplication):
         backend = LLMBackendFactory.create(backend_type, backend_conf, tokens)
         self.generator = ConcreteLetterGenerator(backend)
         # Output format and debug level from config
-        self.output_format = app_settings.get("output_format", "pdf").lower()
+        self.output_format = app_settings.get("output_format", "markdown").lower()
         self.debug = config.get("debug", False)
         # Language settings
         self.interface_language = app_settings.get("interface_language", "en")

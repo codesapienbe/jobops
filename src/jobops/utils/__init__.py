@@ -588,6 +588,44 @@ def remove_think_blocks(text: str) -> str:
     import re
     return re.sub(r'<think>.*?</think>', '', text or '', flags=re.DOTALL)
 
+def split_paragraphs_by_sentence(paragraph, max_sentences=3):
+    """Split a paragraph into sub-paragraphs of at most max_sentences each."""
+    # Split by sentence end (naive, but works for most cases)
+    sentences = re.split(r'(?<=[.!?]) +', paragraph.strip())
+    grouped = []
+    for i in range(0, len(sentences), max_sentences):
+        group = ' '.join(sentences[i:i+max_sentences]).strip()
+        if group:
+            grouped.append(group)
+    return grouped
+
+def parse_letter_sections(content):
+    """Parse the letter into header (date/city, company info), body, and footer."""
+    # Heuristic: header is everything before the first paragraph starting with 'Dear' or 'To' or 'Subject:'
+    lines = content.strip().split('\n')
+    header_lines = []
+    body_lines = []
+    footer_lines = []
+    in_body = False
+    in_footer = False
+    for idx, line in enumerate(lines):
+        if not in_body and (re.match(r'^(Dear|To|Subject:)', line.strip(), re.I) or (line.strip().endswith(':') and len(line.strip()) < 30)):
+            in_body = True
+        if not in_body:
+            header_lines.append(line)
+        elif not in_footer:
+            body_lines.append(line)
+        else:
+            footer_lines.append(line)
+    # Try to detect footer: last block after 'Sincerely,' or similar
+    for i, line in enumerate(body_lines):
+        if re.match(r'^(Sincerely|Best regards|Kind regards|Yours truly|Yours sincerely)[,\s]*$', line.strip(), re.I):
+            # Footer starts here
+            footer_lines = body_lines[i:]
+            body_lines = body_lines[:i]
+            break
+    return header_lines, body_lines, footer_lines
+
 def export_letter_to_pdf(content: str, pdf_path: str):
     """Export letter content to a PDF file at the given path using ReportLab with Unicode support, A4 alignment, and user footer."""
     try:
@@ -606,6 +644,8 @@ def export_letter_to_pdf(content: str, pdf_path: str):
             full_content = content_stripped
         # Clean up multiple blank lines
         full_content = clean_multiple_blank_lines(full_content)
+        # Parse letter sections
+        header_lines, body_lines, footer_lines = parse_letter_sections(full_content)
         # PDF setup
         c = canvas.Canvas(pdf_path, pagesize=A4)
         width, height = A4
@@ -636,9 +676,32 @@ def export_letter_to_pdf(content: str, pdf_path: str):
                 font_registered = True
         except Exception as e:
             logging.warning(f"Could not register DejaVuSans.ttf: {e}")
+        # --- HEADER ---
+        # Try to extract date/city (usually first non-empty line)
+        header_nonempty = [l for l in header_lines if l.strip()]
+        date_city = header_nonempty[0] if header_nonempty else ''
+        company_info = '\n'.join(header_nonempty[1:]) if len(header_nonempty) > 1 else ''
+        # Draw date/city right-aligned, 80% font size
+        c.setFont(font_name, 9.6)  # 80% of 12
+        if date_city:
+            c.drawRightString(width - right_margin, y, date_city)
+            y -= 8 * mm
+        # Draw company info left-aligned, normal font size
         c.setFont(font_name, 12)
-        # Write content with wrapping
-        for paragraph in full_content.split('\n'):
+        if company_info:
+            for line in company_info.split('\n'):
+                c.drawString(left_margin, y, line)
+                y -= 7 * mm
+            # Add two blank lines for padding
+            y -= 14 * mm
+        # --- BODY ---
+        # Rebuild body paragraphs, splitting long ones
+        body_text = '\n'.join(body_lines)
+        paragraphs = [p.strip() for p in re.split(r'\n{2,}', body_text) if p.strip()]
+        split_paragraphs = []
+        for p in paragraphs:
+            split_paragraphs.extend(split_paragraphs_by_sentence(p, max_sentences=3))
+        for paragraph in split_paragraphs:
             lines = textwrap.wrap(paragraph, width=90)
             for line in lines:
                 c.drawString(left_margin, y, line)
@@ -648,6 +711,17 @@ def export_letter_to_pdf(content: str, pdf_path: str):
                     c.setFont(font_name, 12)
                     y = height - top_margin
             y -= 3 * mm  # Extra space between paragraphs
+        # --- FOOTER ---
+        # Add two blank lines for padding before footer
+        y -= 14 * mm
+        # Only render footer if present and not already in the body
+        if footer_lines:
+            for line in footer_lines:
+                if line.strip():
+                    c.drawString(left_margin, y, line.strip())
+                    y -= 7 * mm
+        # Add two blank lines after footer for padding
+        y -= 14 * mm
         c.save()
         logging.info(_json.dumps({"event": "exported_letter_pdf", "pdf_path": pdf_path, "font": font_name}))
     except Exception as e:
