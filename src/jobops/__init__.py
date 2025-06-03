@@ -318,8 +318,54 @@ class SystemTrayIcon(QSystemTrayIcon):
     def __init__(self, app_instance, parent=None):
         super().__init__(parent)
         self.app_instance = app_instance
+        self.animation_timer = None
+        self.animation_frames = self._create_animation_frames()
+        self.animation_index = 0
+        self.is_animating = False
+        self.progress_dialog = None
         self.setup_tray()
     
+    def _create_animation_frames(self):
+        """Create a list of QIcons for animation (spinner effect)"""
+        frames = []
+        base_pixmap = ResourceManager.create_app_icon().pixmap(64, 64)
+        for angle in range(0, 360, 30):
+            pixmap = QPixmap(base_pixmap.size())
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.translate(pixmap.width() / 2, pixmap.height() / 2)
+            painter.rotate(angle)
+            painter.translate(-pixmap.width() / 2, -pixmap.height() / 2)
+            painter.drawPixmap(0, 0, base_pixmap)
+            painter.end()
+            frames.append(QIcon(pixmap))
+        return frames if frames else [ResourceManager.create_app_icon()]
+
+    def start_animation(self):
+        if self.is_animating:
+            return
+        logging.info("Starting tray icon animation (generation in progress)")
+        self.is_animating = True
+        if not self.animation_timer:
+            self.animation_timer = QTimer(self)
+            self.animation_timer.timeout.connect(self._animate_icon)
+        self.animation_index = 0
+        self.animation_timer.start(100)  # 100ms per frame
+
+    def stop_animation(self):
+        if self.animation_timer:
+            self.animation_timer.stop()
+        self.setIcon(ResourceManager.create_app_icon())
+        self.is_animating = False
+        logging.info("Stopped tray icon animation (generation finished)")
+
+    def _animate_icon(self):
+        if not self.is_animating or not self.animation_frames:
+            return
+        self.setIcon(self.animation_frames[self.animation_index])
+        self.animation_index = (self.animation_index + 1) % len(self.animation_frames)
+
     def setup_tray(self):
         # Set icon
         self.setIcon(ResourceManager.create_app_icon())
@@ -361,41 +407,56 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.activated.connect(self.on_tray_activated)
     
     def upload_document(self):
-        """Show upload dialog"""
+        logging.info("User triggered: Upload Document dialog")
         dialog = UploadDialog()
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            # Process upload in background thread
+            logging.info(f"Uploading document: {dialog.file_path} as {dialog.doc_type}")
             worker = UploadWorker(self.app_instance, dialog.file_path, dialog.doc_type)
             worker.finished.connect(self.on_upload_finished)
             worker.error.connect(self.on_upload_error)
             worker.start()
     
     def generate_letter(self):
-        """Show job input dialog and generate letter"""
-        
+        logging.info("User triggered: Generate Letter dialog")
         dialog = JobInputDialog()
         if dialog.exec() == QDialog.DialogCode.Accepted:
+            logging.info(f"Starting letter generation for job data: {dialog.job_data}")
             self.generate_worker = GenerateWorker(self.app_instance, dialog.job_data)
             self.generate_worker.finished.connect(self.on_generation_finished)
             self.generate_worker.error.connect(self.on_generation_error)
+            self.start_animation()
+            # Show progress dialog
+            self.progress_dialog = QProgressDialog("Generating motivation letter...", None, 0, 0)
+            self.progress_dialog.setWindowTitle("JobOps")
+            self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+            self.progress_dialog.setCancelButton(None)
+            self.progress_dialog.setMinimumDuration(0)
+            self.progress_dialog.show()
+            # Show notification
+            self.showMessage(
+                "JobOps",
+                "Generating your motivation letter...",
+                QSystemTrayIcon.MessageIcon.Information,
+                2000
+            )
             self.generate_worker.start()
     
     def download_letters(self):
-        """Show download dialog"""
+        logging.info("User triggered: Download Letters dialog")
         # Implementation for downloading letters
         QMessageBox.information(None, "Download", "Download functionality will be implemented here.")
     
     def show_settings(self):
-        """Show settings dialog"""
+        logging.info("User triggered: Settings dialog")
         # Implementation for settings
         QMessageBox.information(None, "Settings", "Settings dialog will be implemented here.")
     
     def show_help(self):
-        """Open help/documentation"""
+        logging.info("User triggered: Help/documentation")
         webbrowser.open("https://github.com/codesapienbe/jobops-toolbar")
     
     def quit_application(self):
-        """Quit the application"""
+        logging.info("User triggered: Quit application")
         reply = QMessageBox.question(
             None, 
             "Exit JobOps", 
@@ -408,28 +469,39 @@ class SystemTrayIcon(QSystemTrayIcon):
             QApplication.quit()
     
     def on_upload_finished(self, message):
-        """Handle upload completion"""
+        logging.info(f"Upload finished: {message}")
         self.showMessage("JobOps", message, QSystemTrayIcon.MessageIcon.Information, 3000)
     
     def on_upload_error(self, error):
-        """Handle upload error"""
+        logging.error(f"Upload error: {error}")
         self.showMessage("JobOps Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
     
     def on_generation_finished(self, message):
-        """Handle generation completion"""
-        self.showMessage("JobOps", message, QSystemTrayIcon.MessageIcon.Information, 3000)
+        logging.info("Letter generation finished successfully.")
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        self.showMessage("JobOps", "Motivation letter generated successfully!", QSystemTrayIcon.MessageIcon.Information, 3000)
+        # Optionally, show the letter in a dialog or save to file
+        QMessageBox.information(None, "Letter Generated", message)
     
     def on_generation_error(self, error):
-        """Handle generation error"""
+        logging.error(f"Letter generation error: {error}")
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
         self.showMessage("JobOps Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
+        QMessageBox.critical(None, "Generation Error", error)
     
     def on_message_clicked(self):
-        """Handle tray message click"""
+        logging.info("Tray message clicked.")
         pass
     
     def on_tray_activated(self, reason):
-        """Handle tray icon activation"""
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            logging.info("Tray icon double-clicked: opening generate letter dialog.")
             self.generate_letter()
 
 class UploadWorker(QThread):
@@ -463,15 +535,18 @@ class GenerateWorker(QThread):
     
     def run(self):
         try:
+            logging.info("GenerateWorker started.")
             # Ensure repository and generator are available
             repository = getattr(self.app_instance, 'repository', None)
             generator = getattr(self.app_instance, 'generator', None)
             if repository is None or generator is None:
+                logging.error("Application is missing repository or generator.")
                 raise Exception("Application is missing repository or generator.")
 
             # Get the latest resume (now markdown string)
             resume = repository.get_latest_resume()
             if resume is None:
+                logging.error("No resume found. Please upload your resume first.")
                 raise Exception("No resume found. Please upload your resume first.")
 
             # Convert job_data dict to JobData model if needed
@@ -481,11 +556,14 @@ class GenerateWorker(QThread):
             else:
                 job_data_obj = self.job_data
 
+            logging.info(f"Generating letter for job: {job_data_obj}")
             # Generate the motivation letter (resume is markdown string)
             letter = generator.generate(job_data_obj, resume)
             result = letter.content
+            logging.info("Letter generation completed.")
             self.finished.emit(result)
         except Exception as e:
+            logging.error(f"Exception in GenerateWorker: {e}")
             self.error.emit(str(e))
 
 class JobOpsQtApplication(QApplication):
