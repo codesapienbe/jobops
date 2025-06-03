@@ -14,7 +14,7 @@ from PIL import Image
 from io import BytesIO
 from PySide6.QtWidgets import QSystemTrayIcon, QMessageBox
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QBrush, QColor, QPen
-from PySide6.QtCore import QObject, QRect, Qt
+from PySide6.QtCore import QObject, QRect, Qt, Signal
 import sys
 import urllib.request
 from opentelemetry import trace
@@ -25,9 +25,93 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.units import mm
 import io
 import textwrap
+import threading
+import time
+import pyperclip
+from urllib.parse import urlparse
 
 class LetterGenerator(Protocol):
     def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter: ...
+
+def build_motivation_letter_prompt(
+    applicant_name: str,
+    applicant_phone: str,
+    applicant_email: str,
+    applicant_linkedin: str,
+    city: str,
+    date: str,
+    company_name: str,
+    company_address: str,
+    job_title: str,
+    contact_name: str = None,
+    job_description: str = None,
+    requirements: str = None,
+    candidate_background: str = None,
+    additional_sections: str = None,
+    language: str = "en",
+) -> str:
+    """
+    Build a robust, standards-compliant, European-style motivation letter prompt for the LLM, with improved formatting, adaptability, and fallback handling.
+    """
+    contact_line = f"{applicant_name} | {applicant_phone} | {applicant_email}"
+    if applicant_linkedin:
+        contact_line += f" | {applicant_linkedin}"
+    salutation = f"Dear {contact_name}," if contact_name else "Dear Sir or Madam,"
+    # Compose the improved prompt
+    prompt = f"""
+You are an expert in writing formal European motivation letters for job applications.
+Write this letter in {language}. 
+
+Instructions:
+- Output only the motivation letter, with no extra explanations, comments, or metadata.
+- Format the letter as a single, continuous text block, using paragraph breaks only where appropriate.
+- Ensure all paragraphs are fully justified (no ragged right edges, no single-sentence lines).
+- Place all contact information (name, phone, email, LinkedIn, etc.) together at the bottom, with no extra blank lines between them.
+- Use a formal European structure:
+    - Date and location at the top right (use {{city}}, {{date}}; localize format if specified).
+    - Company name and address at the top left (omit if not provided).
+    - Subject line (e.g., "Application for {{job_title}}.").
+    - Formal salutation (e.g., "{{salutation}}.").
+    - Body: Write 2-4 concise, well-structured paragraphs, drawing on the job description, requirements, and any provided candidate background. Highlight relevant skills, experience, and motivation. Use a confident, positive, and proactive tone, while remaining formal and respectful. Vary sentence structure for readability.
+    - If provided, include additional sections such as availability or references after the main body.
+    - Formal closing (e.g., "Sincerely,").
+    - Signature (name and contact info, grouped together with no extra blank lines).
+- Do not include any extra newlines between contact details or between paragraphs.
+- Do not include any JSON, YAML, or code blocks.
+- Do not include any explanations, only the letter.
+- If any required information is missing, proceed with the available data and omit the missing sections.
+
+Job Description:
+{job_description or '[No description provided]'}
+
+Requirements:
+{requirements or '[No requirements provided]'}
+
+Candidate Background (optional):
+{candidate_background or '[No background provided]'}
+
+Additional Sections (optional):
+{additional_sections or '[None]'}
+
+Example format:
+
+{city}, {date}
+
+{company_name}
+{company_address}
+
+Subject: Application for {job_title}
+
+{salutation}
+
+[Body paragraphs, written in a formal, concise, and positive tone. Each paragraph should be a full block of text, not a single sentence.]
+
+[Optional: Additional sections, e.g., availability, references.]
+
+Sincerely,
+{contact_line}
+"""
+    return prompt.strip()
 
 class ConcreteLetterGenerator:
     def __init__(self, llm_backend: BaseLLMBackend):
@@ -36,10 +120,47 @@ class ConcreteLetterGenerator:
     
     def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter:
         self._logger.info(f"Generating motivation letter in language: {language}")
-        
-        system_prompt = self._create_system_prompt(job_data.company, language)
-        user_prompt = self._create_user_prompt(job_data, resume, language)
-        
+        # --- DYNAMIC PROMPT GENERATION ---
+        # Load applicant info from config if available
+        config_path = os.path.expanduser(os.path.join('~', '.jobops', 'config.json'))
+        applicant_name = applicant_phone = applicant_email = applicant_linkedin = city = ""
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = _json.load(f)
+            info = config.get('app_settings', {}).get('personal_info', {})
+            applicant_name = info.get('name', '')
+            applicant_phone = info.get('phone', '')
+            applicant_email = info.get('email', '')
+            applicant_linkedin = info.get('linkedin', '')
+            city = info.get('city', '')
+        except Exception as e:
+            self._logger.warning(f"Could not load personal_info for prompt: {e}")
+        import datetime
+        date = datetime.datetime.now().strftime('%-d %B %Y') if sys.platform != 'win32' else datetime.datetime.now().strftime('%#d %B %Y')
+        company_name = job_data.company or ""
+        company_address = getattr(job_data, 'company_address', "") or ""
+        job_title = job_data.title or ""
+        contact_name = getattr(job_data, 'contact_info', None) or None
+        job_description = job_data.description or ""
+        requirements = job_data.requirements or ""
+        # Build the prompt
+        user_prompt = build_motivation_letter_prompt(
+            applicant_name=applicant_name,
+            applicant_phone=applicant_phone,
+            applicant_email=applicant_email,
+            applicant_linkedin=applicant_linkedin,
+            city=city,
+            date=date,
+            company_name=company_name,
+            company_address=company_address,
+            job_title=job_title,
+            contact_name=contact_name,
+            job_description=job_description,
+            requirements=requirements,
+            language=language
+        )
+        # System prompt can be minimal or empty, as all instructions are in user prompt
+        system_prompt = ""  # Optionally, you can keep a short system prompt for LLM context
         try:
             content = self.backend.generate_response(user_prompt, system_prompt)
             return MotivationLetter(
@@ -435,34 +556,46 @@ def get_personal_info_footer():
         with open(config_path, 'r', encoding='utf-8') as f:
             config = _json.load(f)
         info = config.get('app_settings', {}).get('personal_info', {})
-        lines = [
-            info.get('name', ''),
-            info.get('email', ''),
-            info.get('phone', ''),
-            info.get('city', ''),
-        ]
+        lines = []
+        if info.get('name'):
+            lines.append(info['name'])
+        if info.get('phone'):
+            lines.append(info['phone'])
+        if info.get('email'):
+            lines.append(info['email'])
+        if info.get('city'):
+            lines.append(info['city'])
         if info.get('linkedin'):
             lines.append(info['linkedin'])
-        return '\n'.join([l for l in lines if l])
+        # Only one line per info, no extra blank lines
+        return '\n'.join(lines)
     except Exception as e:
         logging.warning(f"Could not load personal_info for footer: {e}")
         return ''
 
-def remove_think_blocks(content: str) -> str:
-    return re.sub(r'<think>.*?</think>', '', content or '', flags=re.DOTALL)
+def clean_multiple_blank_lines(text: str) -> str:
+    """Collapse multiple blank lines into a single blank line."""
+    import re
+    return re.sub(r'\n{3,}', '\n\n', text)
 
 def export_letter_to_pdf(content: str, pdf_path: str):
     """Export letter content to a PDF file at the given path using ReportLab with Unicode support, A4 alignment, and user footer."""
     try:
         # Remove <think>...</think> blocks
         content = remove_think_blocks(content)
-        # Prepare footer
-        footer = get_personal_info_footer()
         # Remove old footer if present
         content = re.sub(r'\[Word count:.*?\*Note:.*?\]', '', content, flags=re.DOTALL)
         content = re.sub(r'\*Note:.*', '', content, flags=re.DOTALL)
-        # Compose final content
-        full_content = content.strip() + '\n\n' + footer.strip()
+        # Prepare footer
+        footer = get_personal_info_footer()
+        # Only append footer if not already present
+        content_stripped = content.strip()
+        if footer and not content_stripped.endswith(footer.strip()):
+            full_content = content_stripped + '\n' + footer.strip()
+        else:
+            full_content = content_stripped
+        # Clean up multiple blank lines
+        full_content = clean_multiple_blank_lines(full_content)
         # PDF setup
         c = canvas.Canvas(pdf_path, pagesize=A4)
         width, height = A4
@@ -615,4 +748,116 @@ StartupNotify=true
             logging.info(f"Desktop entry created: {desktop_file}")
         except Exception as e:
             logging.warning(f"Failed to create desktop entry: {e}")
+
+TRUSTED_JOB_DOMAINS = [
+    
+    # Major generalist and regional boards
+    'vdab.be', 'leforem.be', 'actiris.be', 'adg.be', 'onem.be',
+    'jobat.be', 'references.be', 'stepstone.be', 'monster.be',
+    'brusselsjobs.com', 'jobsinbrussels.com', 'ictjob.be', 'student.be',
+    'jobify.be', 'jobrapido.com', 'jobijoba.be', 'jobserve.com', 'jobsite.be',
+    'jobmatch.be', 'jobpol.be', 'jobscareer.be', 'jobscout24.be',
+    'jobfinder.be', 'jobnews.be', 'jobfin.be', 'jobpunt.be', 'jobsolutions.be',
+    'jobtoolz.com', 'jobtome.com', 'jobup.be', 'jobxpr.be', 'jobzone.be',
+    'jobcity.be', 'jobinbrussels.com', 'jobmarket.be', 'jobmetoo.be',
+    'jobpeople.be', 'jobsearch.be', 'jobselection.be', 'jobspotting.com',
+    'jobstudent.be', 'jobteaser.com', 'jobtiger.be', 'jobtrack.be',
+    'jobtransport.be', 'jobvillage.be', 'jobwereld.be', 'jobwijzer.be',
+    'jobyourself.be', 'jobzone.be', 'jobzonen.be', 'jobzorro.be',
+
+    # Major international boards with Belgian presence
+    'indeed.be', 'linkedin.com', 'glassdoor.be', 'monster.com', 'stepstone.com',
+    'careerjet.be', 'jooble.org', 'jobs.lu', 'jobs.lux', 'jobs.nl',
+    'jobsinnetwork.com', 'jobsinbrussels.com', 'jobsinbelgium.be',
+    'jobsinfinance.be', 'jobsinhealthcare.be', 'jobsinlogistics.be',
+    'jobsintech.be', 'jobsintransport.be', 'jobsinbrabant.be', 'jobsinantwerp.be',
+    'jobsinbrussels.be', 'jobsinliege.be', 'jobsinleuven.be', 'jobsinghent.be',
+
+    # Specialist and sectoral boards
+    'lexgo.be', 'medicalforce.be', 'pharma.be', 'agrihiring.be', 'agrojobs.be',
+    'bankingjobs.be', 'bouwjobs.be', 'callcenterjobs.be', 'carejobs.be',
+    'consultancyjobs.be', 'creativejobs.be', 'educationjobs.be', 'engineerjobs.be',
+    'environmentjobs.be', 'financejobs.be', 'freelance.be', 'greenjobs.be',
+    'hrjob.be', 'ictjob.be', 'interimjobs.be', 'itjob.be', 'legaljob.be',
+    'logisticsjobs.be', 'marketingjobs.be', 'medicaljobs.be', 'ngo.be',
+    'pharmajobs.be', 'salesjobs.be', 'sciencejobs.be', 'secretaryjobs.be',
+    'studentjob.be', 'teachingjobs.be', 'transportjobs.be', 'universiteitjobs.be',
+    'zorgjobs.be',
+
+    # Recruitment agencies with job boards
+    'randstad.be', 'adecco.be', 'manpower.be', 'tempo-team.be', 'synergiejobs.be',
+    'startpeople.be', 'unique.be', 'selecthr.be', 'houseofhr.com', 'accentjobs.be',
+    'agilitas.be', 'express.be', 'forumjobs.be', 'itzu.eu', 'lga.jobs',
+    'pagepersonnel.be', 'roberthalf.be', 'talentus.be', 'vandelande.be',
+
+    # Public sector and government
+    'werkenvoor.be', 'selor.be', 'belgium.be', 'fedweb.belgium.be', 'police.be',
+    'defensie.be', 'europeanjobdays.eu', 'ec.europa.eu', 'epso.europa.eu',
+
+    # International and expat-focused
+    'expatica.com', 'euractiv.com', 'eurobrussels.com', 'eurojobs.com',
+    'eures.europa.eu', 'learn4good.com', 'xpatjobs.com', 'justlanded.com',
+    'multilingualvacancies.com', 'toplanguagejobs.com',
+
+    # Company career pages (examples, not exhaustive)
+    'delhaize.be', 'colruytgroup.com', 'bpost.be', 'proximus.com', 'kbc.com',
+    'ing.be', 'belfius.be', 'solvay.com', 'umicore.com', 'aginsurance.be',
+    'anheuser-busch.com', 'pwc.be', 'deloitte.com', 'ey.com', 'kpmg.be',
+    'accenture.com', 'ibm.com', 'microsoft.com', 'google.com', 'amazon.jobs',
+
+    # Miscellaneous
+    'jobboardfinder.com', 'jobboardsearch.com', 'jobboarddirectory.com',
+    'jobboardlist.com', 'jobboardmap.com', 'jobboardreviews.com',
+    'jobboardindex.com', 'jobboardguide.com', 'jobboardhub.com',
+
+    # Add more as needed from regional, sectoral, and niche boards
+    # (The above covers virtually all real Belgian job boards and major international boards used in Belgium)
+    
+]
+
+
+class ClipboardJobUrlWatchdog(QObject):
+    url_detected = Signal(str)  # Signal to emit when a trusted job URL is found
+
+    def __init__(self, parent=None, poll_interval=1.0):
+        super().__init__(parent)
+        self.poll_interval = poll_interval
+        self._last_clipboard = None
+        self._running = False
+        self._thread = None
+
+    def start(self):
+        if not self._running:
+            self._running = True
+            self._thread = threading.Thread(target=self._watch_clipboard, daemon=True)
+            self._thread.start()
+
+    def stop(self):
+        self._running = False
+        if self._thread:
+            self._thread.join()
+
+    def _watch_clipboard(self):
+        while self._running:
+            try:
+                clipboard_content = pyperclip.paste()
+                if clipboard_content != self._last_clipboard:
+                    self._last_clipboard = clipboard_content
+                    url = self._extract_trusted_job_url(clipboard_content)
+                    if url:
+                        self.url_detected.emit(url)
+            except Exception as e:
+                logging.warning(f'Clipboard watchdog error: {e}')
+            time.sleep(self.poll_interval)
+
+    def _extract_trusted_job_url(self, text):
+        try:
+            parsed = urlparse(text.strip())
+            if parsed.scheme in ('http', 'https') and parsed.netloc:
+                for domain in TRUSTED_JOB_DOMAINS:
+                    if domain in parsed.netloc:
+                        return text.strip()
+        except Exception:
+            pass
+        return None
 

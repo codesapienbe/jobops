@@ -10,7 +10,7 @@ from io import BytesIO
 from PySide6.QtCore import Signal
 import json
 from fpdf import FPDF
-from jobops.utils import export_letter_to_pdf, extract_reasoning_analysis, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry
+from jobops.utils import export_letter_to_pdf, extract_reasoning_analysis, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, ClipboardJobUrlWatchdog
 
 # Qt imports
 try:
@@ -59,6 +59,9 @@ class JobInputDialog(QDialog):
         
         self.job_data = None
         self.setup_ui()
+        # Clipboard watchdog for job URLs
+        self.clipboard_watchdog = ClipboardJobUrlWatchdog(self)
+        self.clipboard_watchdog.url_detected.connect(self.on_trusted_job_url_detected)
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -166,10 +169,20 @@ class JobInputDialog(QDialog):
         self.job_data_ready.emit(self.job_data)
         self.accept()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.clipboard_watchdog.start()
+
     def closeEvent(self, event):
+        self.clipboard_watchdog.stop()
         if hasattr(self, 'generate_worker') and self.generate_worker.isRunning():
             self.generate_worker.wait()
         event.accept()
+
+    def on_trusted_job_url_detected(self, url):
+        self.url_input.setText(url)
+        self.url_radio.setChecked(True)
+        self.input_stack.setCurrentIndex(0)
 
 class UploadDialog(QDialog):
     """File upload dialog"""
