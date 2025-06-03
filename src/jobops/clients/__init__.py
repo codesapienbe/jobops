@@ -30,7 +30,7 @@ class BaseLLMBackend(Protocol):
     def health_check(self) -> bool: pass
 
 class OllamaBackend(BaseLLMBackend):
-    def __init__(self, model: str = "qwen3:8b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "llama3:8b", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
         ollama.base_url = base_url
@@ -59,7 +59,7 @@ class OllamaBackend(BaseLLMBackend):
             return False
 
 class OpenAIBackend(BaseLLMBackend):
-    def __init__(self, api_key: str, model: str = "gpt-4-turbo-preview", base_url: str = "https://api.openai.com/v1"):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", base_url: str = "https://api.openai.com/v1"):
         if not api_key:
             raise ValueError("OpenAI API key required")
         from openai import OpenAI
@@ -96,7 +96,7 @@ class OpenAIBackend(BaseLLMBackend):
             return False
 
 class GroqBackend(BaseLLMBackend):
-    def __init__(self, api_key: str, model: str = "qwen3:8b", base_url: str = "https://api.groq.com/openai/v1"):
+    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile", base_url: str = "https://api.groq.com/openai/v1"):
         if not api_key:
             raise ValueError("Groq API key required")
         from groq import Groq
@@ -228,37 +228,42 @@ class PerplexityBackend(BaseLLMBackend):
 class LLMBackendFactory:
     @staticmethod
     def create(backend_type: str, settings: Dict[str, Any], tokens: Dict[str, str]) -> BaseLLMBackend:
-        # Force model for all backends
-        forced_model = 'llama3:8b'
+        ollama_model = 'llama3:8b'
+        groq_model = 'llama-3.3-70b-versatile'
+        openai_model = 'gpt-4o-mini'
+        gemini_model = 'gemini-1.5-pro'
+        perplexity_model = 'pplx-7b-online'
+        xgrok_model = 'grok-1'
+        
         if backend_type == "ollama":
             return OllamaBackend(
-                model=forced_model,
+                model=ollama_model,
                 base_url=settings.get('base_url', 'http://localhost:11434')
             )
         elif backend_type == "openai":
             return OpenAIBackend(
                 api_key=tokens.get('openai', ''),
-                model=forced_model
+                model=openai_model
             )
         elif backend_type == "groq":
             return GroqBackend(
                 api_key=tokens.get('groq', ''),
-                model=forced_model
+                model=groq_model
             )
         elif backend_type == "gemini":
             return GoogleGeminiBackend(
                 api_key=tokens.get('gemini', ''),
-                model=forced_model
+                model=gemini_model
             )
         elif backend_type == "xgrok":
             return XGrokBackend(
                 api_key=tokens.get('xgrok', ''),
-                model=forced_model
+                model=xgrok_model
             )
         elif backend_type == "perplexity":
             return PerplexityBackend(
                 api_key=tokens.get('perplexity', ''),
-                model=forced_model
+                model=perplexity_model
             )
         else:
             raise ValueError(f"Unsupported backend type: {backend_type}")

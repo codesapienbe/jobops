@@ -7,7 +7,7 @@ from pathlib import Path
 import webbrowser
 from PIL import Image
 from io import BytesIO
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
 from fpdf import FPDF
 from jobops.utils import export_letter_to_pdf, extract_reasoning_analysis, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, ClipboardJobUrlWatchdog
@@ -626,34 +626,62 @@ class JobOpsQtApplication(QApplication):
         self.repository = SQLiteDocumentRepository(db_path)
 
         # Load config.json
-        config_path = self.base_dir / "config.json"
-        if config_path.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
+        self.config_path = self.base_dir / "config.json"
+        self._init_config_and_generator()
+        # ---------------------------------------------------
+        
+        # Output format and debug level from config
+        self.output_format = self._config.get("output_format", "pdf").lower()
+        self.debug = self._config.get("debug", False)
+        # Language settings
+        self.interface_language = self._config.get("interface_language", "en")
+        self.output_language = self._config.get("output_language", "en")
+        self.setup_logging()
+        self.notification_service = NotificationService()
+        self.system_tray = None
+        
+        self.setup_system_tray()
+        # Add config.json watcher
+        self.config_watcher = QFileSystemWatcher([str(self.config_path)])
+        self.config_watcher.fileChanged.connect(self.on_config_changed)
+    
+    def _init_config_and_generator(self):
+        """Load config and initialize generator and settings."""
+        if self.config_path.exists():
+            with open(self.config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
         else:
             config = {}
+        self._config = config
         backend_type = config.get("backend", "ollama")
         backend_settings = config.get("backend_settings", {})
         app_settings = config.get("app_settings", {})
         tokens = app_settings.get("tokens", {})
         backend_conf = backend_settings.get(backend_type, {})
-        # Use LLMBackendFactory to create the backend
+        from jobops.utils import ConcreteLetterGenerator
+        from jobops.clients import LLMBackendFactory
         backend = LLMBackendFactory.create(backend_type, backend_conf, tokens)
         self.generator = ConcreteLetterGenerator(backend)
-        # ---------------------------------------------------
-        
         # Output format and debug level from config
         self.output_format = app_settings.get("output_format", "pdf").lower()
         self.debug = config.get("debug", False)
         # Language settings
         self.interface_language = app_settings.get("interface_language", "en")
         self.output_language = app_settings.get("output_language", "en")
-        self.setup_logging()
-        self.notification_service = NotificationService()
-        self.system_tray = None
-        
-        self.setup_system_tray()
-    
+
+    def on_config_changed(self, path):
+        # QFileSystemWatcher sometimes emits multiple times, so reload defensively
+        try:
+            self._init_config_and_generator()
+            self.setup_logging()
+            self.notification_service.show_notification(
+                "JobOps Config Reloaded",
+                "Settings have been reloaded from config.json."
+            )
+            logging.info("Config reloaded from config.json")
+        except Exception as e:
+            logging.error(f"Failed to reload config: {e}")
+
     def setup_logging(self):
         """Setup application logging"""
         log_file = self.base_dir / 'app.log'
