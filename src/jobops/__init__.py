@@ -7,6 +7,10 @@ from pathlib import Path
 import webbrowser
 from PIL import Image
 from io import BytesIO
+from PySide6.QtCore import Signal
+import json
+from fpdf import FPDF
+from jobops.utils import export_letter_to_pdf, extract_reasoning_analysis, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry
 
 # Qt imports
 try:
@@ -25,8 +29,9 @@ except ImportError:
         print("Neither PySide6 nor PyQt6 is installed. Please install one of them.")
         sys.exit(1)
 
-# Other imports (install these via pip if not available)
+
 from dotenv import load_dotenv
+from jobops.models import DocumentType, Document
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
@@ -42,80 +47,9 @@ except Exception as e:
 
 load_dotenv()
 
-class ResourceManager:
-    """Manages embedded and temporary resources"""
-    
-    @staticmethod
-    def create_app_icon():
-        """Create application icon from embedded data or generate programmatically"""
-        try:
-            # Try to decode embedded icon
-            icon_data = base64.b64decode(EMBEDDED_ICON_DATA)
-            pixmap = QPixmap()
-            pixmap.loadFromData(icon_data)
-            if not pixmap.isNull():
-                return QIcon(pixmap)
-        except Exception:
-            pass
-        
-        # Fallback: create icon programmatically
-        pixmap = QPixmap(64, 64)
-        pixmap.fill(QColor(70, 130, 180))
-        
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Draw background circle
-        painter.setBrush(QBrush(QColor(255, 255, 255)))
-        painter.setPen(QPen(QColor(70, 130, 180), 2))
-        painter.drawEllipse(8, 8, 48, 48)
-        
-        # Draw "J" letter
-        painter.setPen(QPen(QColor(70, 130, 180), 3))
-        font = painter.font()
-        font.setPointSize(24)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(QRect(8, 8, 48, 48), Qt.AlignmentFlag.AlignCenter, "J")
-        
-        painter.end()
-        return QIcon(pixmap)
-    
-    @staticmethod
-    def get_temp_dir():
-        """Get or create temporary directory for the application"""
-        temp_dir = Path(tempfile.gettempdir()) / "jobops_qt"
-        temp_dir.mkdir(exist_ok=True)
-        return temp_dir
-
-class NotificationService(QObject):
-    """Cross-platform notification service using Qt"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.system_tray = None
-    
-    def set_system_tray(self, tray_icon):
-        self.system_tray = tray_icon
-    
-    def notify(self, title: str, message: str) -> None:
-        """Show notification using system tray or fallback"""
-        try:
-            if self.system_tray and QSystemTrayIcon.isSystemTrayAvailable():
-                self.system_tray.showMessage(
-                    title, 
-                    message, 
-                    QSystemTrayIcon.MessageIcon.Information, 
-                    3000
-                )
-            else:
-                # Fallback to message box if system tray not available
-                QMessageBox.information(None, title, message)
-        except Exception as e:
-            logging.warning(f"Notification failed: {e}")
-
 class JobInputDialog(QDialog):
     """Modern job input dialog"""
+    job_data_ready = Signal(dict)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -229,7 +163,7 @@ class JobInputDialog(QDialog):
             'location': self.location_input.text().strip(),
             'contact_info': self.contact_input.text().strip()
         }
-        
+        self.job_data_ready.emit(self.job_data)
         self.accept()
 
     def closeEvent(self, event):
@@ -239,6 +173,7 @@ class JobInputDialog(QDialog):
 
 class UploadDialog(QDialog):
     """File upload dialog"""
+    upload_data_ready = Signal(str, str)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -310,6 +245,7 @@ class UploadDialog(QDialog):
         
         self.file_path = file_path
         self.doc_type = "RESUME" if self.resume_radio.isChecked() else "CERTIFICATION"
+        self.upload_data_ready.emit(self.file_path, self.doc_type)
         self.accept()
 
 class SystemTrayIcon(QSystemTrayIcon):
@@ -409,40 +345,78 @@ class SystemTrayIcon(QSystemTrayIcon):
     def upload_document(self):
         logging.info("User triggered: Upload Document dialog")
         dialog = UploadDialog()
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            logging.info(f"Uploading document: {dialog.file_path} as {dialog.doc_type}")
-            worker = UploadWorker(self.app_instance, dialog.file_path, dialog.doc_type)
-            worker.finished.connect(self.on_upload_finished)
-            worker.error.connect(self.on_upload_error)
-            worker.start()
+        dialog.upload_data_ready.connect(self._start_upload_worker)
+        dialog.exec()
+    
+    def _start_upload_worker(self, file_path, doc_type):
+        logging.info(f"Uploading document: {file_path} as {doc_type}")
+        worker = UploadWorker(self.app_instance, file_path, doc_type)
+        worker.finished.connect(self.on_upload_finished)
+        worker.error.connect(self.on_upload_error)
+        worker.start()
     
     def generate_letter(self):
         logging.info("User triggered: Generate Letter dialog")
         dialog = JobInputDialog()
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            logging.info(f"Starting letter generation for job data: {dialog.job_data}")
-            self.generate_worker = GenerateWorker(self.app_instance, dialog.job_data)
-            self.generate_worker.finished.connect(self.on_generation_finished)
-            self.generate_worker.error.connect(self.on_generation_error)
-            self.start_animation()
-            # Show progress dialog
-            self.progress_dialog = QProgressDialog("Generating motivation letter...", None, 0, 0)
-            self.progress_dialog.setWindowTitle("JobOps")
-            self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-            self.progress_dialog.setCancelButton(None)
-            self.progress_dialog.setMinimumDuration(0)
-            self.progress_dialog.show()
-            # Show notification
-            self.showMessage(
-                "JobOps",
-                "Generating your motivation letter...",
-                QSystemTrayIcon.MessageIcon.Information,
-                2000
-            )
-            self.generate_worker.start()
+        dialog.job_data_ready.connect(self._start_generate_worker)
+        dialog.exec()
+    
+    def _start_generate_worker(self, job_data):
+        logging.info(f"Starting letter generation for job data: {job_data}")
+        self.generate_worker = GenerateWorker(self.app_instance, job_data)
+        self.generate_worker.finished.connect(self.on_generation_finished)
+        self.generate_worker.error.connect(self.on_generation_error)
+        self.start_animation()
+        # Show progress dialog
+        self.progress_dialog = QProgressDialog("Generating motivation letter...", None, 0, 0)
+        self.progress_dialog.setWindowTitle("JobOps")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.show()
+        # Show notification
+        self.showMessage(
+            "JobOps",
+            "Generating your motivation letter...",
+            QSystemTrayIcon.MessageIcon.Information,
+            2000
+        )
+        self.generate_worker.start()
     
     def download_letters(self):
         logging.info("User triggered: Download Letters dialog")
+        # Fetch all motivation letters (stored as COVER_LETTER)
+        try:
+            letters = self.app_instance.repository.get_by_type(DocumentType.COVER_LETTER)
+            if not letters:
+                QMessageBox.information(None, "Download", "No motivation letters found.")
+                return
+            # Ask user for directory
+            dir_path = QFileDialog.getExistingDirectory(None, "Select Download Directory")
+            if not dir_path:
+                return
+            count = 0
+            for doc in letters:
+                # Try to extract job title and date for filename
+                job_title = "letter"
+                job_data = None
+                if hasattr(doc, 'job_data_json') and doc.job_data_json:
+                    import json
+                    try:
+                        job_data = json.loads(doc.job_data_json)
+                        if 'title' in job_data and job_data['title']:
+                            job_title = job_data['title'].replace(' ', '_')
+                    except Exception:
+                        pass
+                date_str = doc.uploaded_at.strftime('%Y%m%d_%H%M%S') if hasattr(doc, 'uploaded_at') else str(count)
+                filename = f"{job_title}_{date_str}.md"
+                filepath = os.path.join(dir_path, filename)
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(doc.structured_content or doc.raw_content or "")
+                count += 1
+            QMessageBox.information(None, "Download", f"Exported {count} motivation letters to {dir_path}")
+        except Exception as e:
+            logging.error(f"Error exporting motivation letters: {e}")
         # Implementation for downloading letters
         QMessageBox.information(None, "Download", "Download functionality will be implemented here.")
     
@@ -482,9 +456,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
-        self.showMessage("JobOps", "Motivation letter generated successfully!", QSystemTrayIcon.MessageIcon.Information, 3000)
-        # Optionally, show the letter in a dialog or save to file
-        QMessageBox.information(None, "Letter Generated", message)
+        # Show tray notification
+        self.showMessage("JobOps", message, QSystemTrayIcon.MessageIcon.Information, 5000)
+        logging.info(f"Tray notification shown: {message}")
+        # Fallback: use NotificationService if available
+        if hasattr(self.app_instance, 'notification_service') and self.app_instance.notification_service:
+            self.app_instance.notification_service.notify("JobOps", message)
+            logging.info("Fallback notification service used.")
+        # No dialog with letter content
     
     def on_generation_error(self, error):
         logging.error(f"Letter generation error: {error}")
@@ -492,7 +471,14 @@ class SystemTrayIcon(QSystemTrayIcon):
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
+        # Show tray notification
         self.showMessage("JobOps Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
+        logging.info(f"Tray error notification shown: {error}")
+        # Fallback: use NotificationService if available
+        if hasattr(self.app_instance, 'notification_service') and self.app_instance.notification_service:
+            self.app_instance.notification_service.notify("JobOps Error", error)
+            logging.info("Fallback notification service used.")
+        # Also show error dialog
         QMessageBox.critical(None, "Generation Error", error)
     
     def on_message_clicked(self):
@@ -536,32 +522,55 @@ class GenerateWorker(QThread):
     def run(self):
         try:
             logging.info("GenerateWorker started.")
-            # Ensure repository and generator are available
             repository = getattr(self.app_instance, 'repository', None)
             generator = getattr(self.app_instance, 'generator', None)
             if repository is None or generator is None:
                 logging.error("Application is missing repository or generator.")
                 raise Exception("Application is missing repository or generator.")
 
-            # Get the latest resume (now markdown string)
             resume = repository.get_latest_resume()
             if resume is None:
                 logging.error("No resume found. Please upload your resume first.")
                 raise Exception("No resume found. Please upload your resume first.")
 
-            # Convert job_data dict to JobData model if needed
             from jobops.models import JobData
+            import json as _json
             if not isinstance(self.job_data, JobData):
                 job_data_obj = JobData(**self.job_data)
             else:
                 job_data_obj = self.job_data
 
             logging.info(f"Generating letter for job: {job_data_obj}")
-            # Generate the motivation letter (resume is markdown string)
             letter = generator.generate(job_data_obj, resume)
-            result = letter.content
-            logging.info("Letter generation completed.")
-            self.finished.emit(result)
+
+            motivations_dir = os.path.expanduser("~/.jobops/motivations")
+            import re
+            import datetime
+            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', job_data_obj.title or "letter")
+            timestamp = (letter.generated_at if hasattr(letter, 'generated_at') else datetime.datetime.now()).strftime('%Y%m%d_%H%M%S')
+            pdf_filename = f"{safe_title}_{timestamp}.pdf"
+            pdf_path = os.path.join(motivations_dir, pdf_filename)
+            export_letter_to_pdf(letter.content, pdf_path)
+
+            reasoning_analysis = extract_reasoning_analysis(letter.content)
+            job_data_clean = clean_job_data_dict(job_data_obj.dict())
+
+            def default_encoder(obj):
+                if hasattr(obj, 'isoformat'):
+                    return obj.isoformat()
+                raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+            doc = Document(
+                type=DocumentType.COVER_LETTER,
+                filename=pdf_path,
+                raw_content=letter.content,
+                structured_content=letter.content,
+                uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None,
+                reasoning_analysis=reasoning_analysis,
+                job_data_json=_json.dumps(job_data_clean, default=default_encoder)
+            )
+            repository.save(doc)
+            logging.info("Letter generation, PDF export, and storage completed.")
+            self.finished.emit("Motivation letter generated, exported to PDF, and saved to database.")
         except Exception as e:
             logging.error(f"Exception in GenerateWorker: {e}")
             self.error.emit(str(e))
@@ -582,13 +591,28 @@ class JobOpsQtApplication(QApplication):
         self.base_dir = Path.home() / ".jobops"
         self.base_dir.mkdir(exist_ok=True)
 
-        # --- Add repository and generator initialization ---
+        # --- Load config and initialize repository and generator ---
         from jobops.repositories import SQLiteDocumentRepository
         from jobops.utils import ConcreteLetterGenerator
-        from jobops.clients import OllamaBackend
+        from jobops.clients import LLMBackendFactory
         db_path = str(self.base_dir / "jobops.db")
         self.repository = SQLiteDocumentRepository(db_path)
-        self.generator = ConcreteLetterGenerator(OllamaBackend())
+
+        # Load config.json
+        config_path = self.base_dir / "config.json"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        else:
+            config = {}
+        backend_type = config.get("backend", "ollama")
+        backend_settings = config.get("backend_settings", {})
+        app_settings = config.get("app_settings", {})
+        tokens = app_settings.get("tokens", {})
+        backend_conf = backend_settings.get(backend_type, {})
+        # Use LLMBackendFactory to create the backend
+        backend = LLMBackendFactory.create(backend_type, backend_conf, tokens)
+        self.generator = ConcreteLetterGenerator(backend)
         # ---------------------------------------------------
         
         # Initialize components
@@ -631,52 +655,6 @@ class JobOpsQtApplication(QApplication):
             QSystemTrayIcon.MessageIcon.Information,
             3000
         )
-
-def check_platform_compatibility():
-    """Check if the current platform is supported"""
-    platform_info = {
-        'system': os.name,
-        'platform': sys.platform,
-        'qt_available': QT_AVAILABLE
-    }
-    
-    logging.info(f"Platform info: {platform_info}")
-    
-    if not QT_AVAILABLE:
-        print("Qt is not available. Please install PySide6 or PyQt6.")
-        return False
-    
-    return True
-
-def create_desktop_entry():
-    """Create desktop entry for Linux systems"""
-    if sys.platform.startswith('linux'):
-        try:
-            desktop_dir = Path.home() / '.local' / 'share' / 'applications'
-            desktop_dir.mkdir(parents=True, exist_ok=True)
-            
-            desktop_file = desktop_dir / 'jobops.desktop'
-            script_path = Path(__file__).absolute()
-            
-            desktop_content = f"""[Desktop Entry]
-Name=JobOps
-Comment=AI Motivation Letter Generator
-Exec=python3 "{script_path}"
-Icon=application-x-python
-Terminal=false
-Type=Application
-Categories=Office;Productivity;
-StartupNotify=true
-"""
-            
-            with open(desktop_file, 'w') as f:
-                f.write(desktop_content)
-            
-            os.chmod(desktop_file, 0o755)
-            logging.info(f"Desktop entry created: {desktop_file}")
-            
-        except Exception as e:
-            logging.warning(f"Failed to create desktop entry: {e}")
 
 def main():
     """Main application entry point"""
