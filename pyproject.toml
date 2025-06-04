@@ -35,7 +35,8 @@ dependencies = [
     "opentelemetry-instrumentation",
     "opentelemetry-exporter-otlp",
     "reportlab",
-    "pyperclip"
+    "pyperclip",
+    "markitdown"
 ]
 
 [project.scripts]

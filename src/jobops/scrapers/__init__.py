@@ -133,7 +133,7 @@ class WebJobScraper:
             if element:
                 return element.get_text(strip=True)
         
-        return "Unknown Company"
+        return "<company name not found>"
     
     def _extract_description(self, soup: BeautifulSoup) -> str:
         selectors = [
@@ -150,7 +150,7 @@ class WebJobScraper:
         if main_content:
             return main_content.get_text(separator='\n', strip=True)[:3000]
         
-        return "Could not extract job description"
+        return "<job description not found>"
     
     def _extract_requirements(self, soup: BeautifulSoup) -> str:
         keywords = ['requirements', 'qualifications', 'skills', 'experience']
@@ -164,7 +164,7 @@ class WebJobScraper:
                     if len(req_text) > 50:
                         return req_text[:1000]
         
-        return ""
+        return "<requirements not found>"
     
 class ScraperFactory:
     @staticmethod

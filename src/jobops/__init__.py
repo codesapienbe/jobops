@@ -329,6 +329,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.animation_index = 0
         self.is_animating = False
         self.progress_dialog = None
+        self._workers = set()  # Keep references to running workers
         self.setup_tray()
     
     def _create_animation_frames(self):
@@ -421,8 +422,9 @@ class SystemTrayIcon(QSystemTrayIcon):
     def _start_upload_worker(self, file_path, doc_type):
         logging.info(f"Uploading document: {file_path} as {doc_type}")
         worker = UploadWorker(self.app_instance, file_path, doc_type)
-        worker.finished.connect(self.on_upload_finished)
-        worker.error.connect(self.on_upload_error)
+        self._workers.add(worker)
+        worker.finished.connect(lambda msg, w=worker: self._on_worker_done(w, msg, is_error=False))
+        worker.error.connect(lambda err, w=worker: self._on_worker_done(w, err, is_error=True))
         worker.start()
     
     def generate_letter(self):
@@ -560,6 +562,13 @@ class SystemTrayIcon(QSystemTrayIcon):
             logging.info("Tray icon double-clicked: opening generate letter dialog.")
             self.generate_letter()
 
+    def _on_worker_done(self, worker, message, is_error):
+        self._workers.discard(worker)
+        if is_error:
+            self.on_upload_error(message)
+        else:
+            self.on_upload_finished(message)
+
 class UploadWorker(QThread):
     """Background worker for document upload"""
     finished = Signal(str)
@@ -573,11 +582,63 @@ class UploadWorker(QThread):
     
     def run(self):
         try:
-            # Simulate document processing
-            result = f"Document uploaded successfully: {os.path.basename(self.file_path)}"
-            self.finished.emit(result)
+            import os
+            import shutil
+            from datetime import datetime
+            from markitdown import MarkItDown
+            from openai import OpenAI
+            from jobops.models import Document, DocumentType
+            repository = getattr(self.app_instance, 'repository', None)
+            if repository is None:
+                raise Exception("Application is missing repository.")
+
+            # Copy uploaded file to ~/.jobops/resumes/
+            resumes_dir = os.path.expanduser("~/.jobops/resumes")
+            os.makedirs(resumes_dir, exist_ok=True)
+            dest_path = os.path.join(resumes_dir, os.path.basename(self.file_path))
+            shutil.copy2(self.file_path, dest_path)
+
+            # Use dest_path as the filename for the Document
+            filename_for_db = dest_path
+
+            # Get the LLM backend and model
+            generator = getattr(self.app_instance, 'generator', None)
+            llm_backend = getattr(generator, 'llm_backend', None)
+            llm_client = None
+            llm_model = None
+            # Detect backend type and set up MarkItDown accordingly
+            backend_name = llm_backend.__class__.__name__ if llm_backend else None
+            if backend_name == "OpenAIBackend":
+                llm_client = llm_backend.client
+                llm_model = getattr(llm_backend, 'model', 'gpt-4o')
+            elif backend_name == "GroqBackend":
+                llm_client = llm_backend.client
+                llm_model = getattr(llm_backend, 'model', 'llama-3.3-70b-versatile')
+            elif backend_name == "OllamaBackend":
+                # Ollama exposes an OpenAI-compatible API
+                base_url = getattr(llm_backend, 'base_url', 'http://localhost:11434')
+                llm_model = getattr(llm_backend, 'model', 'llava')
+                llm_client = OpenAI(base_url=f"{base_url}/v1", api_key="ollama")
+            else:
+                raise Exception(f"MarkItDown integration is not yet supported for backend: {backend_name}")
+
+            md = MarkItDown(llm_client=llm_client, llm_model=llm_model)
+            result = md.convert(self.file_path)
+            structured_content = result.text_content
+            raw_content = result.raw_text if hasattr(result, 'raw_text') else structured_content
+            doc_type_enum = DocumentType.RESUME if self.doc_type.upper() == "RESUME" else DocumentType.CERTIFICATION
+            doc = Document(
+                type=doc_type_enum,
+                filename=filename_for_db,
+                raw_content=raw_content,
+                structured_content=structured_content,
+                uploaded_at=datetime.now()
+            )
+            repository.save(doc)
+            self.finished.emit(f"Document uploaded and parsed successfully: {os.path.basename(self.file_path)}")
         except Exception as e:
-            self.error.emit(str(e))
+            import traceback
+            self.error.emit(f"Upload failed: {str(e)}\n{traceback.format_exc()}")
 
 class GenerateWorker(QThread):
     """Background worker for letter generation"""
@@ -697,6 +758,9 @@ class JobOpsQtApplication(QApplication):
         self.system_tray = None
         
         self.setup_system_tray()
+        # Automatically prompt for resume upload if none exists
+        if self.repository.get_latest_resume() is None:
+            self.system_tray.upload_document()
         # Add config.json watcher
         self.config_watcher = QFileSystemWatcher([str(self.config_path)])
         self.config_watcher.fileChanged.connect(self.on_config_changed)
