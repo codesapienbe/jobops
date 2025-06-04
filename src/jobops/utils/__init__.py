@@ -132,8 +132,6 @@ class ConcreteLetterGenerator:
         # Build the prompt using the resume-inclusive method
         user_prompt = self._create_user_prompt(job_data, resume, used_language)
         system_prompt = ""  # Optionally, you can keep a short system prompt for LLM context
-        # --- Generate and store embedding for this job ---
-        job_data.embedding = self.backend.embed_structured_data(job_data)
         # --- Generate the letter content ---
         content = self.backend.generate_response(user_prompt, system_prompt)
         return MotivationLetter(
@@ -551,13 +549,6 @@ def export_letter_to_pdf(content: str, pdf_path: str):
     except Exception as e:
         logging.error(_json.dumps({"event": "pdf_export_error", "error": str(e)}))
 
-def extract_reasoning_analysis(content: str) -> str:
-    """Extract reasoning analysis from <think>...</think> tags in the content."""
-    match = re.search(r'<think>(.*?)</think>', content or '', re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return None
-
 def clean_job_data_dict(d: dict) -> dict:
     """Return a copy of the dict with all None values replaced by empty strings."""
     return {k: ('' if v is None else v) for k, v in d.items()}
@@ -768,42 +759,4 @@ class ClipboardJobUrlWatchdog(QObject):
         except Exception:
             pass
         return None
-
-# --- Embedding-based Duplicate Detection Utilities ---
-def compute_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    if not vec1 or not vec2 or len(vec1) != len(vec2):
-        return 0.0
-    dot = sum(a * b for a, b in zip(vec1, vec2))
-    norm1 = math.sqrt(sum(a * a for a in vec1))
-    norm2 = math.sqrt(sum(b * b for b in vec2))
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
-    return dot / (norm1 * norm2)
-
-def find_duplicate_job_embedding(
-    new_embedding: List[float],
-    existing_docs: List[Document],
-    threshold: float = 0.85
-) -> Tuple[bool, Optional[Document], float]:
-    """
-    Check if new_embedding is a duplicate of any existing document embeddings.
-    Returns (is_duplicate, most_similar_doc, similarity)
-    """
-    most_similar_doc = None
-    max_similarity = 0.0
-    for doc in existing_docs:
-        if not hasattr(doc, 'embedding') or doc.embedding is None:
-            continue
-        sim = compute_cosine_similarity(new_embedding, doc.embedding)
-        if sim > max_similarity:
-            max_similarity = sim
-            most_similar_doc = doc
-    return (max_similarity >= threshold, most_similar_doc, max_similarity)
-
-def get_job_embedding_input(job_data: JobData) -> str:
-    """
-    Returns the string used for embedding generation for a job (company, title, description, requirements).
-    """
-    return f"Company: {job_data.company}\nTitle: {job_data.title}\nDescription: {job_data.description}\nRequirements: {job_data.requirements}"
 

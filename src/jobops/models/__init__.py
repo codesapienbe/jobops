@@ -105,7 +105,6 @@ class JobData(BaseModel):
     job_responsibilities: Optional[str] = None
     candidate_profile: Optional[str] = None
     company_offers: Optional[str] = None
-    embedding: Optional[List[float]] = None  # 1D vector for document embedding
     
     @validator('url')
     def validate_url(cls, v):
@@ -128,8 +127,7 @@ class Document(BaseModel):
     raw_content: str
     structured_content: str
     uploaded_at: datetime = Field(default_factory=datetime.now)
-    reasoning_analysis: Optional[str] = None
-    job_data_json: Optional[str] = None  # new field
+    json_content: Optional[str] = None
 
 class MotivationLetter(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))

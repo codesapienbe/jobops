@@ -2,15 +2,13 @@ import sys
 import os
 import logging
 import base64
-import tempfile
 from pathlib import Path
 import webbrowser
 from PIL import Image
 from io import BytesIO
 from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
-from fpdf import FPDF
-from jobops.utils import export_letter_to_pdf, extract_reasoning_analysis, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, ClipboardJobUrlWatchdog
+from jobops.utils import export_letter_to_pdf, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry
 import uuid
 import subprocess
 
@@ -555,10 +553,10 @@ class SystemTrayIcon(QSystemTrayIcon):
                 # Try to extract job title and date for filename
                 job_title = "letter"
                 job_data = None
-                if hasattr(doc, 'job_data_json') and doc.job_data_json:
+                if hasattr(doc, 'json_content') and doc.json_content:
                     import json
                     try:
-                        job_data = json.loads(doc.job_data_json)
+                        job_data = json.loads(doc.json_content)
                         if 'title' in job_data and job_data['title']:
                             job_title = job_data['title'].replace(' ', '_')
                     except Exception:
@@ -864,7 +862,6 @@ class GenerateWorker(QThread):
                 export_letter_to_pdf(letter.content, pdf_path)
                 export_path = pdf_path
 
-            reasoning_analysis = extract_reasoning_analysis(letter.content)
             job_data_clean = clean_job_data_dict(job_data_obj.dict())
 
             def default_encoder(obj):
@@ -877,8 +874,7 @@ class GenerateWorker(QThread):
                 raw_content=letter.content,
                 structured_content=letter.content,
                 uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None,
-                reasoning_analysis=reasoning_analysis,
-                job_data_json=_json.dumps(job_data_clean, default=default_encoder)
+                json_content=_json.dumps(job_data_clean, default=default_encoder)
             )
             repository.save(doc)
             log_message = "Letter generation, export, and storage completed."
