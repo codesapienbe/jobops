@@ -114,51 +114,21 @@ class ConcreteLetterGenerator:
         self._logger = logging.getLogger(self.__class__.__name__)
     
     def generate(self, job_data: JobData, resume: str, language: str = None) -> MotivationLetter:
-        self._logger.info(f"Generating motivation letter in language: {language}")
+        self._logger.info(f"Generating motivation letter for job: {job_data}")
         # --- DYNAMIC PROMPT GENERATION ---
         # Load applicant info from config if available
         config_path = os.path.expanduser(os.path.join('~', '.jobops', 'config.json'))
-        applicant_name = applicant_phone = applicant_email = applicant_linkedin = city = ""
         config_language = None
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = _json.load(f)
-            info = config.get('app_settings', {}).get('personal_info', {})
-            applicant_name = info.get('name', '')
-            applicant_phone = info.get('phone', '')
-            applicant_email = info.get('email', '')
-            applicant_linkedin = info.get('linkedin', '')
-            city = info.get('city', '')
             config_language = config.get('app_settings', {}).get('output_language') or config.get('app_settings', {}).get('interface_language')
         except Exception as e:
             self._logger.warning(f"Could not load personal_info for prompt: {e}")
-        import datetime
-        date = datetime.datetime.now().strftime('%-d %B %Y') if sys.platform != 'win32' else datetime.datetime.now().strftime('%#d %B %Y')
-        company_name = job_data.company or ""
-        company_address = getattr(job_data, 'company_address', "") or ""
-        job_title = job_data.title or ""
-        contact_name = getattr(job_data, 'contact_info', None) or None
-        job_description = job_data.description or ""
-        requirements = job_data.requirements or ""
         # Use config language if not explicitly provided
         used_language = language or config_language or "en"
-        # Build the prompt
-        user_prompt = build_motivation_letter_prompt(
-            applicant_name=applicant_name,
-            applicant_phone=applicant_phone,
-            applicant_email=applicant_email,
-            applicant_linkedin=applicant_linkedin,
-            city=city,
-            date=date,
-            company_name=company_name,
-            company_address=company_address,
-            job_title=job_title,
-            contact_name=contact_name,
-            job_description=job_description,
-            requirements=requirements,
-            language=used_language
-        )
-        # System prompt can be minimal or empty, as all instructions are in user prompt
+        # Build the prompt using the resume-inclusive method
+        user_prompt = self._create_user_prompt(job_data, resume, used_language)
         system_prompt = ""  # Optionally, you can keep a short system prompt for LLM context
         try:
             content = self.backend.generate_response(user_prompt, system_prompt)
@@ -173,9 +143,7 @@ class ConcreteLetterGenerator:
             raise Exception(f"Failed to generate motivation letter: {str(e)}")
     
     def _create_system_prompt(self, company: str, language: str) -> str:
-        prompts = {
-            # English
-            "en": f"""You are a professional career consultant. Write an authentic, compelling motivation letter for '{company}'.
+        prompt = f"""You are a professional career consultant. Write an authentic, compelling motivation letter for '{company}'.
 
 GUIDELINES:
 - Use proper salutation: 'Dear {company} team' or 'Dear Hiring Manager at {company}'
@@ -184,152 +152,9 @@ GUIDELINES:
 - Show authentic interest in the position, not empty flattery
 - Use clear, concise language with professional but warm tone
 - Structure: 3-4 short paragraphs, 250-350 words total
-- End with confident but respectful closing""",
+- End with confident but respectful closing"""
 
-            # Dutch
-            "nl": f"""Je bent een professionele loopbaanadviseur. Schrijf een authentieke, overtuigende motivatiebrief voor '{company}'.
-
-RICHTLIJNEN:
-- Gebruik correcte aanhef: 'Geachte {company} team' of 'Geachte Hiring Manager bij {company}'
-- Wees oprecht en eerlijk - vermijd generieke bedrijfslof of clichés
-- Focus op specifieke vaardigheden en ervaring die passen bij de rol
-- Toon authentieke interesse in de functie, geen lege vleierij
-- Gebruik heldere, beknopte taal met professionele maar warme toon
-- Structuur: 3-4 korte alinea's, 250-350 woorden totaal
-- Eindig met zelfverzekerde maar respectvolle afsluiting""",
-
-            # Turkish
-            "tr": f"""Profesyonel bir kariyer danışmanısınız. '{company}' için samimi ve etkileyici bir motivasyon mektubu yazın.
-
-KURALLAR:
-- Doğru hitap kullanın: 'Sayın {company} ekibi' veya 'Sayın {company} İnsan Kaynakları Müdürü'
-- Samimi ve dürüst olun - genel şirket övgüsü veya klişelerden kaçının
-- Role uygun belirli beceri ve deneyimlere odaklanın
-- Pozisyona gerçek ilgi gösterin, boş iltifatlar değil
-- Net, özlü dil kullanın, profesyonel ama sıcak ton
-- Yapı: 3-4 kısa paragraf, toplam 250-350 kelime
-- Kendinden emin ama saygılı kapanışla bitirin""",
-
-            # French
-            "fr": f"""Vous êtes un conseiller en carrière professionnel. Rédigez une lettre de motivation authentique et convaincante pour '{company}'.
-
-DIRECTIVES:
-- Utilisez une salutation appropriée: 'Cher équipe de {company}' ou 'Cher responsable RH chez {company}'
-- Soyez sincère et honnête - évitez les éloges génériques ou les clichés
-- Concentrez-vous sur les compétences et expériences spécifiques qui correspondent au poste
-- Montrez un intérêt authentique pour le poste, pas de flatterie vide
-- Utilisez un langage clair et concis avec un ton professionnel mais chaleureux
-- Structure: 3-4 paragraphes courts, 250-350 mots au total
-- Terminez par une conclusion confiante mais respectueuse""",
-
-            # German
-            "de": f"""Sie sind ein professioneller Karriereberater. Verfassen Sie ein authentisches, überzeugendes Motivationsschreiben für '{company}'.
-
-RICHTLINIEN:
-- Verwenden Sie eine angemessene Anrede: 'Sehr geehrtes {company} Team' oder 'Sehr geehrte Personalverantwortliche bei {company}'
-- Seien Sie aufrichtig und ehrlich - vermeiden Sie generisches Unternehmenslob oder Klischees
-- Fokussieren Sie sich auf spezifische Fähigkeiten und Erfahrungen, die zur Stelle passen
-- Zeigen Sie authentisches Interesse an der Position, keine leeren Schmeicheleien
-- Verwenden Sie klare, prägnante Sprache mit professionellem aber warmem Ton
-- Struktur: 3-4 kurze Absätze, 250-350 Wörter insgesamt
-- Schließen Sie selbstbewusst ab""",
-
-            # Spanish
-            "es": f"""Eres un consultor profesional de carrera. Escribe una carta de motivación auténtica y convincente para '{company}'.
-
-PAUTAS:
-- Usa saludo apropiado: 'Estimado equipo de {company}' o 'Estimado responsable de RRHH de {company}'
-- Sé genuino y honesto - evita elogios genéricos de empresa o clichés
-- Enfócate en habilidades y experiencias específicas que coincidan con el puesto
-- Muestra interés auténtico en la posición, no adulación vacía
-- Usa lenguaje claro y conciso con tono profesional pero cálido
-- Estructura: 3-4 párrafos cortos, 250-350 palabras en total
-- Termina con cierre confiado pero respetuoso""",
-
-            # Italian
-            "it": f"""Sei un consulente professionale di carriera. Scrivi una lettera di motivazione autentica e convincente per '{company}'.
-
-LINEE GUIDA:
-- Usa un saluto appropriato: 'Gentile team di {company}' o 'Gentile responsabile HR di {company}'
-- Sii genuino e onesto - evita elogi generici all'azienda o cliché
-- Concentrati su competenze ed esperienze specifiche che corrispondono al ruolo
-- Mostra interesse autentico per la posizione, non adulazione vuota
-- Usa un linguaggio chiaro e conciso con tono professionale ma caloroso
-- Struttura: 3-4 paragrafi brevi, 250-350 parole totali
-- Concludi con chiusura sicura ma rispettosa""",
-
-            # Arabic
-            "ar": f"""أنت مستشار مهني محترف. اكتب خطاب تحفيز أصيل ومقنع لشركة '{company}'.
-
-التوجيهات:
-- استخدم تحية مناسبة: 'فريق {company} المحترم' أو 'مسؤول الموارد البشرية المحترم في {company}'
-- كن صادقاً وأميناً - تجنب المدح العام للشركة أو العبارات المبتذلة
-- ركز على المهارات والخبرات المحددة التي تتناسب مع الوظيفة
-- أظهر اهتماماً حقيقياً بالمنصب، وليس مجاملات فارغة
-- استخدم لغة واضحة ومختصرة بنبرة مهنية ودافئة
-- الهيكل: 3-4 فقرات قصيرة، 250-350 كلمة إجمالي
-- اختتم بثقة ولكن باحترام""",
-
-            # Portuguese
-            "pt": f"""Você é um consultor profissional de carreira. Escreva uma carta de motivação autêntica e convincente para '{company}'.
-
-DIRETRIZES:
-- Use saudação apropriada: 'Prezada equipe da {company}' ou 'Prezado responsável de RH da {company}'
-- Seja genuíno e honesto - evite elogios genéricos à empresa ou clichês
-- Foque em habilidades e experiências específicas que correspondam ao cargo
-- Mostre interesse autêntico na posição, não bajulação vazia
-- Use linguagem clara e concisa com tom profissional mas caloroso
-- Estrutura: 3-4 parágrafos curtos, 250-350 palavras no total
-- Termine com fechamento confiante mas respeitoso""",
-
-            # Polish
-            "pl": f"""Jesteś profesjonalnym doradcą kariery. Napisz autentyczny, przekonujący list motywacyjny do '{company}'.
-
-WYTYCZNE:
-- Użyj odpowiedniego pozdrowienia: 'Szanowny zespół {company}' lub 'Szanowny kierownik HR w {company}'
-- Bądź szczery i uczciwy - unikaj ogólnych pochwał firmy lub frazesów
-- Skup się na konkretnych umiejętnościach i doświadczeniach pasujących do stanowiska
-- Pokaż autentyczne zainteresowanie pozycją, nie puste pochlebstwa
-- Używaj jasnego, zwięzłego języka z profesjonalnym ale ciepłym tonem
-- Struktura: 3-4 krótkie akapity, łącznie 250-350 słów
-- Zakończ pewnym ale pełnym szacunku zamknięciem""",
-
-            # Russian
-            "ru": f"""Вы профессиональный карьерный консультант. Напишите искреннее, убедительное мотивационное письмо для '{company}'.
-
-РЕКОМЕНДАЦИИ:
-- Используйте подходящее обращение: 'Уважаемая команда {company}' или 'Уважаемый HR-менеджер {company}'
-- Будьте искренними и честными - избегайте общих похвал компании или клише
-- Сосредоточьтесь на конкретных навыках и опыте, соответствующих должности
-- Покажите подлинный интерес к позиции, а не пустую лесть
-- Используйте четкий, лаконичный язык с профессиональным но теплым тоном
-- Структура: 3-4 коротких абзаца, всего 250-350 слов
-- Завершите уверенно но уважительно""",
-
-            # Hebrew
-            "he": f"""אתה יועץ קריירה מקצועי. כתב מכתב מוטיבציה אותנטי ומשכנע עבור '{company}'.
-
-הנחיות:
-- השתמש בברכה מתאימה: 'לכבוד צוות {company}' או 'לכבוד מנהל משאבי אנוש ב-{company}'
-- היה כנה וישר - הימנע משבחים כלליים על החברה או קלישאות
-- התמקד בכישורים וניסיון ספציפיים המתאימים לתפקיד
-- הראה עניין אמיתי בתפקיד, לא חנופה ריקה
-- השתמש בשפה ברורה ותמציתית בטון מקצועי אך חם
-- מבנה: 3-4 פסקאות קצרות, סך הכל 250-350 מילים
-- סיים בביטחון אך בכבוד""",
-
-            # Greek
-            "el": f"""Είστε επαγγελματίας σύμβουλος καριέρας. Γράψτε ένα αυθεντικό, πειστικό γράμμα κινήτρων για την '{company}'.
-
-ΟΔΗΓΙΕΣ:
-- Χρησιμοποιήστε κατάλληλο χαιρετισμό: 'Αγαπητή ομάδα {company}' ή 'Αγαπητέ υπεύθυνε HR στην {company}'
-- Γίνετε γνήσιοι και ειλικρινείς - αποφύγετε γενικούς επαίνους εταιρείας ή κλισέ
-- Εστιάστε σε συγκεκριμένες δεξιότητες και εμπειρίες που ταιριάζουν στο ρόλο
-- Δείξτε αυθεντικό ενδιαφέρον για τη θέση, όχι κενή κολακεία
-- Χρησιμοποιήστε σαφή, συνοπτική γλώσσα με επαγγελματικό αλλά ζεστό τόνο
-- Δομή: 3-4 σύντομες παράγραφοι, συνολικά 250-350 λέξεις
-- Τελειώστε με σίγουρο αλλά σεβαστό κλείσιμο"""
-        }
+        return prompt
         
         return prompts.get(language, prompts["en"])
     
@@ -872,7 +697,7 @@ TRUSTED_JOB_DOMAINS = [
     'randstad.be', 'adecco.be', 'manpower.be', 'tempo-team.be', 'synergiejobs.be',
     'startpeople.be', 'unique.be', 'selecthr.be', 'houseofhr.com', 'accentjobs.be',
     'agilitas.be', 'express.be', 'forumjobs.be', 'itzu.eu', 'lga.jobs',
-    'pagepersonnel.be', 'roberthalf.be', 'talentus.be', 'vandelande.be',
+    'pagepersonnel.be', 'roberthalf.be', 'talentus.be', 'vandelande.be', "vivaldisinterim.be",
 
     # Public sector and government
     'werkenvoor.be', 'selor.be', 'belgium.be', 'fedweb.belgium.be', 'police.be',
