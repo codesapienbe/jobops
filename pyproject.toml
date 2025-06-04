@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Yilmaz Mustafa", email = "ymus@tuta.io" }
 ]
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.11"
 dependencies = [
     "requests",
     "beautifulsoup4",
@@ -36,7 +36,11 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     "reportlab",
     "pyperclip",
-    "markitdown[all]"
+    "markitdown[all]",
+    "python-json-logger",
+    "sentence-transformers",
+    "torch",
+    "numpy"
 ]
 
 [project.scripts]

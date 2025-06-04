@@ -105,6 +105,7 @@ class JobData(BaseModel):
     job_responsibilities: Optional[str] = None
     candidate_profile: Optional[str] = None
     company_offers: Optional[str] = None
+    embedding: Optional[List[float]] = None  # 1D vector for document embedding
     
     @validator('url')
     def validate_url(cls, v):

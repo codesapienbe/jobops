@@ -1,10 +1,8 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import logging
 from typing import Any, Dict, Optional
 
 import ollama
-from openai import OpenAI
-from groq import Groq
 import requests 
 from typing import Protocol
 
@@ -28,6 +26,13 @@ class BaseLLMBackend(Protocol):
     def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str: pass
     @abstractmethod
     def health_check(self) -> bool: pass
+    @abstractmethod
+    def embed_structured_data(self, job_data) -> list: pass
+
+def embed_structured_data(text: str) -> list:
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    return model.encode(text).tolist()
 
 class OllamaBackend(BaseLLMBackend):
     name = "ollama"
@@ -58,6 +63,13 @@ class OllamaBackend(BaseLLMBackend):
         except Exception as e:
             self._logger.error(f"Proxy health check failed: {e}")
             return False
+
+    def embed_structured_data(self, job_data):
+        try:
+            return embed_structured_data(job_data.description)
+        except Exception as e:
+            self._logger.error(f"Ollama embedding error: {e}")
+            raise
 
 class OpenAIBackend(BaseLLMBackend):
     name = "openai"
@@ -97,6 +109,14 @@ class OpenAIBackend(BaseLLMBackend):
             self._logger.error(f"Proxy health check failed: {e}")
             return False
 
+    def embed_structured_data(self, job_data):
+        try:
+            return embed_structured_data(job_data.description)
+        except Exception as e:
+            self._logger.error(f"OpenAI embedding error: {e}")
+            raise
+
+
 class GroqBackend(BaseLLMBackend):
     name = "groq"
     def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile", base_url: str = "https://api.groq.com/openai/v1"):
@@ -135,6 +155,13 @@ class GroqBackend(BaseLLMBackend):
             self._logger.error(f"Proxy health check failed: {e}")
             return False
         
+    def embed_structured_data(self, job_data):
+        try:
+            return embed_structured_data(job_data.description)
+        except Exception as e:
+            self._logger.error(f"Groq embedding error: {e}")
+            raise
+            
 
 class GoogleGeminiBackend(BaseLLMBackend):
     def __init__(self, api_key: str, model: str = "gemini-pro"):
@@ -160,6 +187,13 @@ class GoogleGeminiBackend(BaseLLMBackend):
         except Exception as e:
             self._logger.error(f"Gemini health check failed: {e}")
             return False
+
+    def embed_structured_data(self, job_data):
+        try:
+            return embed_structured_data(job_data.description)
+        except Exception as e:
+            self._logger.error(f"Gemini embedding error: {e}")
+            raise
 
 class XGrokBackend(BaseLLMBackend):
     def __init__(self, api_key: str, model: str = "grok-1"):
@@ -194,6 +228,13 @@ class XGrokBackend(BaseLLMBackend):
             self._logger.error(f"X Grok health check failed: {e}")
             return False
 
+    def embed_structured_data(self, job_data):
+        try:
+            return embed_structured_data(job_data.description)
+        except Exception as e:
+            self._logger.error(f"X Grok embedding error: {e}")
+            raise
+
 class PerplexityBackend(BaseLLMBackend):
     def __init__(self, api_key: str, model: str = "pplx-7b-online"):
         if not api_key:
@@ -227,6 +268,13 @@ class PerplexityBackend(BaseLLMBackend):
         except Exception as e:
             self._logger.error(f"Perplexity health check failed: {e}")
             return False
+
+    def embed_structured_data(self, job_data):
+        try:
+            return embed_structured_data(job_data.description)
+        except Exception as e:
+            self._logger.error(f"Perplexity embedding error: {e}")
+            raise
 
 class LLMBackendFactory:
     @staticmethod

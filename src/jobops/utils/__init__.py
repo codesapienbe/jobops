@@ -132,21 +132,16 @@ class ConcreteLetterGenerator:
         # Build the prompt using the resume-inclusive method
         user_prompt = self._create_user_prompt(job_data, resume, used_language)
         system_prompt = ""  # Optionally, you can keep a short system prompt for LLM context
-        # --- Generate embedding for deduplication ---
-        embedding_input = f"Company: {job_data.company}\nTitle: {job_data.title}\nDescription: {job_data.description}\nRequirements: {job_data.requirements}"
-        embedding = self.backend.embed_text(embedding_input)
-        try:
-            content = self.backend.generate_response(user_prompt, system_prompt)
-            return MotivationLetter(
-                job_data=job_data,
-                resume=resume,
-                content=content,
-                language=used_language,
-                embedding=embedding
-            )
-        except Exception as e:
-            self._logger.error(f"Error generating motivation letter: {e}")
-            raise Exception(f"Failed to generate motivation letter: {str(e)}")
+        # --- Generate and store embedding for this job ---
+        job_data.embedding = self.backend.embed_structured_data(job_data)
+        # --- Generate the letter content ---
+        content = self.backend.generate_response(user_prompt, system_prompt)
+        return MotivationLetter(
+            job_data=job_data,
+            resume=resume,
+            content=content,
+            language=used_language
+        )
     
     def _create_system_prompt(self, company: str, language: str) -> str:
         prompt = f"""You are a professional career consultant. Write an authentic, compelling motivation letter for '{company}'.

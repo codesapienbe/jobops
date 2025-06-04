@@ -12,6 +12,7 @@ import json
 from fpdf import FPDF
 from jobops.utils import export_letter_to_pdf, extract_reasoning_analysis, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, ClipboardJobUrlWatchdog
 import uuid
+import subprocess
 
 # Qt imports
 try:
@@ -334,16 +335,30 @@ class UploadDialog(QDialog):
         file_layout.addWidget(self.browse_btn)
         layout.addLayout(file_layout)
         
-        # Document type
+        # Document type dropdown
         type_group = QGroupBox("Document Type")
         type_layout = QVBoxLayout(type_group)
         
-        self.resume_radio = QRadioButton("Resume/CV")
-        self.cert_radio = QRadioButton("Certificate")
-        self.resume_radio.setChecked(True)
+        self.doc_type_combo = QComboBox()
+        self.doc_type_combo.addItems([
+            "RESUME",
+            "CERTIFICATE",
+            "DIPLOMA",
+            "ACADEMIC TRANSCRIPT",
+            "COVER_LETTER",
+            "REFERENCE_LETTER",
+            "PORTFOLIO",
+            "WORK_SAMPLES",
+            "PROJECT_DOCUMENTATION",
+            "TRAINING_CERTIFICATE",
+            "PROFESSIONAL_LICENSE",
+            "SKILLS_ASSESSMENT",
+            "PERFORMANCE_REVIEW",
+            "AWARDS_AND_ACHIEVEMENTS",
+            "OTHER"
+        ])
         
-        type_layout.addWidget(self.resume_radio)
-        type_layout.addWidget(self.cert_radio)
+        type_layout.addWidget(self.doc_type_combo)
         layout.addWidget(type_group)
         
         # Buttons
@@ -379,7 +394,7 @@ class UploadDialog(QDialog):
             return
         
         self.file_path = file_path
-        self.doc_type = "RESUME" if self.resume_radio.isChecked() else "CERTIFICATION"
+        self.doc_type = self.doc_type_combo.currentText().upper()
         self.upload_data_ready.emit(self.file_path, self.doc_type)
         self.accept()
 
@@ -562,15 +577,30 @@ class SystemTrayIcon(QSystemTrayIcon):
     
     def show_settings(self):
         logging.info("User triggered: Settings dialog")
-        # Implementation for settings
-        QMessageBox.information(None, "Settings", "Settings dialog will be implemented here.")
+        # Open config.json in the default text editor
+        config_path = str(getattr(self.app_instance, 'config_path', Path.home() / ".jobops" / "config.json"))
+        try:
+            if sys.platform.startswith('win'):
+                os.startfile(config_path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', config_path])
+            else:
+                subprocess.Popen(['xdg-open', config_path])
+        except Exception as e:
+            logging.error(f"Failed to open config.json: {e}")
+            QMessageBox.warning(None, "Settings", f"Could not open config.json: {e}")
     
     def show_help(self):
-        logging.info("User triggered: Help/documentation")
-        webbrowser.open("https://github.com/codesapienbe/jobops-toolbar")
+        documentation_url = "https://github.com/codesapienbe/jobops-toolbar"
+        log_message = f"User triggered: Help/documentation, opening {documentation_url}"
+        logging.info(log_message)
+        self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 3000)
+        webbrowser.open(documentation_url)
     
     def quit_application(self):
-        logging.info("User triggered: Quit application")
+        log_message = "User triggered: Quit application"
+        logging.info(log_message)
+        self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 3000)
         reply = QMessageBox.question(
             None, 
             "Exit JobOps", 
@@ -583,54 +613,83 @@ class SystemTrayIcon(QSystemTrayIcon):
             QApplication.quit()
     
     def on_upload_finished(self, message):
-        logging.info(f"Upload finished: {message}")
-        self.showMessage("JobOps", message, QSystemTrayIcon.MessageIcon.Information, 3000)
+        log_message = f"Upload finished: {message}"
+        logging.info(log_message)
+        self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 3000)
     
     def on_upload_error(self, error):
-        logging.error(f"Upload error: {error}")
-        self.showMessage("JobOps Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
+        log_message = f"Upload error: {error}"
+        logging.error(log_message)
+        self.showMessage("JobOps Error", log_message, QSystemTrayIcon.MessageIcon.Critical, 5000)
     
     def on_generation_finished(self, message):
-        logging.info("Letter generation finished successfully.")
+        log_message = "Letter generation finished successfully."
+        logging.info(log_message)
         self.stop_animation()
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
         # Show tray notification
-        self.showMessage("JobOps", message, QSystemTrayIcon.MessageIcon.Information, 5000)
-        logging.info(f"Tray notification shown: {message}")
+        self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 5000)
+        logging.info(log_message)
         # Fallback: use NotificationService if available
         if hasattr(self.app_instance, 'notification_service') and self.app_instance.notification_service:
             self.app_instance.notification_service.notify("JobOps", message)
             logging.info("Fallback notification service used.")
-        # No dialog with letter content
-    
+        # Show preview dialog with letter content
+        self.show_letter_preview()
+
+    def show_letter_preview(self):
+        # Fetch the latest generated letter from the repository
+        letters = self.app_instance.repository.get_by_type(DocumentType.COVER_LETTER)
+        if not letters:
+            return
+        latest_letter = letters[0]  # Assuming the latest letter is the first one
+        content = latest_letter.structured_content or latest_letter.raw_content
+        if not content:
+            return
+        # Create and show preview dialog
+        preview_dialog = QDialog()
+        preview_dialog.setWindowTitle("Letter Preview")
+        preview_dialog.setMinimumSize(800, 600)
+        layout = QVBoxLayout(preview_dialog)
+        text_edit = QTextEdit()
+        text_edit.setPlainText(content)
+        text_edit.setReadOnly(True)
+        layout.addWidget(text_edit)
+        preview_dialog.exec()
+
     def on_generation_error(self, error):
-        logging.error(f"Letter generation error: {error}")
+        log_message = f"Letter generation error: {error}"
+        logging.error(log_message)
         self.stop_animation()
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
         # Show tray notification
-        self.showMessage("JobOps Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
-        logging.info(f"Tray error notification shown: {error}")
+        self.showMessage("JobOps Error", log_message, QSystemTrayIcon.MessageIcon.Critical, 5000)
+        logging.info(log_message)
         # Fallback: use NotificationService if available
         if hasattr(self.app_instance, 'notification_service') and self.app_instance.notification_service:
-            self.app_instance.notification_service.notify("JobOps Error", error)
+            self.app_instance.notification_service.notify("JobOps Error", log_message)
             logging.info("Fallback notification service used.")
         # Also show error dialog
         QMessageBox.critical(None, "Generation Error", error)
     
     def on_message_clicked(self):
-        logging.info("Tray message clicked.")
+        log_message = "Tray message clicked."
+        logging.info(log_message)
         pass
     
     def on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            logging.info("Tray icon double-clicked: opening generate letter dialog.")
+            log_message = "Tray icon double-clicked: opening generate letter dialog."
+            logging.info(log_message)
             self.generate_letter()
 
     def _on_worker_done(self, worker, message, is_error):
+        log_message = f"Upload worker done: {message}"
+        logging.info(log_message)
         self._workers.discard(worker)
         if is_error:
             self.on_upload_error(message)
@@ -757,16 +816,19 @@ class GenerateWorker(QThread):
     
     def run(self):
         try:
-            logging.info("GenerateWorker started.")
+            log_message = "GenerateWorker started."
+            logging.info(log_message)
             repository = getattr(self.app_instance, 'repository', None)
             generator = getattr(self.app_instance, 'generator', None)
             if repository is None or generator is None:
-                logging.error("Application is missing repository or generator.")
+                log_message = "Application is missing repository or generator."
+                logging.error(log_message)
                 raise Exception("Application is missing repository or generator.")
 
             resume = repository.get_latest_resume()
             if resume is None:
-                logging.error("No resume found. Please upload your resume first.")
+                log_message = "No resume found. Please upload your resume first."
+                logging.error(log_message)
                 raise Exception("No resume found. Please upload your resume first.")
 
             from jobops.models import JobData
@@ -776,7 +838,8 @@ class GenerateWorker(QThread):
             else:
                 job_data_obj = self.job_data
 
-            logging.info(f"Generating letter for job: {job_data_obj}")
+            log_message = f"Generating letter for job: {job_data_obj}"
+            logging.info(log_message)
             # Use output_language from app_instance
             output_language = getattr(self.app_instance, 'output_language', 'en')
             letter = generator.generate(job_data_obj, resume, language=output_language)
@@ -818,10 +881,12 @@ class GenerateWorker(QThread):
                 job_data_json=_json.dumps(job_data_clean, default=default_encoder)
             )
             repository.save(doc)
-            logging.info("Letter generation, export, and storage completed.")
+            log_message = "Letter generation, export, and storage completed."
+            logging.info(log_message)
             self.finished.emit(f"Motivation letter generated, exported to {output_format}, and saved to database.")
         except Exception as e:
-            logging.error(f"Exception in GenerateWorker: {e}")
+            log_message = f"Exception in GenerateWorker: {e}"
+            logging.error(log_message)
             self.error.emit(str(e))
 
 class LogViewerDialog(QDialog):
@@ -967,22 +1032,46 @@ class JobOpsQtApplication(QApplication):
                 "JobOps Config Reloaded",
                 "Settings have been reloaded from config.json."
             )
-            logging.info("Config reloaded from config.json")
+            log_message = "Config reloaded from config.json"
+            logging.info(log_message)
         except Exception as e:
-            logging.error(f"Failed to reload config: {e}")
+            log_message = f"Failed to reload config: {e}"
+            logging.error(log_message)
 
     def setup_logging(self):
         """Setup application logging"""
         log_file = self.base_dir / 'app.log'
         log_level = logging.DEBUG if getattr(self, 'debug', False) else logging.INFO
-        logging.basicConfig(
-            level=log_level,
-            format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                logging.StreamHandler()
-            ]
-        )
+        try:
+            from pythonjsonlogger import jsonlogger
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            json_format = '%(asctime)s %(levelname)s %(name)s %(message)s %(span_id)s %(trace_id)s'
+            file_handler.setFormatter(jsonlogger.JsonFormatter(json_format))
+        except ImportError:
+            # Fallback: custom JSON formatter
+            class SimpleJsonFormatter(logging.Formatter):
+                def format(self, record):
+                    import json
+                    log_record = {
+                        'timestamp': self.formatTime(record, self.datefmt),
+                        'level': record.levelname,
+                        'logger': record.name,
+                        'message': record.getMessage(),
+                        'span_id': getattr(record, 'span_id', None),
+                        'trace_id': getattr(record, 'trace_id', None),
+                    }
+                    return json.dumps(log_record)
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            file_handler.setFormatter(SimpleJsonFormatter())
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+        root_logger = logging.getLogger()
+        root_logger.setLevel(log_level)
+        # Remove all handlers first (avoid duplicate logs)
+        for h in root_logger.handlers[:]:
+            root_logger.removeHandler(h)
+        root_logger.addHandler(file_handler)
+        root_logger.addHandler(stream_handler)
     
     def setup_system_tray(self):
         """Initialize system tray"""
@@ -1025,21 +1114,26 @@ def main():
         # Global shortcut for quick letter generation (Ctrl+Alt+J)
         shortcut = QShortcut(QKeySequence("Ctrl+Alt+J"), None)
         shortcut.activated.connect(app.system_tray.generate_letter)
-        logging.info("Global shortcut registered: Ctrl+Alt+J")
+        log_message = "Global shortcut registered: Ctrl+Alt+J"
+        logging.info(log_message)
     except Exception as e:
-        logging.warning(f"Failed to setup global shortcut: {e}")
+        log_message = f"Failed to setup global shortcut: {e}"
+        logging.warning(log_message)
     
     # Show startup message
-    logging.info("JobOps Qt application started successfully")
+    log_message = "JobOps Qt application started successfully"
+    logging.info(log_message)
     
     # Start the application event loop
     try:
         sys.exit(app.exec())
     except KeyboardInterrupt:
-        logging.info("Application interrupted by user")
+        log_message = "Application interrupted by user"
+        logging.info(log_message)
         sys.exit(0)
     except Exception as e:
-        logging.error(f"Application error: {e}")
+        log_message = f"Application error: {e}"
+        logging.error(log_message)
         
         # Show error dialog
         QMessageBox.critical(
