@@ -11,6 +11,7 @@ from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
 from fpdf import FPDF
 from jobops.utils import export_letter_to_pdf, extract_reasoning_analysis, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, ClipboardJobUrlWatchdog
+import uuid
 
 # Qt imports
 try:
@@ -47,6 +48,18 @@ except Exception as e:
 
 load_dotenv()
 
+# Patch logging to always include span_id
+class SpanIdLogFilter(logging.Filter):
+    def filter(self, record):
+        if not hasattr(record, 'span_id') or record.span_id is None:
+            record.span_id = getattr(record, '_span_id', None) or str(uuid.uuid4())
+        return True
+
+logging.getLogger().addFilter(SpanIdLogFilter())
+
+def get_span_id():
+    return str(uuid.uuid4())
+
 class JobInputDialog(QDialog):
     """Job input dialog: user provides URL (as a link) and markdown manually. Auto-fills fields using LLM on markdown focus out."""
     job_data_ready = Signal(dict)
@@ -70,6 +83,7 @@ class JobInputDialog(QDialog):
         url_layout.addWidget(QLabel("Job URL:"))
         url_layout.addWidget(self.url_input)
         layout.addLayout(url_layout)
+        self.url_input.editingFinished.connect(self._on_url_pasted)
 
         # Markdown job description (user-provided)
         layout.addWidget(QLabel("Job Description (Markdown, required):"))
@@ -121,6 +135,57 @@ class JobInputDialog(QDialog):
         button_layout.addWidget(self.generate_btn)
         button_layout.addWidget(self.cancel_btn)
         layout.addLayout(button_layout)
+
+    def _on_url_pasted(self):
+        url = self.url_input.text().strip()
+        span_id = get_span_id()
+        logging.info(f"URL pasted: {url}", extra={"span_id": span_id})
+        if not url or self.markdown_edit.toPlainText().strip():
+            logging.info("No URL or markdown already present, skipping extraction.", extra={"span_id": span_id})
+            return
+        import re
+        if not re.match(r"^https?://", url):
+            logging.info("URL does not match http/https, skipping extraction.", extra={"span_id": span_id})
+            return
+        # Show wait dialog
+        wait_dialog = QMessageBox(self)
+        wait_dialog.setWindowTitle("Extracting Markdown")
+        wait_dialog.setText("Extracting job description from URL. Please wait...")
+        wait_dialog.setStandardButtons(QMessageBox.NoButton)
+        wait_dialog.show()
+        QApplication.processEvents()
+        try:
+            from markitdown import MarkItDown
+            from openai import OpenAI
+            backend = getattr(self.app_instance, 'generator', None)
+            llm_backend = getattr(backend, 'llm_backend', None)
+            logging.info(f"Detected backend: {llm_backend}", extra={"span_id": span_id})
+            if not llm_backend:
+                raise Exception("No LLM backend available for MarkItDown.")
+            backend_name = getattr(llm_backend, 'name', '').lower()
+            llm_model = getattr(llm_backend, 'model', 'gpt-4o')
+            logging.info(f"Backend name: {backend_name}, model: {llm_model}", extra={"span_id": span_id})
+            if backend_name in ("openai", "groq"):
+                llm_client = llm_backend.client
+                logging.info(f"Using OpenAI/Groq client: {type(llm_client)}", extra={"span_id": span_id})
+            elif backend_name == "ollama":
+                base_url = getattr(llm_backend, 'base_url', 'http://localhost:11434')
+                logging.info(f"Using Ollama backend, base_url: {base_url}", extra={"span_id": span_id})
+                llm_client = OpenAI(base_url=f"{base_url}/v1", api_key="ollama")
+            else:
+                logging.error(f"MarkItDown integration is not yet supported for backend: {backend_name}", extra={"span_id": span_id})
+                raise Exception(f"MarkItDown integration is not yet supported for backend: {backend_name}")
+            md = MarkItDown(llm_client=llm_client, llm_model=llm_model)
+            logging.info(f"Starting MarkItDown extraction for URL: {url}", extra={"span_id": span_id})
+            result = md.convert(url)
+            markdown = result.text_content
+            logging.info(f"Extraction complete, markdown length: {len(markdown)}", extra={"span_id": span_id})
+            self.markdown_edit.setPlainText(markdown)
+        except Exception as e:
+            logging.error(f"Extraction error: {e}", extra={"span_id": span_id})
+            QMessageBox.warning(self, "Extraction Error", f"Could not extract markdown from URL: {e}")
+        finally:
+            wait_dialog.done(0)
 
     def _on_markdown_focus_out(self, event):
         markdown = self.markdown_edit.toPlainText().strip()
@@ -385,6 +450,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action = QAction("📁 Upload Document", self)
         generate_action = QAction("✨ Generate Letter", self)
         download_action = QAction("💾 Download Letters", self)
+        log_viewer_action = QAction("📝 View Logs", self)
         settings_action = QAction("⚙️ Settings", self)
         help_action = QAction("❓ Help", self)
         quit_action = QAction("❌ Exit", self)
@@ -393,6 +459,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action.triggered.connect(self.upload_document)
         generate_action.triggered.connect(self.generate_letter)
         download_action.triggered.connect(self.download_letters)
+        log_viewer_action.triggered.connect(self.show_log_viewer)
         settings_action.triggered.connect(self.show_settings)
         help_action.triggered.connect(self.show_help)
         quit_action.triggered.connect(self.quit_application)
@@ -402,6 +469,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(generate_action)
         menu.addSeparator()
         menu.addAction(download_action)
+        menu.addAction(log_viewer_action)
         menu.addAction(settings_action)
         menu.addAction(help_action)
         menu.addSeparator()
@@ -569,6 +637,11 @@ class SystemTrayIcon(QSystemTrayIcon):
         else:
             self.on_upload_finished(message)
 
+    def show_log_viewer(self):
+        log_file = str(Path.home() / ".jobops" / "app.log")
+        dlg = LogViewerDialog(log_file, parent=None)
+        dlg.exec()
+
 class UploadWorker(QThread):
     """Background worker for document upload"""
     finished = Signal(str)
@@ -589,7 +662,10 @@ class UploadWorker(QThread):
             from openai import OpenAI
             from jobops.models import Document, DocumentType
             repository = getattr(self.app_instance, 'repository', None)
+            span_id = get_span_id()
+            logging.info(f"UploadWorker started for file: {self.file_path}, doc_type: {self.doc_type}", extra={"span_id": span_id})
             if repository is None:
+                logging.error("Application is missing repository.", extra={"span_id": span_id})
                 raise Exception("Application is missing repository.")
 
             # Copy uploaded file to ~/.jobops/resumes/
@@ -597,6 +673,7 @@ class UploadWorker(QThread):
             os.makedirs(resumes_dir, exist_ok=True)
             dest_path = os.path.join(resumes_dir, os.path.basename(self.file_path))
             shutil.copy2(self.file_path, dest_path)
+            logging.info(f"Copied file to: {dest_path}", extra={"span_id": span_id})
 
             # Use dest_path as the filename for the Document
             filename_for_db = dest_path
@@ -604,28 +681,29 @@ class UploadWorker(QThread):
             # Get the LLM backend and model
             generator = getattr(self.app_instance, 'generator', None)
             llm_backend = getattr(generator, 'llm_backend', None)
-            llm_client = None
-            llm_model = None
-            # Detect backend type and set up MarkItDown accordingly
-            backend_name = llm_backend.__class__.__name__ if llm_backend else None
-            if backend_name == "OpenAIBackend":
+            logging.info(f"Detected backend: {llm_backend}", extra={"span_id": span_id})
+            if not llm_backend:
+                logging.error("No LLM backend available for MarkItDown.", extra={"span_id": span_id})
+                raise Exception("No LLM backend available for MarkItDown.")
+            backend_name = getattr(llm_backend, 'name', '').lower()
+            llm_model = getattr(llm_backend, 'model', 'gpt-4o')
+            logging.info(f"Backend name: {backend_name}, model: {llm_model}", extra={"span_id": span_id})
+            if backend_name in ("openai", "groq"):
                 llm_client = llm_backend.client
-                llm_model = getattr(llm_backend, 'model', 'gpt-4o')
-            elif backend_name == "GroqBackend":
-                llm_client = llm_backend.client
-                llm_model = getattr(llm_backend, 'model', 'llama-3.3-70b-versatile')
-            elif backend_name == "OllamaBackend":
-                # Ollama exposes an OpenAI-compatible API
+                logging.info(f"Using OpenAI/Groq client: {type(llm_client)}", extra={"span_id": span_id})
+            elif backend_name == "ollama":
                 base_url = getattr(llm_backend, 'base_url', 'http://localhost:11434')
-                llm_model = getattr(llm_backend, 'model', 'llava')
+                logging.info(f"Using Ollama backend, base_url: {base_url}", extra={"span_id": span_id})
                 llm_client = OpenAI(base_url=f"{base_url}/v1", api_key="ollama")
             else:
+                logging.error(f"MarkItDown integration is not yet supported for backend: {backend_name}", extra={"span_id": span_id})
                 raise Exception(f"MarkItDown integration is not yet supported for backend: {backend_name}")
-
             md = MarkItDown(llm_client=llm_client, llm_model=llm_model)
+            logging.info(f"Starting MarkItDown extraction for file: {self.file_path}", extra={"span_id": span_id})
             result = md.convert(self.file_path)
             structured_content = result.text_content
             raw_content = result.raw_text if hasattr(result, 'raw_text') else structured_content
+            logging.info(f"Extraction complete, structured length: {len(structured_content)}", extra={"span_id": span_id})
             doc_type_enum = DocumentType.RESUME if self.doc_type.upper() == "RESUME" else DocumentType.CERTIFICATION
             doc = Document(
                 type=doc_type_enum,
@@ -635,9 +713,11 @@ class UploadWorker(QThread):
                 uploaded_at=datetime.now()
             )
             repository.save(doc)
+            logging.info(f"Document saved to database: {filename_for_db}", extra={"span_id": span_id})
             self.finished.emit(f"Document uploaded and parsed successfully: {os.path.basename(self.file_path)}")
         except Exception as e:
             import traceback
+            logging.error(f"Upload failed: {str(e)}\n{traceback.format_exc()}", extra={"span_id": span_id})
             self.error.emit(f"Upload failed: {str(e)}\n{traceback.format_exc()}")
 
 class GenerateWorker(QThread):
@@ -718,6 +798,70 @@ class GenerateWorker(QThread):
         except Exception as e:
             logging.error(f"Exception in GenerateWorker: {e}")
             self.error.emit(str(e))
+
+class LogViewerDialog(QDialog):
+    def __init__(self, log_file, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("JobOps Log Viewer")
+        self.setMinimumSize(900, 600)
+        layout = QVBoxLayout(self)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search logs...")
+        self.search_input.textChanged.connect(self.filter_logs)
+        layout.addWidget(self.search_input)
+        self.table = QTableWidget()
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["Timestamp", "Level", "Logger", "Message", "span_id", "trace_id"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.table)
+        self.log_file = log_file
+        self.all_logs = []
+        self.load_logs()
+
+    def load_logs(self):
+        self.all_logs.clear()
+        self.table.setRowCount(0)
+        if not os.path.exists(self.log_file):
+            return
+        with open(self.log_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    log = json.loads(line)
+                except Exception:
+                    # Fallback: try to parse as plain text
+                    log = {"timestamp": "", "level": "", "logger": "", "message": line, "span_id": "", "trace_id": ""}
+                self.all_logs.append(log)
+        self.display_logs(self.all_logs)
+
+    def display_logs(self, logs):
+        self.table.setRowCount(len(logs))
+        for row, log in enumerate(logs):
+            ts = log.get("timestamp", "")
+            lvl = log.get("level", "")
+            logger = log.get("logger", "")
+            msg = log.get("message", "")
+            span_id = log.get("span_id", "")
+            trace_id = log.get("trace_id", "")
+            for col, val in enumerate([ts, lvl, logger, msg, span_id, trace_id]):
+                item = QTableWidgetItem(str(val))
+                if col == 1:  # Level
+                    if lvl == "ERROR":
+                        item.setForeground(QColor("red"))
+                    elif lvl == "WARNING":
+                        item.setForeground(QColor("orange"))
+                    elif lvl == "INFO":
+                        item.setForeground(QColor("blue"))
+                    elif lvl == "DEBUG":
+                        item.setForeground(QColor("gray"))
+                self.table.setItem(row, col, item)
+
+    def filter_logs(self, text):
+        text = text.lower()
+        filtered = [log for log in self.all_logs if text in json.dumps(log).lower()]
+        self.display_logs(filtered)
 
 class JobOpsQtApplication(QApplication):
     """Main Qt application class"""

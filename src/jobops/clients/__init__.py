@@ -30,6 +30,7 @@ class BaseLLMBackend(Protocol):
     def health_check(self) -> bool: pass
 
 class OllamaBackend(BaseLLMBackend):
+    name = "ollama"
     def __init__(self, model: str = "llama3:8b", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
@@ -59,6 +60,7 @@ class OllamaBackend(BaseLLMBackend):
             return False
 
 class OpenAIBackend(BaseLLMBackend):
+    name = "openai"
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", base_url: str = "https://api.openai.com/v1"):
         if not api_key:
             raise ValueError("OpenAI API key required")
@@ -96,6 +98,7 @@ class OpenAIBackend(BaseLLMBackend):
             return False
 
 class GroqBackend(BaseLLMBackend):
+    name = "groq"
     def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile", base_url: str = "https://api.groq.com/openai/v1"):
         if not api_key:
             raise ValueError("Groq API key required")
