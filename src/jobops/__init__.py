@@ -3,6 +3,7 @@ import os
 import logging
 import base64
 from pathlib import Path
+import threading
 import webbrowser
 from PIL import Image
 from io import BytesIO
@@ -462,7 +463,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Add actions
         upload_action = QAction("📁 Upload Document", self)
         generate_action = QAction("✨ Generate Letter", self)
-        download_action = QAction("💾 Download Letters", self)
+        archive_action = QAction("💾 View Archive", self)
         log_viewer_action = QAction("📝 View Logs", self)
         settings_action = QAction("⚙️ Settings", self)
         help_action = QAction("❓ Help", self)
@@ -471,7 +472,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Connect actions
         upload_action.triggered.connect(self.upload_document)
         generate_action.triggered.connect(self.generate_letter)
-        download_action.triggered.connect(self.download_letters)
+        archive_action.triggered.connect(self.show_archive)
         log_viewer_action.triggered.connect(self.show_log_viewer)
         settings_action.triggered.connect(self.show_settings)
         help_action.triggered.connect(self.show_help)
@@ -481,7 +482,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(upload_action)
         menu.addAction(generate_action)
         menu.addSeparator()
-        menu.addAction(download_action)
+        menu.addAction(archive_action)
         menu.addAction(log_viewer_action)
         menu.addAction(settings_action)
         menu.addAction(help_action)
@@ -536,42 +537,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         )
         self.generate_worker.start()
     
-    def download_letters(self):
-        logging.info("User triggered: Download Letters dialog")
-        # Fetch all motivation letters (stored as COVER_LETTER)
-        try:
-            letters = self.app_instance.repository.get_by_type(DocumentType.COVER_LETTER)
-            if not letters:
-                QMessageBox.information(None, "Download", "No motivation letters found.")
-                return
-            # Ask user for directory
-            dir_path = QFileDialog.getExistingDirectory(None, "Select Download Directory")
-            if not dir_path:
-                return
-            count = 0
-            for doc in letters:
-                # Try to extract job title and date for filename
-                job_title = "letter"
-                job_data = None
-                if hasattr(doc, 'json_content') and doc.json_content:
-                    import json
-                    try:
-                        job_data = json.loads(doc.json_content)
-                        if 'title' in job_data and job_data['title']:
-                            job_title = job_data['title'].replace(' ', '_')
-                    except Exception:
-                        pass
-                date_str = doc.uploaded_at.strftime('%Y%m%d_%H%M%S') if hasattr(doc, 'uploaded_at') else str(count)
-                filename = f"{job_title}_{date_str}.md"
-                filepath = os.path.join(dir_path, filename)
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(doc.structured_content or doc.raw_content or "")
-                count += 1
-            QMessageBox.information(None, "Download", f"Exported {count} motivation letters to {dir_path}")
-        except Exception as e:
-            logging.error(f"Error exporting motivation letters: {e}")
-        # Implementation for downloading letters
-        QMessageBox.information(None, "Download", "Download functionality will be implemented here.")
+    def show_archive(self):
+        logging.info("User triggered: Show Archive dialog")
+        # Open ~/.jobops/motivations/
+        motivations_dir = os.path.expanduser("~/.jobops/motivations")
+        if os.path.exists(motivations_dir):
+            subprocess.Popen(['xdg-open', motivations_dir])
+        else:
+            logging.error("Motivations directory does not exist.")
+            QMessageBox.warning(None, "Archive", "Motivations directory does not exist.")
+
     
     def show_settings(self):
         logging.info("User triggered: Settings dialog")
@@ -610,6 +585,18 @@ class SystemTrayIcon(QSystemTrayIcon):
         if reply == QMessageBox.StandardButton.Yes:
             QApplication.quit()
     
+    def restart_application(self):
+        log_message = "User triggered: Restart application"
+        logging.info(log_message)
+        self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 3000)
+        # make sure that the application is restarted
+        exit_thread = threading.Thread(target=QApplication.quit)
+        exit_thread.start()
+        exit_thread.join()  # Wait for exit to complete
+        restart_thread = threading.Thread(target=QApplication.exec)
+        restart_thread.start()
+        restart_thread.join()
+
     def on_upload_finished(self, message):
         log_message = f"Upload finished: {message}"
         logging.info(log_message)
@@ -925,9 +912,9 @@ class LogViewerDialog(QDialog):
     def display_logs(self, logs):
         self.table.setRowCount(len(logs))
         for row, log in enumerate(logs):
-            ts = log.get("timestamp", "")
-            lvl = log.get("level", "")
-            logger = log.get("logger", "")
+            ts = log.get("timestamp", log.get("asctime", ""))
+            lvl = log.get("level", log.get("levelname", ""))
+            logger = log.get("logger", log.get("name", ""))
             msg = log.get("message", "")
             span_id = log.get("span_id", "")
             trace_id = log.get("trace_id", "")
