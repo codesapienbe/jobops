@@ -678,32 +678,57 @@ class UploadWorker(QThread):
             # Use dest_path as the filename for the Document
             filename_for_db = dest_path
 
-            # Get the LLM backend and model
-            generator = getattr(self.app_instance, 'generator', None)
-            llm_backend = getattr(generator, 'llm_backend', None)
-            logging.info(f"Detected backend: {llm_backend}", extra={"span_id": span_id})
-            if not llm_backend:
-                logging.error("No LLM backend available for MarkItDown.", extra={"span_id": span_id})
-                raise Exception("No LLM backend available for MarkItDown.")
-            backend_name = getattr(llm_backend, 'name', '').lower()
-            llm_model = getattr(llm_backend, 'model', 'gpt-4o')
-            logging.info(f"Backend name: {backend_name}, model: {llm_model}", extra={"span_id": span_id})
-            if backend_name in ("openai", "groq"):
-                llm_client = llm_backend.client
-                logging.info(f"Using OpenAI/Groq client: {type(llm_client)}", extra={"span_id": span_id})
-            elif backend_name == "ollama":
-                base_url = getattr(llm_backend, 'base_url', 'http://localhost:11434')
-                logging.info(f"Using Ollama backend, base_url: {base_url}", extra={"span_id": span_id})
-                llm_client = OpenAI(base_url=f"{base_url}/v1", api_key="ollama")
+            # Determine file extension
+            _, ext = os.path.splitext(self.file_path)
+            ext = ext.lower()
+
+            if ext == ".md":
+                # If markdown, just read the content
+                with open(self.file_path, "r", encoding="utf-8") as f:
+                    structured_content = f.read()
+                raw_content = structured_content
+                logging.info(f"Markdown file detected, skipping MarkItDown conversion.", extra={"span_id": span_id})
             else:
-                logging.error(f"MarkItDown integration is not yet supported for backend: {backend_name}", extra={"span_id": span_id})
-                raise Exception(f"MarkItDown integration is not yet supported for backend: {backend_name}")
-            md = MarkItDown(llm_client=llm_client, llm_model=llm_model)
-            logging.info(f"Starting MarkItDown extraction for file: {self.file_path}", extra={"span_id": span_id})
-            result = md.convert(self.file_path)
-            structured_content = result.text_content
-            raw_content = result.raw_text if hasattr(result, 'raw_text') else structured_content
-            logging.info(f"Extraction complete, structured length: {len(structured_content)}", extra={"span_id": span_id})
+                # Get the LLM backend and model
+                generator = getattr(self.app_instance, 'generator', None)
+                llm_backend = getattr(generator, 'llm_backend', None)
+                logging.info(f"Detected backend: {llm_backend}", extra={"span_id": span_id})
+                if not llm_backend:
+                    logging.error("No LLM backend available for MarkItDown.", extra={"span_id": span_id})
+                    raise Exception("No LLM backend available for MarkItDown.")
+                backend_name = getattr(llm_backend, 'name', '').lower()
+                llm_model = getattr(llm_backend, 'model', 'gpt-4o')
+                logging.info(f"Backend name: {backend_name}, model: {llm_model}", extra={"span_id": span_id})
+                if backend_name in ("openai", "groq"):
+                    llm_client = llm_backend.client
+                    logging.info(f"Using OpenAI/Groq client: {type(llm_client)}", extra={"span_id": span_id})
+                elif backend_name == "ollama":
+                    base_url = getattr(llm_backend, 'base_url', 'http://localhost:11434')
+                    logging.info(f"Using Ollama backend, base_url: {base_url}", extra={"span_id": span_id})
+                    llm_client = OpenAI(base_url=f"{base_url}/v1", api_key="ollama")
+                else:
+                    logging.error(f"MarkItDown integration is not yet supported for backend: {backend_name}", extra={"span_id": span_id})
+                    raise Exception(f"MarkItDown integration is not yet supported for backend: {backend_name}")
+                md = MarkItDown(llm_client=llm_client, llm_model=llm_model)
+                logging.info(f"Starting MarkItDown extraction for file: {self.file_path}", extra={"span_id": span_id})
+                try:
+                    result = md.convert(self.file_path)
+                except Exception as e:
+                    # Check for MissingDependencyException in the error message
+                    if "MissingDependencyException" in str(e) and ("docx" in ext or "docx" in str(e)):
+                        msg = (
+                            "File conversion failed: MarkItDown requires extra dependencies to read .docx files. "
+                            "Please install with: pip install markitdown[docx] or pip install markitdown[all]"
+                        )
+                        logging.error(msg, extra={"span_id": span_id})
+                        self.error.emit(msg)
+                        return
+                    else:
+                        raise
+                structured_content = result.text_content
+                raw_content = result.raw_text if hasattr(result, 'raw_text') else structured_content
+                logging.info(f"Extraction complete, structured length: {len(structured_content)}", extra={"span_id": span_id})
+
             doc_type_enum = DocumentType.RESUME if self.doc_type.upper() == "RESUME" else DocumentType.CERTIFICATION
             doc = Document(
                 type=doc_type_enum,

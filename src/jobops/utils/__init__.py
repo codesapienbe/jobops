@@ -2,7 +2,7 @@ from jobops.models import MotivationLetter, GenericDocument, DocumentType, JobDa
 import logging
 import json as _json
 from jobops.clients import BaseLLMBackend
-from typing import Protocol
+from typing import Protocol, List, Optional, Tuple
 import re
 import os
 import base64
@@ -23,6 +23,8 @@ import threading
 import time
 import pyperclip
 from urllib.parse import urlparse
+import math
+from jobops.models import Document
 
 class LetterGenerator(Protocol):
     def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter: ...
@@ -130,13 +132,17 @@ class ConcreteLetterGenerator:
         # Build the prompt using the resume-inclusive method
         user_prompt = self._create_user_prompt(job_data, resume, used_language)
         system_prompt = ""  # Optionally, you can keep a short system prompt for LLM context
+        # --- Generate embedding for deduplication ---
+        embedding_input = f"Company: {job_data.company}\nTitle: {job_data.title}\nDescription: {job_data.description}\nRequirements: {job_data.requirements}"
+        embedding = self.backend.embed_text(embedding_input)
         try:
             content = self.backend.generate_response(user_prompt, system_prompt)
             return MotivationLetter(
                 job_data=job_data,
                 resume=resume,
                 content=content,
-                language=used_language
+                language=used_language,
+                embedding=embedding
             )
         except Exception as e:
             self._logger.error(f"Error generating motivation letter: {e}")
@@ -155,8 +161,6 @@ GUIDELINES:
 - End with confident but respectful closing"""
 
         return prompt
-        
-        return prompts.get(language, prompts["en"])
     
     def _create_user_prompt(self, job_data: JobData, resume: str, language: str) -> str:
         templates = {
@@ -769,4 +773,42 @@ class ClipboardJobUrlWatchdog(QObject):
         except Exception:
             pass
         return None
+
+# --- Embedding-based Duplicate Detection Utilities ---
+def compute_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    if not vec1 or not vec2 or len(vec1) != len(vec2):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = math.sqrt(sum(a * a for a in vec1))
+    norm2 = math.sqrt(sum(b * b for b in vec2))
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return dot / (norm1 * norm2)
+
+def find_duplicate_job_embedding(
+    new_embedding: List[float],
+    existing_docs: List[Document],
+    threshold: float = 0.85
+) -> Tuple[bool, Optional[Document], float]:
+    """
+    Check if new_embedding is a duplicate of any existing document embeddings.
+    Returns (is_duplicate, most_similar_doc, similarity)
+    """
+    most_similar_doc = None
+    max_similarity = 0.0
+    for doc in existing_docs:
+        if not hasattr(doc, 'embedding') or doc.embedding is None:
+            continue
+        sim = compute_cosine_similarity(new_embedding, doc.embedding)
+        if sim > max_similarity:
+            max_similarity = sim
+            most_similar_doc = doc
+    return (max_similarity >= threshold, most_similar_doc, max_similarity)
+
+def get_job_embedding_input(job_data: JobData) -> str:
+    """
+    Returns the string used for embedding generation for a job (company, title, description, requirements).
+    """
+    return f"Company: {job_data.company}\nTitle: {job_data.title}\nDescription: {job_data.description}\nRequirements: {job_data.requirements}"
 
