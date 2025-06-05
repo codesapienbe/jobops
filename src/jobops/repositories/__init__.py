@@ -13,8 +13,6 @@ class DocumentRepository(Protocol):
     def get_latest_resume(self) -> Optional[str]: ...
     def delete(self, doc_id: str) -> bool: ...
 
-
-
 class SQLiteDocumentRepository:
     def __init__(self, db_path: str, timeout: float = 30.0):
         self.db_path = Path(db_path)

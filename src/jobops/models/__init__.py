@@ -64,10 +64,6 @@ class Certification(BaseModel):
     credential_id: Optional[str] = Field(None, description="Credential ID")
     url: Optional[str] = Field(None, description="Verification URL")
 
-class Language(BaseModel):
-    name: Optional[str] = Field(None, description="Language name")
-    proficiency: Optional[str] = Field(None, description="Proficiency level")
-
 class GenericDocument(BaseModel):
     content_type: Optional[str] = Field(None, description="Type of document content")
     title: Optional[str] = Field(None, description="Document title")
@@ -134,7 +130,6 @@ class MotivationLetter(BaseModel):
     job_data: JobData
     resume: str  # Now just a markdown string
     content: str
-    language: str = "en"
     generated_at: datetime = Field(default_factory=datetime.now)
 
 class AppConfig(BaseModel):

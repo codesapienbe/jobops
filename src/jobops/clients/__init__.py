@@ -119,7 +119,7 @@ class OpenAIBackend(BaseLLMBackend):
 
 class GroqBackend(BaseLLMBackend):
     name = "groq"
-    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile", base_url: str = "https://api.groq.com/openai/v1"):
+    def __init__(self, api_key: str, model: str = "mistral:7b-instruct-q4_0", base_url: str = "https://api.groq.com/openai/v1"):
         if not api_key:
             raise ValueError("Groq API key required")
         from groq import Groq
@@ -279,12 +279,12 @@ class PerplexityBackend(BaseLLMBackend):
 class LLMBackendFactory:
     @staticmethod
     def create(backend_type: str, settings: Dict[str, Any], tokens: Dict[str, str]) -> BaseLLMBackend:
-        ollama_model = 'llama3:8b'
-        groq_model = 'llama-3.3-70b-versatile'
-        openai_model = 'gpt-4o-mini'
-        gemini_model = 'gemini-1.5-pro'
-        perplexity_model = 'pplx-7b-online'
-        xgrok_model = 'grok-1'
+        ollama_model = settings.get('model', 'mistral:7b-instruct-q4_0')
+        groq_model = settings.get('model', 'mistral:7b-instruct-q4_0')
+        openai_model = settings.get('model', 'mistral:7b-instruct-q4_0')
+        gemini_model = settings.get('model', 'gemini-1.5-pro')
+        perplexity_model = settings.get('model', 'mistral:7b-instruct-q4_0')
+        xgrok_model = settings.get('model', 'mistral:7b-instruct-q4_0')
         
         if backend_type == "ollama":
             return OllamaBackend(

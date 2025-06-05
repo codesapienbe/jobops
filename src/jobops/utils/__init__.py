@@ -25,6 +25,10 @@ import pyperclip
 from urllib.parse import urlparse
 import math
 from jobops.models import Document
+import matplotlib.pyplot as plt
+import numpy as np
+from sentence_transformers import SentenceTransformer, util
+from collections import Counter
 
 class LetterGenerator(Protocol):
     def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter: ...
@@ -115,30 +119,16 @@ class ConcreteLetterGenerator:
         self.llm_backend = llm_backend  # Expose for crawl4ai integration
         self._logger = logging.getLogger(self.__class__.__name__)
     
-    def generate(self, job_data: JobData, resume: str, language: str = None) -> MotivationLetter:
+    def generate(self, job_data: JobData, resume: str, language: str) -> MotivationLetter:
         self._logger.info(f"Generating motivation letter for job: {job_data}")
-        # --- DYNAMIC PROMPT GENERATION ---
-        # Load applicant info from config if available
-        config_path = os.path.expanduser(os.path.join('~', '.jobops', 'config.json'))
-        config_language = None
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = _json.load(f)
-            config_language = config.get('app_settings', {}).get('output_language') or config.get('app_settings', {}).get('interface_language')
-        except Exception as e:
-            self._logger.warning(f"Could not load personal_info for prompt: {e}")
-        # Use config language if not explicitly provided
-        used_language = language or config_language or "en"
-        # Build the prompt using the resume-inclusive method
-        user_prompt = self._create_user_prompt(job_data, resume, used_language)
-        system_prompt = ""  # Optionally, you can keep a short system prompt for LLM context
-        # --- Generate the letter content ---
+        user_prompt = self._create_user_prompt(job_data, resume, language)
+        system_prompt = ""
         content = self.backend.generate_response(user_prompt, system_prompt)
         return MotivationLetter(
             job_data=job_data,
             resume=resume,
             content=content,
-            language=used_language
+            language=language
         )
     
     def _create_system_prompt(self, company: str, language: str) -> str:
@@ -760,3 +750,123 @@ class ClipboardJobUrlWatchdog(QObject):
             pass
         return None
 
+def extract_skills(text):
+    # Simple skill extraction: look for capitalized words, common skill patterns, and comma-separated lists
+    # In production, use a skills database or LLM
+    skill_pattern = re.compile(r'\b([A-Z][a-zA-Z0-9\+\-#\.]+)\b')
+    skills = set(skill_pattern.findall(text))
+    # Also split on commas and semicolons
+    for part in re.split(r'[;,\n]', text):
+        part = part.strip()
+        if 2 < len(part) < 32 and not part.islower() and not part.isspace():
+            skills.add(part)
+    # Remove common stopwords and false positives
+    stopwords = {"The", "And", "With", "For", "You", "Your", "Our", "Are", "Will", "Have", "Must", "Can", "In", "To", "Of", "On", "At", "As", "By", "Or", "Be", "An", "A", "We", "Is", "It", "From", "That", "This", "But", "If", "So", "All", "Any", "Not", "May", "Do", "Should", "Would", "Could", "Shall", "Has", "Was", "Were", "Had", "Does", "Did", "Being", "Been", "Having"}
+    skills = {s for s in skills if s not in stopwords and len(s) > 2}
+    return set(map(str.strip, skills))
+
+def extract_skills_with_llm(llm_backend, resume_text, job_text):
+    """
+    Use the LLM to extract matching_skills, missing_skills, and extra_skills as JSON.
+    Returns a dict or None if extraction fails.
+    """
+    prompt = f'''
+Extract the following skill lists as strict JSON:
+{{
+  "matching_skills": ["..."],
+  "missing_skills": ["..."],
+  "extra_skills": ["..."]
+}}
+
+"matching_skills": Skills present in both the resume and the job description/requirements.
+"missing_skills": Skills required by the job but not found in the resume.
+"extra_skills": Skills in the resume but not required by the job.
+
+Resume:
+{resume_text[:4000]}
+
+Job Description and Requirements:
+{job_text[:4000]}
+
+Return only the JSON object, no extra text or formatting.
+'''
+    try:
+        response = llm_backend.generate_response(prompt)
+        # Try to extract JSON from response
+        import re
+        json_pattern = r'```(?:json)?\s*({[\s\S]*?})\s*```'
+        match = re.search(json_pattern, response)
+        if match:
+            json_str = match.group(1)
+        else:
+            json_str = response.strip()
+        data = _json.loads(json_str)
+        if all(k in data for k in ("matching_skills", "missing_skills", "extra_skills")):
+            return data
+    except Exception as e:
+        logging.warning(f"LLM skill extraction failed: {e}")
+    return None
+
+def compute_match_score_and_chart(resume_text: str, job_description: str, job_requirements: str, llm_backend=None, output_dir: str = None) -> dict:
+    """
+    Use LLM to extract skills if possible, else fallback to regex. Only generate chart if valid data is available.
+    """
+    job_text = job_description + "\n" + job_requirements
+    skill_data = None
+    if llm_backend:
+        skill_data = extract_skills_with_llm(llm_backend, resume_text, job_text)
+    if skill_data:
+        matched_skills = sorted(set(skill_data["matching_skills"]))
+        missing_skills = sorted(set(skill_data["missing_skills"]))
+        extra_skills = sorted(set(skill_data["extra_skills"]))
+    else:
+        # Fallback to regex extraction
+        resume_skills = extract_skills(resume_text)
+        job_skills = extract_skills(job_text)
+        matched_skills = sorted(resume_skills & job_skills)
+        missing_skills = sorted(job_skills - resume_skills)
+        extra_skills = sorted(resume_skills - job_skills)
+    # If no skills detected, return None for UI warning
+    if not (matched_skills or missing_skills):
+        return None
+    # Prepare chart data
+    all_skills = matched_skills + missing_skills
+    skill_labels = all_skills if all_skills else ["No skills detected"]
+    present = [1]*len(matched_skills) + [0]*len(missing_skills)
+    colors = ["#4CAF50"]*len(matched_skills) + ["#F44336"]*len(missing_skills)
+    y_pos = np.arange(len(skill_labels))
+    # Plot
+    fig, ax = plt.subplots(figsize=(max(6, len(skill_labels)*0.5), max(4, len(skill_labels)*0.25)))
+    bars = ax.barh(y_pos, present, color=colors, edgecolor='black')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(skill_labels)
+    ax.set_xlabel('Skill Match')
+    ax.set_xlim(0, 1.1)
+    ax.set_xticks([])
+    ax.set_title('Job Skill Match (Green = Matched, Red = Missing)')
+    for i, bar in enumerate(bars):
+        ax.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height()/2,
+                '✔' if present[i] else '✘', va='center', color=colors[i], fontsize=14)
+    plt.tight_layout()
+    # Save chart
+    if not output_dir:
+        output_dir = os.path.expanduser(os.path.join('~', '.jobops', 'reports'))
+    os.makedirs(output_dir, exist_ok=True)
+    chart_path = os.path.join(output_dir, f'skill_match_chart_{int(time.time())}.png')
+    plt.savefig(chart_path, bbox_inches='tight')
+    plt.close(fig)
+    # Prepare summary
+    summary = f"Matched {len(matched_skills)} out of {len(matched_skills) + len(missing_skills)} required skills.\n"
+    if matched_skills:
+        summary += "\n✔ Matched Skills: " + ", ".join(matched_skills)
+    if missing_skills:
+        summary += "\n✘ Missing Skills: " + ", ".join(missing_skills)
+    if not (matched_skills or missing_skills):
+        summary = "No skills detected in job description."
+    return {
+        'matched_skills': matched_skills,
+        'missing_skills': missing_skills,
+        'extra_skills': extra_skills,
+        'summary': summary,
+        'chart_path': chart_path
+    }

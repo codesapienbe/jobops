@@ -40,7 +40,9 @@ dependencies = [
     "python-json-logger",
     "sentence-transformers",
     "torch",
-    "numpy"
+    "numpy",
+    "matplotlib",
+    "langdetect"
 ]
 
 [project.scripts]

@@ -12,6 +12,7 @@ import json
 from jobops.utils import export_letter_to_pdf, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry
 import uuid
 import subprocess
+from langdetect import detect
 
 # Qt imports
 try:
@@ -72,6 +73,9 @@ class JobInputDialog(QDialog):
         self.setWindowIcon(ResourceManager.create_app_icon())
         self.job_data = None
         self._setup_ui()
+        # Track last crawled URL and markdown
+        self._last_crawled_url = None
+        self._last_crawled_markdown = None
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -97,6 +101,14 @@ class JobInputDialog(QDialog):
         self.edit_markdown_btn.setVisible(False)
         self.edit_markdown_btn.clicked.connect(self._enable_markdown_edit)
         markdown_layout.addWidget(self.edit_markdown_btn)
+        # Add flag icon label (top-right corner of markdown area)
+        self.language_flag_label = QLabel()
+        self.language_flag_label.setFixedSize(32, 32)
+        self.language_flag_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        self.language_flag_label.setStyleSheet("QLabel { background: transparent; }")
+        flag_layout = QVBoxLayout()
+        flag_layout.addWidget(self.language_flag_label, alignment=Qt.AlignmentFlag.AlignRight)
+        markdown_layout.addLayout(flag_layout)
         layout.addLayout(markdown_layout)
         self.markdown_edit.focusOutEvent = self._on_markdown_focus_out
 
@@ -109,13 +121,18 @@ class JobInputDialog(QDialog):
         self.contact_input = QLineEdit()
         self.requirements_input = QTextEdit()
         self.requirements_input.setPlaceholderText("Paste job requirements here or leave blank...")
-        # New fields for advanced requirements
         self.job_responsibilities_input = QTextEdit()
         self.job_responsibilities_input.setPlaceholderText("Main tasks and responsibilities...")
         self.candidate_profile_input = QTextEdit()
         self.candidate_profile_input.setPlaceholderText("Required skills, experience, and personal traits...")
         self.company_offers_input = QTextEdit()
         self.company_offers_input.setPlaceholderText("What the company offers (salary, perks, etc)...")
+        self.match_score_label = QLabel()
+        self.match_score_label.setText("Match Score: 0%")
+        self.match_score_label.setStyleSheet("QLabel { background-color: #f0f0f0; padding: 5px; }")
+        self.match_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.match_score_label.setFixedHeight(30)
+        self.match_score_label.setVisible(False)
         details_layout.addRow("Company Name:", self.company_input)
         details_layout.addRow("Job Title:", self.title_input)
         details_layout.addRow("Location:", self.location_input)
@@ -124,6 +141,7 @@ class JobInputDialog(QDialog):
         details_layout.addRow("Job Responsibilities:", self.job_responsibilities_input)
         details_layout.addRow("Candidate Profile:", self.candidate_profile_input)
         details_layout.addRow("Company Offers:", self.company_offers_input)
+        details_layout.addRow("Match Score:", self.match_score_label)
         layout.addWidget(details_group)
 
         # Buttons
@@ -140,6 +158,11 @@ class JobInputDialog(QDialog):
         url = self.url_input.text().strip()
         span_id = get_span_id()
         logging.info(f"URL pasted: {url}", extra={"span_id": span_id})
+        # If URL is the same as last crawled, do not re-crawl
+        if url and url == self._last_crawled_url and self._last_crawled_markdown:
+            logging.info("URL already crawled, reusing existing markdown.", extra={"span_id": span_id})
+            self.markdown_edit.setPlainText(self._last_crawled_markdown)
+            return
         if not url or self.markdown_edit.toPlainText().strip():
             logging.info("No URL or markdown already present, skipping extraction.", extra={"span_id": span_id})
             return
@@ -181,6 +204,9 @@ class JobInputDialog(QDialog):
             markdown = result.text_content
             logging.info(f"Extraction complete, markdown length: {len(markdown)}", extra={"span_id": span_id})
             self.markdown_edit.setPlainText(markdown)
+            # Store last crawled URL and markdown
+            self._last_crawled_url = url
+            self._last_crawled_markdown = markdown
         except Exception as e:
             logging.error(f"Extraction error: {e}", extra={"span_id": span_id})
             QMessageBox.warning(self, "Extraction Error", f"Could not extract markdown from URL: {e}")
@@ -217,6 +243,8 @@ class JobInputDialog(QDialog):
                 "requirements": "",
                 "contact_info": ""
             }
+            # Log the model used for extraction
+            logging.info(f"Extracting job info from markdown using model: {getattr(llm_backend, 'model', 'unknown')}")
             prompt = f"""
             Extract the following fields from the job posting markdown and return ONLY valid JSON matching this schema:
 
@@ -231,11 +259,9 @@ class JobInputDialog(QDialog):
             import re
 
             response = llm_backend.generate_response(prompt)
-            
             # Extract JSON using regex pattern matching
             json_pattern = r'```(?:json)?\s*({[\s\S]*?})\s*```'
             match = re.search(json_pattern, response)
-            
             if not match:
                 raise Exception("No valid JSON found in LLM response")
             import json
@@ -261,12 +287,46 @@ class JobInputDialog(QDialog):
                 self.job_responsibilities_input.setPlainText(getattr(job_info, 'job_responsibilities', '') or '')
                 self.candidate_profile_input.setPlainText(getattr(job_info, 'candidate_profile', '') or '')
                 self.company_offers_input.setPlainText(getattr(job_info, 'company_offers', '') or '')
+                # --- Compute match score and generate chart ---
+                from jobops.utils import compute_match_score_and_chart
+                # Get resume text from latest resume in repository if available
+                resume_text = ''
+                try:
+                    resume_doc = self.app_instance.repository.get_latest_resume()
+                    if resume_doc:
+                        resume_text = resume_doc.structured_content or resume_doc.raw_content or ''
+                except Exception as e:
+                    logging.warning(f"Could not load resume for match scoring: {e}")
+                # Use LLM-extracted fields if available, else fallback to markdown
+                job_desc = getattr(job_info, 'description', '') or markdown
+                job_reqs = getattr(job_info, 'requirements', '') or markdown
+                match_report = compute_match_score_and_chart(
+                    resume_text=resume_text,
+                    job_description=job_desc,
+                    job_requirements=job_reqs,
+                    llm_backend=llm_backend
+                )
+                if match_report is None:
+                    self.match_score_label.setText('⚠️ Could not extract or map skills from the job description and resume. No chart was generated.')
+                    self.match_score_label.setVisible(True)
+                    self.match_chart_path = None
+                else:
+                    logging.info(f"Match score report: {match_report}")
+                    self.match_chart_path = match_report.get('chart_path')
+                    self.match_score_label.setText(match_report.get('summary', ''))
+                    self.match_score_label.setVisible(True)
+                # Set language flag icon
+                from langdetect.lang_detect_exception import LangDetectException
+                try:
+                    detected_language = detect(markdown)
+                except LangDetectException:
+                    detected_language = "en"
+                self.set_language_flag_icon(detected_language)
                 # Set markdown to read-only and show edit button
                 self.markdown_edit.setReadOnly(True)
                 self.edit_markdown_btn.setVisible(True)
             except Exception as e:
                 QMessageBox.warning(self, "Auto-fill Error", f"Could not auto-fill fields: {e}\nYou can fill them manually.")
-                # Do not stop the dialog, just let the user edit fields manually
         except Exception as e:
             QMessageBox.warning(self, "Auto-fill Error", f"Could not auto-fill fields: {e}")
         finally:
@@ -291,6 +351,11 @@ class JobInputDialog(QDialog):
         if not markdown:
             QMessageBox.warning(self, "Error", "Job description in markdown is required.")
             return
+        # Detect language of the job description
+        try:
+            detected_language = detect(markdown)
+        except Exception:
+            detected_language = "en"
         self.job_data = {
             'url': url,
             'description': markdown,
@@ -301,10 +366,24 @@ class JobInputDialog(QDialog):
             'contact_info': contact,
             'job_responsibilities': job_responsibilities,
             'candidate_profile': candidate_profile,
-            'company_offers': company_offers
+            'company_offers': company_offers,
+            'detected_language': detected_language
         }
         self.job_data_ready.emit(self.job_data)
         self.accept()
+
+    def set_language_flag_icon(self, lang_code):
+        # Map language code to emoji flag or local PNG if available
+        flag_map = {
+            'en': '🇬🇧', 'fr': '🇫🇷', 'de': '🇩🇪', 'es': '🇪🇸', 'it': '🇮🇹', 'pt': '🇵🇹', 'nl': '🇳🇱',
+            'tr': '🇹🇷', 'ru': '🇷🇺', 'pl': '🇵🇱', 'sv': '🇸🇪', 'da': '🇩🇰', 'fi': '🇫🇮', 'no': '🇳🇴',
+            'zh': '🇨🇳', 'ja': '🇯🇵', 'ko': '🇰🇷', 'ar': '🇸🇦', 'cs': '🇨🇿', 'el': '🇬🇷', 'hu': '🇭🇺',
+        }
+        flag_emoji = flag_map.get(lang_code, '🏳️')
+        # Use emoji as pixmap (fallback: text if not supported)
+        # Try to use a local PNG if you want, else use emoji
+        self.language_flag_label.setText(flag_emoji)
+        self.language_flag_label.setToolTip(f"Detected language: {lang_code}")
 
 class UploadDialog(QDialog):
     """File upload dialog"""
@@ -825,9 +904,9 @@ class GenerateWorker(QThread):
 
             log_message = f"Generating letter for job: {job_data_obj}"
             logging.info(log_message)
-            # Use output_language from app_instance
-            output_language = getattr(self.app_instance, 'output_language', 'en')
-            letter = generator.generate(job_data_obj, resume, language=output_language)
+            # Use detected_language from job_data
+            detected_language = job_data_obj.detected_language or getattr(self.app_instance, 'output_language', 'en')
+            letter = generator.generate(job_data_obj, resume, language=detected_language)
 
             motivations_dir = os.path.expanduser("~/.jobops/motivations")
             import re
@@ -967,9 +1046,6 @@ class JobOpsQtApplication(QApplication):
         # Output format and debug level from config
         self.output_format = self._config.get("output_format", "markdown").lower()
         self.debug = self._config.get("debug", False)
-        # Language settings
-        self.interface_language = self._config.get("interface_language", "en")
-        self.output_language = self._config.get("output_language", "en")
         self.setup_logging()
         self.notification_service = NotificationService()
         self.system_tray = None
@@ -1002,9 +1078,27 @@ class JobOpsQtApplication(QApplication):
         # Output format and debug level from config
         self.output_format = app_settings.get("output_format", "markdown").lower()
         self.debug = config.get("debug", False)
-        # Language settings
-        self.interface_language = app_settings.get("interface_language", "en")
-        self.output_language = app_settings.get("output_language", "en")
+        # Health check for model validity
+        try:
+            if hasattr(backend, 'health_check'):
+                ok = backend.health_check()
+                if not ok:
+                    # Provide model list URL based on backend
+                    model_urls = {
+                        'groq': 'https://console.groq.com/docs/models',
+                        'openai': 'https://platform.openai.com/docs/models',
+                        'ollama': 'https://ollama.com/library',
+                        'gemini': 'https://ai.google.dev/models',
+                    }
+                    url = model_urls.get(backend_type, None)
+                    msg = f"The selected model for backend '{backend_type}' is not available or invalid."
+                    if url:
+                        msg += f"\nCheck available models here: {url}"
+                        import webbrowser
+                        webbrowser.open(url)
+                    QMessageBox.warning(None, "Model Health Check Failed", msg)
+        except Exception as e:
+            logging.warning(f"Model health check failed: {e}")
 
     def on_config_changed(self, path):
         # QFileSystemWatcher sometimes emits multiple times, so reload defensively
