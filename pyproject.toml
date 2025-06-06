@@ -42,7 +42,8 @@ dependencies = [
     "torch",
     "numpy",
     "matplotlib",
-    "langdetect"
+    "langdetect",
+    "markdownify"
 ]
 
 [project.scripts]

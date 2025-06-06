@@ -174,3 +174,26 @@ class ScraperFactory:
         else:
             raise ValueError(f"Invalid scraper type: {scraper_type}")
 
+def extract_markdown_from_url(url: str) -> str:
+    """Extract markdown from a URL using crawl4ai's markdown generator."""
+    import asyncio
+    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
+    async def crawl():
+        md_generator = DefaultMarkdownGenerator(
+            options={
+                "ignore_links": True,
+                "escape_html": False,
+                "body_width": 80
+            }
+        )
+        config = CrawlerRunConfig(markdown_generator=md_generator)
+        async with AsyncWebCrawler() as crawler:
+            result = await crawler.arun(url, config=config)
+            return result.markdown
+    result = asyncio.run(crawl())
+    if result and len(result.strip()) > 30:
+        return result
+    else:
+        raise Exception(f"crawl4ai extraction failed or returned empty markdown: {getattr(result, 'error_message', '')}")
+

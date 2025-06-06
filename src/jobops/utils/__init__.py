@@ -131,6 +131,48 @@ class ConcreteLetterGenerator:
             language=language
         )
     
+    def generate_from_markdown(self, job_markdown: str, resume_markdown: str, language: str, url: str = "") -> MotivationLetter:
+        self._logger.info("Generating motivation letter from raw markdowns.")
+        prompt = f"""
+You are an expert in writing formal European motivation letters for job applications.
+Write a motivation letter in {language}.
+
+You are given two documents:
+
+1. The candidate's CV in markdown format:
+------------------
+{resume_markdown}
+------------------
+
+2. The job description in markdown format:
+------------------
+{job_markdown}
+------------------
+
+Write a tailored, authentic, and compelling motivation letter for this job application. Highlight relevant skills, experience, and motivation. Use a confident, positive, and proactive tone, while remaining formal and respectful. Vary sentence structure for readability.
+
+- Output only the motivation letter, with no extra explanations, comments, or metadata.
+- Format the letter as a single, continuous text block, using paragraph breaks only where appropriate.
+"""
+        content = self.backend.generate_response(prompt, "")
+        from jobops.models import MotivationLetter, JobData
+        import datetime
+        # Create a minimal JobData object for compatibility
+        job_data = JobData(
+            url=url or "http://unknown",
+            title="",
+            company="",
+            description=job_markdown or "",
+            requirements=""
+        )
+        return MotivationLetter(
+            job_data=job_data,
+            resume=resume_markdown,
+            content=content,
+            language=language,
+            generated_at=datetime.datetime.now()
+        )
+    
     def _create_system_prompt(self, company: str, language: str) -> str:
         prompt = f"""You are a professional career consultant. Write an authentic, compelling motivation letter for '{company}'.
 

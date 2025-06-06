@@ -62,24 +62,21 @@ def get_span_id():
     return str(uuid.uuid4())
 
 class JobInputDialog(QDialog):
-    """Job input dialog: user provides URL (as a link) and markdown manually. Auto-fills fields using LLM on markdown focus out."""
+    """Job input dialog: user provides URL (as a link) and markdown manually."""
     job_data_ready = Signal(dict)
     
     def __init__(self, app_instance=None):
         super().__init__()
         self.app_instance = app_instance
         self.setWindowTitle("Generate Motivation Letter")
-        self.setFixedSize(700, 700)
+        self.setFixedSize(700, 400)
         self.setWindowIcon(ResourceManager.create_app_icon())
-        self.job_data = None
         self._setup_ui()
-        # Track last crawled URL and markdown
         self._last_crawled_url = None
         self._last_crawled_markdown = None
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-
         # URL input (just stored as a link)
         url_layout = QHBoxLayout()
         self.url_input = QLineEdit()
@@ -88,62 +85,12 @@ class JobInputDialog(QDialog):
         url_layout.addWidget(self.url_input)
         layout.addLayout(url_layout)
         self.url_input.editingFinished.connect(self._on_url_pasted)
-
         # Markdown job description (user-provided)
         layout.addWidget(QLabel("Job Description (Markdown, required):"))
-        markdown_layout = QHBoxLayout()
         self.markdown_edit = QTextEdit()
         self.markdown_edit.setPlaceholderText("Paste or write the job description here in markdown format...")
         self.markdown_edit.setMinimumHeight(300)
-        markdown_layout.addWidget(self.markdown_edit)
-        self.edit_markdown_btn = QPushButton("Edit")
-        self.edit_markdown_btn.setFixedWidth(50)
-        self.edit_markdown_btn.setVisible(False)
-        self.edit_markdown_btn.clicked.connect(self._enable_markdown_edit)
-        markdown_layout.addWidget(self.edit_markdown_btn)
-        # Add flag icon label (top-right corner of markdown area)
-        self.language_flag_label = QLabel()
-        self.language_flag_label.setFixedSize(32, 32)
-        self.language_flag_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-        self.language_flag_label.setStyleSheet("QLabel { background: transparent; }")
-        flag_layout = QVBoxLayout()
-        flag_layout.addWidget(self.language_flag_label, alignment=Qt.AlignmentFlag.AlignRight)
-        markdown_layout.addLayout(flag_layout)
-        layout.addLayout(markdown_layout)
-        self.markdown_edit.focusOutEvent = self._on_markdown_focus_out
-
-        # Editable fields (optional, for user convenience)
-        details_group = QGroupBox("Job Details (Optional, for autofill)")
-        details_layout = QFormLayout(details_group)
-        self.company_input = QLineEdit()
-        self.title_input = QLineEdit()
-        self.location_input = QLineEdit()
-        self.contact_input = QLineEdit()
-        self.requirements_input = QTextEdit()
-        self.requirements_input.setPlaceholderText("Paste job requirements here or leave blank...")
-        self.job_responsibilities_input = QTextEdit()
-        self.job_responsibilities_input.setPlaceholderText("Main tasks and responsibilities...")
-        self.candidate_profile_input = QTextEdit()
-        self.candidate_profile_input.setPlaceholderText("Required skills, experience, and personal traits...")
-        self.company_offers_input = QTextEdit()
-        self.company_offers_input.setPlaceholderText("What the company offers (salary, perks, etc)...")
-        self.match_score_label = QLabel()
-        self.match_score_label.setText("Match Score: 0%")
-        self.match_score_label.setStyleSheet("QLabel { background-color: #f0f0f0; padding: 5px; }")
-        self.match_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.match_score_label.setFixedHeight(30)
-        self.match_score_label.setVisible(False)
-        details_layout.addRow("Company Name:", self.company_input)
-        details_layout.addRow("Job Title:", self.title_input)
-        details_layout.addRow("Location:", self.location_input)
-        details_layout.addRow("Contact Person:", self.contact_input)
-        details_layout.addRow("Requirements:", self.requirements_input)
-        details_layout.addRow("Job Responsibilities:", self.job_responsibilities_input)
-        details_layout.addRow("Candidate Profile:", self.candidate_profile_input)
-        details_layout.addRow("Company Offers:", self.company_offers_input)
-        details_layout.addRow("Match Score:", self.match_score_label)
-        layout.addWidget(details_group)
-
+        layout.addWidget(self.markdown_edit)
         # Buttons
         button_layout = QHBoxLayout()
         self.generate_btn = QPushButton("Generate Letter")
@@ -158,7 +105,6 @@ class JobInputDialog(QDialog):
         url = self.url_input.text().strip()
         span_id = get_span_id()
         logging.info(f"URL pasted: {url}", extra={"span_id": span_id})
-        # If URL is the same as last crawled, do not re-crawl
         if url and url == self._last_crawled_url and self._last_crawled_markdown:
             logging.info("URL already crawled, reusing existing markdown.", extra={"span_id": span_id})
             self.markdown_edit.setPlainText(self._last_crawled_markdown)
@@ -170,7 +116,6 @@ class JobInputDialog(QDialog):
         if not re.match(r"^https?://", url):
             logging.info("URL does not match http/https, skipping extraction.", extra={"span_id": span_id})
             return
-        # Show wait dialog
         wait_dialog = QMessageBox(self)
         wait_dialog.setWindowTitle("Extracting Markdown")
         wait_dialog.setText("Extracting job description from URL. Please wait...")
@@ -178,212 +123,36 @@ class JobInputDialog(QDialog):
         wait_dialog.show()
         QApplication.processEvents()
         try:
-            from markitdown import MarkItDown
-            from openai import OpenAI
-            backend = getattr(self.app_instance, 'generator', None)
-            llm_backend = getattr(backend, 'llm_backend', None)
-            logging.info(f"Detected backend: {llm_backend}", extra={"span_id": span_id})
-            if not llm_backend:
-                raise Exception("No LLM backend available for MarkItDown.")
-            backend_name = getattr(llm_backend, 'name', '').lower()
-            llm_model = getattr(llm_backend, 'model', 'gpt-4o')
-            logging.info(f"Backend name: {backend_name}, model: {llm_model}", extra={"span_id": span_id})
-            if backend_name in ("openai", "groq"):
-                llm_client = llm_backend.client
-                logging.info(f"Using OpenAI/Groq client: {type(llm_client)}", extra={"span_id": span_id})
-            elif backend_name == "ollama":
-                base_url = getattr(llm_backend, 'base_url', 'http://localhost:11434')
-                logging.info(f"Using Ollama backend, base_url: {base_url}", extra={"span_id": span_id})
-                llm_client = OpenAI(base_url=f"{base_url}/v1", api_key="ollama")
-            else:
-                logging.error(f"MarkItDown integration is not yet supported for backend: {backend_name}", extra={"span_id": span_id})
-                raise Exception(f"MarkItDown integration is not yet supported for backend: {backend_name}")
-            md = MarkItDown(llm_client=llm_client, llm_model=llm_model)
-            logging.info(f"Starting MarkItDown extraction for URL: {url}", extra={"span_id": span_id})
-            result = md.convert(url)
-            markdown = result.text_content
-            logging.info(f"Extraction complete, markdown length: {len(markdown)}", extra={"span_id": span_id})
+            from jobops.scrapers import extract_markdown_from_url
+            markdown = extract_markdown_from_url(url)
             self.markdown_edit.setPlainText(markdown)
-            # Store last crawled URL and markdown
             self._last_crawled_url = url
             self._last_crawled_markdown = markdown
         except Exception as e:
-            logging.error(f"Extraction error: {e}", extra={"span_id": span_id})
+            logging.error(f"Markdown extraction error: {e}", extra={"span_id": span_id})
             QMessageBox.warning(self, "Extraction Error", f"Could not extract markdown from URL: {e}")
         finally:
             wait_dialog.done(0)
 
-    def _on_markdown_focus_out(self, event):
-        markdown = self.markdown_edit.toPlainText().strip()
-        url = self.url_input.text().strip()
-        if not markdown:
-            return QTextEdit.focusOutEvent(self.markdown_edit, event)
-        # Notify user to wait
-        wait_dialog = QMessageBox(self)
-        wait_dialog.setWindowTitle("Auto-filling Fields")
-        wait_dialog.setText("Detecting company name, job title, location, etc. Please wait...")
-        wait_dialog.setStandardButtons(QMessageBox.NoButton)
-        wait_dialog.show()
-        QApplication.processEvents()
-        try:
-            from jobops.clients import BaseLLMBackend
-            backend = getattr(self.app_instance, 'generator', None)
-            llm_backend = getattr(backend, 'llm_backend', None)
-            if not llm_backend:
-                raise Exception("No LLM backend available for extraction.")
-            import json
-            from jobops.models import JobData
-            output_schema = {
-                "company": "",
-                "title": "",
-                "location": "",
-                "job_responsibilities": "",   # Main tasks and responsibilities
-                "candidate_profile": "",      # Required skills, experience, and personal traits
-                "company_offers": "",         # What the company offers (salary, perks, etc)
-                "requirements": "",
-                "contact_info": ""
-            }
-            # Log the model used for extraction
-            logging.info(f"Extracting job info from markdown using model: {getattr(llm_backend, 'model', 'unknown')}")
-            prompt = f"""
-            Extract the following fields from the job posting markdown and return ONLY valid JSON matching this schema:
-
-            {json.dumps(output_schema, indent=2)}
-
-            Job posting content:
-            {markdown[:10000]}
-
-            Return only the JSON object with no additional text, formatting, or code blocks.
-            """
-            from jobops.models import JobData
-            import re
-
-            response = llm_backend.generate_response(prompt)
-            # Extract JSON using regex pattern matching
-            json_pattern = r'```(?:json)?\s*({[\s\S]*?})\s*```'
-            match = re.search(json_pattern, response)
-            if not match:
-                raise Exception("No valid JSON found in LLM response")
-            import json
-            json_str = match.group(1)
-            job_info_dict = json.loads(json_str)
-            # Always use the user-provided URL
-            job_info_dict['url'] = self.url_input.text().strip()
-            # Ensure all required fields are present
-            for field in ['url', 'title', 'company', 'description', 'requirements']:
-                if field not in job_info_dict or not job_info_dict[field]:
-                    job_info_dict[field] = ''
-            # Remove scraped_at if missing or not a valid datetime string
-            if 'scraped_at' in job_info_dict and not job_info_dict['scraped_at']:
-                del job_info_dict['scraped_at']
-            try:
-                job_info = JobData(**job_info_dict)
-                # Fill fields if present
-                self.company_input.setText(getattr(job_info, 'company', '') or '')
-                self.title_input.setText(getattr(job_info, 'title', '') or '')
-                self.location_input.setText(getattr(job_info, 'location', '') or '')
-                self.requirements_input.setPlainText(getattr(job_info, 'requirements', '') or '')
-                self.contact_input.setText(getattr(job_info, 'contact_info', '') or '')
-                self.job_responsibilities_input.setPlainText(getattr(job_info, 'job_responsibilities', '') or '')
-                self.candidate_profile_input.setPlainText(getattr(job_info, 'candidate_profile', '') or '')
-                self.company_offers_input.setPlainText(getattr(job_info, 'company_offers', '') or '')
-                # --- Compute match score and generate chart ---
-                from jobops.utils import compute_match_score_and_chart
-                # Get resume text from latest resume in repository if available
-                resume_text = ''
-                try:
-                    resume_doc = self.app_instance.repository.get_latest_resume()
-                    if resume_doc:
-                        resume_text = resume_doc.structured_content or resume_doc.raw_content or ''
-                except Exception as e:
-                    logging.warning(f"Could not load resume for match scoring: {e}")
-                # Use LLM-extracted fields if available, else fallback to markdown
-                job_desc = getattr(job_info, 'description', '') or markdown
-                job_reqs = getattr(job_info, 'requirements', '') or markdown
-                match_report = compute_match_score_and_chart(
-                    resume_text=resume_text,
-                    job_description=job_desc,
-                    job_requirements=job_reqs,
-                    llm_backend=llm_backend
-                )
-                if match_report is None:
-                    self.match_score_label.setText('⚠️ Could not extract or map skills from the job description and resume. No chart was generated.')
-                    self.match_score_label.setVisible(True)
-                    self.match_chart_path = None
-                else:
-                    logging.info(f"Match score report: {match_report}")
-                    self.match_chart_path = match_report.get('chart_path')
-                    self.match_score_label.setText(match_report.get('summary', ''))
-                    self.match_score_label.setVisible(True)
-                # Set language flag icon
-                from langdetect.lang_detect_exception import LangDetectException
-                try:
-                    detected_language = detect(markdown)
-                except LangDetectException:
-                    detected_language = "en"
-                self.set_language_flag_icon(detected_language)
-                # Set markdown to read-only and show edit button
-                self.markdown_edit.setReadOnly(True)
-                self.edit_markdown_btn.setVisible(True)
-            except Exception as e:
-                QMessageBox.warning(self, "Auto-fill Error", f"Could not auto-fill fields: {e}\nYou can fill them manually.")
-        except Exception as e:
-            QMessageBox.warning(self, "Auto-fill Error", f"Could not auto-fill fields: {e}")
-        finally:
-            wait_dialog.done(0)
-        return QTextEdit.focusOutEvent(self.markdown_edit, event)
-
-    def _enable_markdown_edit(self):
-        self.markdown_edit.setReadOnly(False)
-        self.edit_markdown_btn.setVisible(False)
-
     def generate_letter(self):
         url = self.url_input.text().strip()
         markdown = self.markdown_edit.toPlainText().strip()
-        company = self.company_input.text().strip()
-        title = self.title_input.text().strip()
-        location = self.location_input.text().strip()
-        contact = self.contact_input.text().strip()
-        requirements = self.requirements_input.toPlainText().strip()
-        job_responsibilities = self.job_responsibilities_input.toPlainText().strip()
-        candidate_profile = self.candidate_profile_input.toPlainText().strip()
-        company_offers = self.company_offers_input.toPlainText().strip()
         if not markdown:
             QMessageBox.warning(self, "Error", "Job description in markdown is required.")
             return
         # Detect language of the job description
         try:
+            from langdetect import detect
             detected_language = detect(markdown)
         except Exception:
             detected_language = "en"
         self.job_data = {
             'url': url,
-            'description': markdown,
-            'company': company,
-            'title': title,
-            'requirements': requirements,
-            'location': location,
-            'contact_info': contact,
-            'job_responsibilities': job_responsibilities,
-            'candidate_profile': candidate_profile,
-            'company_offers': company_offers,
+            'job_markdown': markdown,
             'detected_language': detected_language
         }
         self.job_data_ready.emit(self.job_data)
         self.accept()
-
-    def set_language_flag_icon(self, lang_code):
-        # Map language code to emoji flag or local PNG if available
-        flag_map = {
-            'en': '🇬🇧', 'fr': '🇫🇷', 'de': '🇩🇪', 'es': '🇪🇸', 'it': '🇮🇹', 'pt': '🇵🇹', 'nl': '🇳🇱',
-            'tr': '🇹🇷', 'ru': '🇷🇺', 'pl': '🇵🇱', 'sv': '🇸🇪', 'da': '🇩🇰', 'fi': '🇫🇮', 'no': '🇳🇴',
-            'zh': '🇨🇳', 'ja': '🇯🇵', 'ko': '🇰🇷', 'ar': '🇸🇦', 'cs': '🇨🇿', 'el': '🇬🇷', 'hu': '🇭🇺',
-        }
-        flag_emoji = flag_map.get(lang_code, '🏳️')
-        # Use emoji as pixmap (fallback: text if not supported)
-        # Try to use a local PNG if you want, else use emoji
-        self.language_flag_label.setText(flag_emoji)
-        self.language_flag_label.setToolTip(f"Detected language: {lang_code}")
 
 class UploadDialog(QDialog):
     """File upload dialog"""
@@ -888,64 +657,41 @@ class GenerateWorker(QThread):
                 log_message = "Application is missing repository or generator."
                 logging.error(log_message)
                 raise Exception("Application is missing repository or generator.")
-
-            resume = repository.get_latest_resume()
-            if resume is None:
+            resume_markdown = repository.get_latest_resume()
+            if resume_markdown is None:
                 log_message = "No resume found. Please upload your resume first."
                 logging.error(log_message)
                 raise Exception("No resume found. Please upload your resume first.")
-
-            from jobops.models import JobData
-            import json as _json
-            if not isinstance(self.job_data, JobData):
-                job_data_obj = JobData(**self.job_data)
-            else:
-                job_data_obj = self.job_data
-
-            log_message = f"Generating letter for job: {job_data_obj}"
-            logging.info(log_message)
-            # Use detected_language from job_data
-            detected_language = job_data_obj.detected_language or getattr(self.app_instance, 'output_language', 'en')
-            letter = generator.generate(job_data_obj, resume, language=detected_language)
-
+            logging.info(f"Resume markdown (first 100 chars): {resume_markdown[:100]}")
+            job_markdown = self.job_data.get('job_markdown', '')
+            if not job_markdown:
+                raise Exception("Job description markdown is required.")
+            detected_language = self.job_data.get('detected_language', 'en')
+            url = self.job_data.get('url', '')
+            letter = generator.generate_from_markdown(job_markdown, resume_markdown, detected_language, url=url)
             motivations_dir = os.path.expanduser("~/.jobops/motivations")
             import re
             import datetime
-            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', job_data_obj.title or "letter")
-            timestamp = (letter.generated_at if hasattr(letter, 'generated_at') else datetime.datetime.now()).strftime('%Y%m%d_%H%M%S')
-            pdf_filename = f"{safe_title}_{timestamp}.pdf"
+            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', 'cover_letter')
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             md_filename = f"{safe_title}_{timestamp}.md"
-            pdf_path = os.path.join(motivations_dir, pdf_filename)
             md_path = os.path.join(motivations_dir, md_filename)
-
-            # Export based on output_format
-            output_format = getattr(self.app_instance, 'output_format', 'pdf')
-            if output_format == 'markdown':
-                with open(md_path, 'w', encoding='utf-8') as f:
-                    f.write(letter.content)
-                export_path = md_path
-            else:
-                export_letter_to_pdf(letter.content, pdf_path)
-                export_path = pdf_path
-
-            job_data_clean = clean_job_data_dict(job_data_obj.dict())
-
-            def default_encoder(obj):
-                if hasattr(obj, 'isoformat'):
-                    return obj.isoformat()
-                raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+            with open(md_path, 'w', encoding='utf-8') as f:
+                f.write(letter.content)
+            from jobops.models import Document, DocumentType
+            import json as _json
             doc = Document(
                 type=DocumentType.COVER_LETTER,
-                filename=export_path,
+                filename=md_path,
                 raw_content=letter.content,
                 structured_content=letter.content,
                 uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None,
-                json_content=_json.dumps(job_data_clean, default=default_encoder)
+                json_content=_json.dumps({'url': self.job_data.get('url', '')})
             )
             repository.save(doc)
             log_message = "Letter generation, export, and storage completed."
             logging.info(log_message)
-            self.finished.emit(f"Motivation letter generated, exported to {output_format}, and saved to database.")
+            self.finished.emit(f"Motivation letter generated, exported to markdown, and saved to database.")
         except Exception as e:
             log_message = f"Exception in GenerateWorker: {e}"
             logging.error(log_message)
