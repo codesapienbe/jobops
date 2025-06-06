@@ -131,8 +131,17 @@ class ConcreteLetterGenerator:
             language=language
         )
     
-    def generate_from_markdown(self, job_markdown: str, resume_markdown: str, language: str, url: str = "") -> MotivationLetter:
+    def generate_from_markdown(self, job_markdown: str, resume_markdown: str, language: str, url: str = "", config: dict = None) -> MotivationLetter:
         self._logger.info("Generating motivation letter from raw markdowns.")
+        # Truncation logic
+        default_limit = 4000
+        resume_limit = default_limit
+        job_limit = default_limit
+        if config:
+            resume_limit = int(config.get('resume_truncate_chars', resume_limit))
+            job_limit = int(config.get('job_truncate_chars', job_limit))
+        resume_markdown = resume_markdown[:resume_limit]
+        job_markdown = job_markdown[:job_limit]
         prompt = f"""
 You are an expert in writing formal European motivation letters for job applications.
 Write a motivation letter in {language}.

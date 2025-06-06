@@ -123,7 +123,6 @@ class Document(BaseModel):
     raw_content: str
     structured_content: str
     uploaded_at: datetime = Field(default_factory=datetime.now)
-    json_content: Optional[str] = None
 
 class MotivationLetter(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))

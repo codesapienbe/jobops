@@ -1,18 +1,21 @@
+import re
 import sys
 import os
 import logging
 import base64
 from pathlib import Path
 import threading
+from urllib.parse import urlparse
 import webbrowser
 from PIL import Image
 from io import BytesIO
 from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
-from jobops.utils import export_letter_to_pdf, clean_job_data_dict, ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry
+from jobops.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry
 import uuid
 import subprocess
-from langdetect import detect
+from jobops.models import Document, DocumentType
+
 
 # Qt imports
 try:
@@ -33,7 +36,7 @@ except ImportError:
 
 
 from dotenv import load_dotenv
-from jobops.models import DocumentType, Document
+from jobops.models import DocumentType
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
@@ -668,25 +671,28 @@ class GenerateWorker(QThread):
                 raise Exception("Job description markdown is required.")
             detected_language = self.job_data.get('detected_language', 'en')
             url = self.job_data.get('url', '')
-            letter = generator.generate_from_markdown(job_markdown, resume_markdown, detected_language, url=url)
+            # Get truncation config from app_instance if available
+            config = getattr(self.app_instance, '_config', None)
+            backend_type = config.get('backend', 'ollama') if config else None
+            backend_settings = config.get('backend_settings', {}) if config else {}
+            model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
+            trunc_config = model_conf if model_conf else {}
+            letter = generator.generate_from_markdown(job_markdown, resume_markdown, detected_language, url=url, config=trunc_config)
             motivations_dir = os.path.expanduser("~/.jobops/motivations")
-            import re
-            import datetime
-            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', 'cover_letter')
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            md_filename = f"{safe_title}_{timestamp}.md"
+            base_domain = urlparse(url).netloc
+            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', base_domain)
+            doc_id = str(uuid.uuid4())
+            md_filename = f"{safe_title}_{doc_id}.md"
             md_path = os.path.join(motivations_dir, md_filename)
             with open(md_path, 'w', encoding='utf-8') as f:
                 f.write(letter.content)
-            from jobops.models import Document, DocumentType
-            import json as _json
             doc = Document(
+                id=doc_id,
                 type=DocumentType.COVER_LETTER,
                 filename=md_path,
                 raw_content=letter.content,
                 structured_content=letter.content,
-                uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None,
-                json_content=_json.dumps({'url': self.job_data.get('url', '')})
+                uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None
             )
             repository.save(doc)
             log_message = "Letter generation, export, and storage completed."

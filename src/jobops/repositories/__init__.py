@@ -32,14 +32,17 @@ class SQLiteDocumentRepository:
                     filename TEXT,
                     raw_content TEXT,
                     structured_content TEXT,
-                    uploaded_at TEXT,
-                    json_content TEXT  -- renamed from job_data_json
+                    uploaded_at TEXT
                 )
             ''')
-            # Add new column if upgrading
+            # Migration: drop json_content and job_data_json columns if they exist
             try:
-                c.execute('ALTER TABLE documents ADD COLUMN json_content TEXT')
-            except sqlite3.OperationalError:
+                c.execute('ALTER TABLE documents DROP COLUMN json_content')
+            except Exception:
+                pass
+            try:
+                c.execute('ALTER TABLE documents DROP COLUMN job_data_json')
+            except Exception:
                 pass
             conn.commit()
     
@@ -48,12 +51,11 @@ class SQLiteDocumentRepository:
             c = conn.cursor()
             c.execute(
                 """INSERT OR REPLACE INTO documents 
-                   (id, type, filename, raw_content, structured_content, uploaded_at, json_content) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (id, type, filename, raw_content, structured_content, uploaded_at) 
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 (document.id, document.type.value, document.filename,
                  document.raw_content, document.structured_content,
-                 document.uploaded_at.isoformat(),
-                 getattr(document, 'json_content', None))
+                 document.uploaded_at.isoformat())
             )
             conn.commit()
         return document.id
@@ -73,8 +75,6 @@ class SQLiteDocumentRepository:
                     structured_content=row[4],
                     uploaded_at=datetime.fromisoformat(row[5])
                 )
-                if len(row) > 6:
-                    setattr(doc, 'json_content', row[6])
                 return doc
         return None
     
@@ -97,8 +97,6 @@ class SQLiteDocumentRepository:
                     structured_content=row[4],
                     uploaded_at=datetime.fromisoformat(row[5])
                 )
-                if len(row) > 6:
-                    setattr(doc, 'json_content', row[6])
                 documents.append(doc)
         return documents
     
