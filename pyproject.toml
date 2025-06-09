@@ -25,7 +25,6 @@ dependencies = [
     "reportlab",
     "markdown2",
     "fpdf",
-    "pyinstaller",
     "fastapi",
     "uvicorn",
     "PySide6",        # Qt GUI framework
@@ -55,4 +54,11 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "autopep8",
+    "autoflake",
+    "black",
+    "pytest",
+    "vulture",
+    "pyinstaller",
+    "twine"
 ]

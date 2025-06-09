@@ -515,7 +515,6 @@ class SystemTrayIcon(QSystemTrayIcon):
     def on_message_clicked(self):
         log_message = "Tray message clicked."
         logging.info(log_message)
-        pass
     
     def on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -785,8 +784,6 @@ class JobOpsQtApplication(QApplication):
 
         # --- Load config and initialize repository and generator ---
         from jobops.repositories import SQLiteDocumentRepository
-        from jobops.utils import ConcreteLetterGenerator
-        from jobops.clients import LLMBackendFactory
         db_path = str(self.base_dir / "jobops.db")
         self.repository = SQLiteDocumentRepository(db_path)
 

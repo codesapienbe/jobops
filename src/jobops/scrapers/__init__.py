@@ -1,12 +1,10 @@
-import asyncio
 import json
 import logging
-from typing import Optional, Protocol
+from typing import Protocol
 
 from bs4 import BeautifulSoup
 import requests
 from jobops.models import JobData
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, PruningContentFilter, DefaultMarkdownGenerator
 from jobops.clients import BaseLLMBackend
 
 class JobScraper(Protocol):

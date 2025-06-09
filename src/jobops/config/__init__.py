@@ -1,7 +1,6 @@
 import json
 from jobops.clients import OllamaBackend
 from jobops.models import AppConfig
-from dataclasses import dataclass
 import os
 import logging
 from pathlib import Path

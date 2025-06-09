@@ -1,5 +1,4 @@
 from datetime import datetime
-import json
 import logging  
 from pathlib import Path
 from typing import Protocol, List, Optional

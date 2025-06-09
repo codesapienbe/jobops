@@ -2,7 +2,7 @@ from jobops.models import MotivationLetter, GenericDocument, DocumentType, JobDa
 import logging
 import json as _json
 from jobops.clients import BaseLLMBackend
-from typing import Protocol, List, Optional, Tuple
+from typing import Protocol
 import re
 import os
 import base64
@@ -23,12 +23,8 @@ import threading
 import time
 import pyperclip
 from urllib.parse import urlparse
-import math
-from jobops.models import Document
 import matplotlib.pyplot as plt
 import numpy as np
-from sentence_transformers import SentenceTransformer, util
-from collections import Counter
 
 class LetterGenerator(Protocol):
     def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter: ...
@@ -516,13 +512,11 @@ def export_letter_to_pdf(content: str, pdf_path: str):
         right_margin = 25 * mm
         top_margin = 25 * mm
         bottom_margin = 25 * mm
-        usable_width = width - left_margin - right_margin
+        width - left_margin - right_margin
         y = height - top_margin
         # Font
-        font_registered = False
         font_name = "Helvetica"
         try:
-            import pkg_resources
             dejavu_path = None
             for path in [
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -536,7 +530,6 @@ def export_letter_to_pdf(content: str, pdf_path: str):
             if dejavu_path:
                 pdfmetrics.registerFont(TTFont("DejaVuSans", dejavu_path))
                 font_name = "DejaVuSans"
-                font_registered = True
         except Exception as e:
             logging.warning(f"Could not register DejaVuSans.ttf: {e}")
         # --- HEADER ---

@@ -3,7 +3,6 @@ import logging
 from typing import Any, Dict, Optional
 
 import ollama
-import requests 
 from typing import Protocol
 
 try:
@@ -102,7 +101,6 @@ class OpenAIBackend(BaseLLMBackend):
             raise
     
     def health_check(self) -> bool:
-        import requests
         try:
             return True
             # resp = requests.get("http://localhost:8000/health/openai")
@@ -149,7 +147,6 @@ class GroqBackend(BaseLLMBackend):
             raise
     
     def health_check(self) -> bool:
-        import requests
         try:
             return True
             # resp = requests.get("http://localhost:8000/health/groq")
