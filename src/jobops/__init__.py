@@ -15,6 +15,8 @@ from jobops.utils import ResourceManager, NotificationService, check_platform_co
 import uuid
 import subprocess
 from jobops.models import Document, DocumentType
+import zipfile
+import time
 
 
 # Qt imports
@@ -314,6 +316,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Add actions
         upload_action = QAction("📁 Upload Document", self)
         generate_action = QAction("✨ Generate Letter", self)
+        report_action = QAction("📦 Generate Report", self)
         reply_action = QAction("💬 Reply to Offer", self)
         archive_action = QAction("💾 View Archive", self)
         log_viewer_action = QAction("📝 View Logs", self)
@@ -324,6 +327,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Connect actions
         upload_action.triggered.connect(self.upload_document)
         generate_action.triggered.connect(self.generate_letter)
+        report_action.triggered.connect(self.generate_report)
         reply_action.triggered.connect(self.reply_to_offer)
         archive_action.triggered.connect(self.show_archive)
         log_viewer_action.triggered.connect(self.show_log_viewer)
@@ -334,6 +338,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Add to menu
         menu.addAction(upload_action)
         menu.addAction(generate_action)
+        menu.addAction(report_action)
         menu.addAction(reply_action)
         menu.addSeparator()
         menu.addAction(archive_action)
@@ -583,6 +588,61 @@ class SystemTrayIcon(QSystemTrayIcon):
         layout.addLayout(btn_layout)
         dialog.exec()
 
+    def generate_report(self):
+        logging.info("User triggered: Generate Report")
+        dialog = JobInputDialog(self.app_instance)
+        dialog.job_data_ready.connect(self._start_report_worker)
+        dialog.exec()
+
+    def _start_report_worker(self, job_data):
+        logging.info(f"Starting report generation for job data: {job_data}")
+        default_dir = os.path.expanduser("~/.jobops/reports")
+        os.makedirs(default_dir, exist_ok=True)
+        default_name = f"{urlparse(job_data.get('url','')).netloc}_{int(time.time())}.zip"
+        save_path, _ = QFileDialog.getSaveFileName(None, "Save Report As", os.path.join(default_dir, default_name), "Zip Files (*.zip)")
+        if not save_path:
+            return
+        worker = ReportWorker(self.app_instance, job_data, save_path)
+        self._workers.add(worker)
+        worker.finished.connect(self.on_report_finished)
+        worker.error.connect(self.on_report_error)
+        self.start_animation()
+        self.progress_dialog = QProgressDialog("Generating report...", None, 0, 0)
+        self.progress_dialog.setWindowTitle("JobOps")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.show()
+        self.showMessage("JobOps", "Generating your report...", QSystemTrayIcon.MessageIcon.Information, 2000)
+        worker.start()
+
+    def on_report_finished(self, save_path):
+        log_message = f"Report generation finished successfully: {save_path}"
+        logging.info(log_message)
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 5000)
+        try:
+            if sys.platform.startswith('win'):
+                os.startfile(save_path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', save_path])
+            else:
+                subprocess.Popen(['xdg-open', save_path])
+        except Exception as e:
+            logging.error(f"Failed to open report: {e}")
+
+    def on_report_error(self, error):
+        log_message = f"Report generation error: {error}"
+        logging.error(log_message)
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        self.showMessage("JobOps Error", log_message, QSystemTrayIcon.MessageIcon.Critical, 5000)
+
 class UploadWorker(QThread):
     """Background worker for document upload"""
     finished = Signal(str)
@@ -747,6 +807,45 @@ class GenerateWorker(QThread):
         except Exception as e:
             log_message = f"Exception in GenerateWorker: {e}"
             logging.error(log_message)
+            self.error.emit(str(e))
+
+class ReportWorker(QThread):
+    """Background worker for report generation"""
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, app_instance, job_data, save_path):
+        super().__init__()
+        self.app_instance = app_instance
+        self.job_data = job_data
+        self.save_path = save_path
+
+    def run(self):
+        try:
+            repository = getattr(self.app_instance, 'repository', None)
+            generator = getattr(self.app_instance, 'generator', None)
+            if repository is None or generator is None:
+                raise Exception("Application is missing repository or generator.")
+            resume_markdown = repository.get_latest_resume()
+            if resume_markdown is None:
+                raise Exception("No resume found. Please upload your resume first.")
+            job_markdown = self.job_data.get('job_markdown', '')
+            if not job_markdown:
+                raise Exception("Job description markdown is required.")
+            detected_language = self.job_data.get('detected_language', 'en')
+            url = self.job_data.get('url', '')
+            config = getattr(self.app_instance, '_config', None)
+            backend_type = config.get('backend', 'ollama') if config else None
+            backend_settings = config.get('backend_settings', {}) if config else {}
+            model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
+            trunc_config = model_conf if model_conf else {}
+            letter = generator.generate_from_markdown(job_markdown, resume_markdown, detected_language, url=url, config=trunc_config)
+            with zipfile.ZipFile(self.save_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                zipf.writestr('job_description.md', job_markdown)
+                zipf.writestr('resume.md', resume_markdown)
+                zipf.writestr('cover_letter.md', letter.content)
+            self.finished.emit(self.save_path)
+        except Exception as e:
             self.error.emit(str(e))
 
 class LogViewerDialog(QDialog):
