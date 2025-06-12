@@ -109,6 +109,36 @@ Sincerely,
 """
     return prompt.strip()
 
+def build_reply_prompt(
+    job_offer_message: str,
+    resume_markdown: str,
+    language: str = "en",
+) -> str:
+    """
+    Build a prompt for generating a professional reply to a job offer message,
+    using the message content and candidate's resume.
+    """
+    prompt = f"""
+You are a job seeker interested in new career opportunities.
+Write a concise and enthusiastic reply in {language} to the following job offer message,
+expressing your interest and highlighting relevant experience from your resume.
+Limit the reply to roughly half the usual length, and always start with a friendly greeting (e.g., "Hello Maeva,").
+
+Job Offer Message:
+{job_offer_message}
+
+Candidate Resume Summary:
+{resume_markdown}
+
+Instructions:
+- Start with a friendly greeting.
+- Keep the reply about 50% shorter than a typical response.
+- Highlight key skills and experiences matching the offer.
+- Express enthusiasm and inquire about next steps or a chat.
+- Maintain a positive, concise tone.
+"""
+    return prompt.strip()
+
 class ConcreteLetterGenerator:
     def __init__(self, llm_backend: BaseLLMBackend):
         self.backend = llm_backend
@@ -289,6 +319,21 @@ GUIDELINES:
 
 {template["sections"]["instruction"]}"""
 
+    def generate_reply(
+        self,
+        job_offer_message: str,
+        resume_markdown: str,
+        language: str = "en",
+    ) -> str:
+        """
+        Generate a professional reply to a job offer message based on the candidate's resume.
+        """
+        self._logger.info(
+            f"Generating reply for job offer message: {job_offer_message[:50]}..."
+        )
+        user_prompt = build_reply_prompt(job_offer_message, resume_markdown, language)
+        reply = self.backend.generate_response(user_prompt, "")
+        return reply
 
 class DocumentExtractor:
     def __init__(self, llm_backend: BaseLLMBackend):
@@ -589,7 +634,7 @@ def clean_job_data_dict(d: dict) -> dict:
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
-iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
+iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
 
 class ResourceManager:
     

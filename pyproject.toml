@@ -42,7 +42,21 @@ dependencies = [
     "numpy",
     "matplotlib",
     "langdetect",
-    "markdownify"
+    "markdownify",
+    "scikit-learn",
+    "joblib",
+    "pandas",
+    "scipy",
+    "pyzmq",
+    "emoji",
+    "nltk",
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-asyncio",
+    "pytest-timeout",
+    "pytest-xdist",
+    "markdown"
 ]
 
 [project.scripts]

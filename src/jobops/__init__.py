@@ -314,6 +314,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Add actions
         upload_action = QAction("📁 Upload Document", self)
         generate_action = QAction("✨ Generate Letter", self)
+        reply_action = QAction("💬 Reply to Offer", self)
         archive_action = QAction("💾 View Archive", self)
         log_viewer_action = QAction("📝 View Logs", self)
         settings_action = QAction("⚙️ Settings", self)
@@ -323,6 +324,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Connect actions
         upload_action.triggered.connect(self.upload_document)
         generate_action.triggered.connect(self.generate_letter)
+        reply_action.triggered.connect(self.reply_to_offer)
         archive_action.triggered.connect(self.show_archive)
         log_viewer_action.triggered.connect(self.show_log_viewer)
         settings_action.triggered.connect(self.show_settings)
@@ -332,6 +334,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         # Add to menu
         menu.addAction(upload_action)
         menu.addAction(generate_action)
+        menu.addAction(reply_action)
         menu.addSeparator()
         menu.addAction(archive_action)
         menu.addAction(log_viewer_action)
@@ -390,9 +393,12 @@ class SystemTrayIcon(QSystemTrayIcon):
     
     def show_archive(self):
         logging.info("User triggered: Show Archive dialog")
-        # Open ~/.jobops/motivations/
         motivations_dir = os.path.expanduser("~/.jobops/motivations")
-        if os.path.exists(motivations_dir):
+        if sys.platform.startswith('win'):
+            os.startfile(motivations_dir)
+        elif sys.platform.startswith('darwin'):
+            subprocess.Popen(['open', motivations_dir])
+        elif sys.platform.startswith('linux'):
             subprocess.Popen(['xdg-open', motivations_dir])
         else:
             logging.error("Motivations directory does not exist.")
@@ -535,6 +541,47 @@ class SystemTrayIcon(QSystemTrayIcon):
         log_file = str(Path.home() / ".jobops" / "app.log")
         dlg = LogViewerDialog(log_file, parent=None)
         dlg.exec()
+
+    def reply_to_offer(self):
+        logging.info("User triggered: Reply to Offer dialog")
+        # Prompt user for the job offer message
+        message, ok = QInputDialog.getMultiLineText(None, "Reply to Offer", "Paste the job offer message:", "")
+        if not ok or not message.strip():
+            return
+        # Retrieve latest resume markdown
+        resume_md = getattr(self.app_instance.repository, 'get_latest_resume', lambda: None)()
+        if not resume_md:
+            QMessageBox.warning(None, "Error", "No resume found. Please upload your resume first.")
+            return
+        # Determine language from config
+        config = getattr(self.app_instance, '_config', {})
+        language = config.get('app_settings', {}).get('language', 'en')
+        # Generate reply
+        try:
+            reply_text = self.app_instance.generator.generate_reply(message, resume_md, language)
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Failed to generate reply: {e}")
+            return
+        # Show reply in a preview dialog
+        dialog = QDialog()
+        dialog.setWindowTitle("Reply Preview")
+        dialog.setWindowIcon(ResourceManager.create_app_icon())
+        dialog.resize(800, 600)
+        dialog.setMinimumSize(800, 600)
+        layout = QVBoxLayout(dialog)
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setText(reply_text)
+        layout.addWidget(text_edit)
+        btn_layout = QHBoxLayout()
+        copy_btn = QPushButton("Copy to Clipboard")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(reply_text))
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(copy_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+        dialog.exec()
 
 class UploadWorker(QThread):
     """Background worker for document upload"""
