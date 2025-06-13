@@ -27,9 +27,28 @@ jobs:
           pip install uv
           uv sync
 
+      - name: Install UPX on Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y upx
+
       - name: Build with PyInstaller via UV
         run: |
-          uv run pyinstaller --noconfirm --noconsole --onefile src/jobops/__init__.py --name jobops-toolbar --exclude-module PyQt6
+          uv run pyinstaller \
+            --noconfirm \
+            --noconsole \
+            --onefile src/jobops/__init__.py \
+            --name jobops-toolbar \
+            --strip \
+            --upx-dir /usr/bin \
+            --exclude-module PyQt6 \
+            --exclude-module torch \
+            --exclude-module sentence_transformers \
+            --exclude-module numpy \
+            --exclude-module matplotlib \
+            --exclude-module pandas \
+            --exclude-module scipy \
+            --exclude-module sklearn \
+            --exclude-module joblib
 
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
