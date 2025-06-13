@@ -42,7 +42,7 @@ jobs:
           uv run pyinstaller \
             --noconfirm \
             --windowed \
-            --onedir src/jobops/__init__.py \
+            --onefile src/jobops/__init__.py \
             --name jobops \
             --strip \
             --upx-dir /usr/bin \
