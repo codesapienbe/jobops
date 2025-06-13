@@ -43,7 +43,7 @@ jobs:
             --noconfirm \
             --windowed \
             --onedir src/jobops/__init__.py \
-            --name jobops-toolbar \
+            --name jobops \
             --strip \
             --upx-dir /usr/bin \
             --exclude-module PyQt6 \
@@ -59,23 +59,23 @@ jobs:
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          move dist\jobops-toolbar.exe dist\jobops-toolbar-windows.exe
+          move dist\jobops.exe dist\jobops-windows.exe
 
       - name: Rename output (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          mv dist/jobops-toolbar dist/jobops-toolbar-linux
+          mv dist/jobops dist/jobops-linux
 
       - name: Rename output (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          mv dist/jobops-toolbar dist/jobops-toolbar-macos
+          mv dist/jobops dist/jobops-macos
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jobops-toolbar-${{ matrix.os }}
-          path: dist/jobops-toolbar-*
+          name: jobops-${{ matrix.os }}
+          path: dist/jobops-*
 
   publish_release:
     needs: build
@@ -95,25 +95,25 @@ jobs:
       - name: Download Linux build
         uses: actions/download-artifact@v3
         with:
-          name: jobops-toolbar-ubuntu-latest
+          name: jobops-ubuntu-latest
           path: dist_linux
       - name: Download Windows build
         uses: actions/download-artifact@v3
         with:
-          name: jobops-toolbar-windows-latest
+          name: jobops-windows-latest
           path: dist_windows
       - name: Download macOS build
         uses: actions/download-artifact@v3
         with:
-          name: jobops-toolbar-macos-latest
+          name: jobops-macos-latest
           path: dist_macos
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            dist_linux/jobops-toolbar-linux
-            dist_windows/jobops-toolbar-windows.exe
-            dist_macos/jobops-toolbar-macos
+            dist_linux/jobops-linux
+            dist_windows/jobops-windows.exe
+            dist_macos/jobops-macos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
