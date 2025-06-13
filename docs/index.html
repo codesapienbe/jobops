@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobOps Toolbar - AI-Powered Job Application Assistant</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="flex justify-between items-center py-16">
+        <div class="logo">
+          <h1>JobOps Toolbar</h1>
+          <p class="tagline">AI-Powered Job Application Assistant</p>
+        </div>
+        <nav class="main-nav">
+          <button class="menu-toggle btn btn--secondary btn--sm" aria-label="Toggle menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <ul class="nav-list">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#benefits">Benefits</a></li>
+            <li><a href="#download">Download</a></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <div class="hero__content">
+        <h2>Streamline Your Job Applications with AI</h2>
+        <p>JobOps Toolbar helps job seekers quickly generate personalized motivation letters and manage job application workflows using multiple AI backends.</p>
+        <div class="hero__cta">
+          <a href="#download" class="btn btn--primary">Download Now</a>
+          <a href="https://github.com/codesapienbe/jobops-toolbar" target="_blank" class="btn btn--outline">View on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="features">
+    <div class="container">
+      <h2 class="section-title">Features</h2>
+      <div class="features-grid">
+        <div class="feature-card card">
+          <div class="feature-icon">🤖</div>
+          <h3>Multi-LLM Backend Support</h3>
+          <p>Connect with OpenAI, Ollama (local), or Groq for flexible AI-powered letter generation</p>
+        </div>
+        <div class="feature-card card">
+          <div class="feature-icon">🔍</div>
+          <h3>Intelligent Job Scraping</h3>
+          <p>Automatically extract job descriptions from most job posting websites</p>
+        </div>
+        <div class="feature-card card">
+          <div class="feature-icon">✍️</div>
+          <h3>Personalized Letter Generation</h3>
+          <p>AI-powered, multi-language, context-aware motivation letter creation</p>
+        </div>
+        <div class="feature-card card">
+          <div class="feature-icon">📄</div>
+          <h3>Resume Management</h3>
+          <p>Integrated CV editor with skills, experience, and education tracking</p>
+        </div>
+        <div class="feature-card card">
+          <div class="feature-icon">🎨</div>
+          <h3>Modern UI</h3>
+          <p>Clean tabbed interface with real-time status, history, and export options</p>
+        </div>
+        <div class="feature-card card">
+          <div class="feature-icon">💻</div>
+          <h3>Cross-Platform</h3>
+          <p>Runs on Windows, macOS, and Linux with consistent experience</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how-it-works" class="how-it-works">
+    <div class="container">
+      <h2 class="section-title">How It Works</h2>
+      <div class="steps">
+        <div class="step-card card">
+          <div class="step-number">1</div>
+          <h3>Configure AI Backend</h3>
+          <p>Set up your preferred AI service (OpenAI, Groq, or local Ollama)</p>
+        </div>
+        <div class="step-card card">
+          <div class="step-number">2</div>
+          <h3>Setup Profile</h3>
+          <p>Enter your professional information in the Resume tab</p>
+        </div>
+        <div class="step-card card">
+          <div class="step-number">3</div>
+          <h3>Generate Letter</h3>
+          <p>Paste job URL and let AI create a personalized motivation letter</p>
+        </div>
+        <div class="step-card card">
+          <div class="step-number">4</div>
+          <h3>Review & Save</h3>
+          <p>Edit if needed and save to your application history</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="benefits" class="benefits">
+    <div class="container">
+      <h2 class="section-title">Benefits</h2>
+      <div class="benefits-container">
+        <div class="benefits-column card">
+          <h3>What It Does</h3>
+          <ul class="benefits-list">
+            <li>Generate personalized motivation letters using AI</li>
+            <li>Scrape job descriptions from job posting URLs</li>
+            <li>Manage your resume and professional profile</li>
+            <li>Support multiple AI backends for flexibility</li>
+            <li>Provide a clean, modern interface</li>
+            <li>Work offline with local AI models</li>
+          </ul>
+        </div>
+        <div class="benefits-column card">
+          <h3>What It Doesn't Do</h3>
+          <ul class="benefits-list">
+            <li>Act as a recruiter or agency</li>
+            <li>Send applications automatically</li>
+            <li>Process applications for companies</li>
+            <li>Guarantee job interview success</li>
+            <li>Replace human judgment and customization</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" class="download">
+    <div class="container">
+      <h2 class="section-title">Download</h2>
+      <div class="download-options">
+        <div class="download-card card">
+          <h3>Source Code</h3>
+          <p>Clone and build from GitHub</p>
+          <a href="https://github.com/codesapienbe/jobops-toolbar" target="_blank" class="btn btn--primary">GitHub Repository</a>
+        </div>
+        <div class="download-card card">
+          <h3>Python Package</h3>
+          <p>Install via pip</p>
+          <div class="code-block">
+            <code>pip install jobops-toolbar</code>
+            <button class="copy-btn btn btn--sm btn--secondary" data-clipboard-text="pip install jobops-toolbar">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-info">
+          <h3>JobOps Toolbar</h3>
+          <p>Built with ❤️ for job seekers and developers worldwide</p>
+        </div>
+        <div class="footer-links">
+          <h4>Links</h4>
+          <ul>
+            <li><a href="https://github.com/codesapienbe/jobops-toolbar" target="_blank">GitHub</a></li>
+            <li><a href="https://docs.jobops.dev" target="_blank">Documentation</a></li>
+            <li><a href="mailto:support@jobops.dev">Support</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2025 JobOps Toolbar. MIT License.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
