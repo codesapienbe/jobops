@@ -54,9 +54,7 @@ jobs:
             --exclude-module pandas \
             --exclude-module scipy \
             --exclude-module sklearn \
-            --exclude-module joblib \
-            --add-binary "C:/Windows/System32/vcruntime140.dll;." \
-            --add-binary "C:/Windows/System32/ucrtbase.dll;."
+            --exclude-module joblib
 
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
