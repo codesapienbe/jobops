@@ -41,8 +41,8 @@ jobs:
         run: |
           uv run pyinstaller \
             --noconfirm \
-            --noconsole \
-            --onefile src/jobops/__init__.py \
+            --windowed \
+            --onedir src/jobops/__init__.py \
             --name jobops-toolbar \
             --strip \
             --upx-dir /usr/bin \

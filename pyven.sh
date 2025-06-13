@@ -20,7 +20,7 @@ elif [ "$1" == "run" ]; then
 
 elif [ "$1" == "install" ]; then
     uv sync
-    uv run pyinstaller jobops.spec
+    uv run pyinstaller --windowed --onedir jobops.spec
 
 elif [ "$1" == "verify" ]; then
     uv run black src/
