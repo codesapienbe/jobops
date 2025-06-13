@@ -11,7 +11,7 @@ from PIL import Image
 from io import BytesIO
 from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
-from jobops.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry
+from jobops.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, compute_match_score_and_chart, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
 import uuid
 import subprocess
 from jobops.models import Document, DocumentType
@@ -250,6 +250,56 @@ class UploadDialog(QDialog):
         self.upload_data_ready.emit(self.file_path, self.doc_type)
         self.accept()
 
+class ConsultantInputDialog(QDialog):
+    """Dialog for generating consultant reply sheet"""
+    consultant_data_ready = Signal(dict)
+
+    def __init__(self, app_instance=None):
+        super().__init__()
+        self.app_instance = app_instance
+        self.setWindowTitle("Generate Consultant Reply Sheet")
+        self.setFixedSize(700, 500)
+        self.setWindowIcon(ResourceManager.create_app_icon())
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Paste consultant email request:"))
+        self.email_edit = QTextEdit()
+        self.email_edit.setPlaceholderText("Paste the consultant company's email here...")
+        self.email_edit.setMinimumHeight(300)
+        layout.addWidget(self.email_edit)
+        btn_layout = QHBoxLayout()
+        generate_btn = QPushButton("Generate Answer Sheet")
+        cancel_btn = QPushButton("Cancel")
+        generate_btn.clicked.connect(self._on_generate)
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(generate_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+    def _on_generate(self):
+        email_msg = self.email_edit.toPlainText().strip()
+        if not email_msg:
+            QMessageBox.warning(self, "Error", "Consultant email request is required.")
+            return
+        try:
+            resume_md = self.app_instance.repository.get_latest_resume() or ""
+        except Exception:
+            resume_md = ""
+        # Auto-detect language of the consultant request
+        try:
+            from langdetect import detect
+            language = detect(email_msg)
+        except Exception:
+            language = 'en'
+        self.consultant_data_ready.emit({
+            'email_message': email_msg,
+            'resume_markdown': resume_md,
+            'language': language
+        })
+        self.accept()
+
 class SystemTrayIcon(QSystemTrayIcon):
     """Custom system tray icon with JobOps functionality"""
     
@@ -317,6 +367,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action = QAction("📁 Upload Document", self)
         generate_action = QAction("✨ Generate Letter", self)
         report_action = QAction("📦 Generate Report", self)
+        consultant_action = QAction("📝 Consultant Answer", self)
         reply_action = QAction("💬 Reply to Offer", self)
         archive_action = QAction("💾 View Archive", self)
         log_viewer_action = QAction("📝 View Logs", self)
@@ -328,6 +379,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action.triggered.connect(self.upload_document)
         generate_action.triggered.connect(self.generate_letter)
         report_action.triggered.connect(self.generate_report)
+        consultant_action.triggered.connect(self.generate_consultant_reply)
         reply_action.triggered.connect(self.reply_to_offer)
         archive_action.triggered.connect(self.show_archive)
         log_viewer_action.triggered.connect(self.show_log_viewer)
@@ -339,6 +391,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(upload_action)
         menu.addAction(generate_action)
         menu.addAction(report_action)
+        menu.addAction(consultant_action)
         menu.addAction(reply_action)
         menu.addSeparator()
         menu.addAction(archive_action)
@@ -616,7 +669,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.showMessage("JobOps", "Generating your report...", QSystemTrayIcon.MessageIcon.Information, 2000)
         worker.start()
 
-    def on_report_finished(self, save_path):
+    def on_report_finished(self, save_path, chart_path):
         log_message = f"Report generation finished successfully: {save_path}"
         logging.info(log_message)
         self.stop_animation()
@@ -633,6 +686,17 @@ class SystemTrayIcon(QSystemTrayIcon):
                 subprocess.Popen(['xdg-open', save_path])
         except Exception as e:
             logging.error(f"Failed to open report: {e}")
+        # Open the generated chart PNG if available
+        if chart_path:
+            try:
+                if sys.platform.startswith('win'):
+                    os.startfile(chart_path)
+                elif sys.platform.startswith('darwin'):
+                    subprocess.Popen(['open', chart_path])
+                else:
+                    subprocess.Popen(['xdg-open', chart_path])
+            except Exception as e:
+                logging.error(f"Failed to open report chart: {e}")
 
     def on_report_error(self, error):
         log_message = f"Report generation error: {error}"
@@ -642,6 +706,69 @@ class SystemTrayIcon(QSystemTrayIcon):
             self.progress_dialog.close()
             self.progress_dialog = None
         self.showMessage("JobOps Error", log_message, QSystemTrayIcon.MessageIcon.Critical, 5000)
+
+    def generate_consultant_reply(self):
+        """User triggers: Generate Consultant Reply dialog"""
+        logging.info("User triggered: Generate Consultant Reply dialog")
+        dialog = ConsultantInputDialog(self.app_instance)
+        dialog.consultant_data_ready.connect(self._start_consultant_worker)
+        dialog.exec()
+
+    def _start_consultant_worker(self, data):
+        """Start background worker for consultant reply generation"""
+        email_msg = data.get('email_message')
+        resume_md = data.get('resume_markdown', '')
+        language = data.get('language', 'en')
+        # Ask where to save the markdown file
+        default_dir = os.path.expanduser("~/.jobops/consultant_replies")
+        os.makedirs(default_dir, exist_ok=True)
+        default_name = f"consultant_reply_{int(time.time())}.md"
+        save_path, _ = QFileDialog.getSaveFileName(None, "Save Answer Sheet As", os.path.join(default_dir, default_name), "Markdown Files (*.md)")
+        if not save_path:
+            return
+        worker = ConsultantReplyWorker(self.app_instance, email_msg, resume_md, language, save_path)
+        self._workers.add(worker)
+        worker.finished.connect(self.on_consultant_finished)
+        worker.error.connect(self.on_consultant_error)
+        self.start_animation()
+        self.progress_dialog = QProgressDialog("Generating answer sheet...", None, 0, 0)
+        self.progress_dialog.setWindowTitle("JobOps")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.show()
+        self.showMessage("JobOps", "Generating your answer sheet...", QSystemTrayIcon.MessageIcon.Information, 2000)
+        worker.start()
+
+    def on_consultant_finished(self, save_path):
+        """Handle successful consultant reply sheet generation"""
+        log_message = f"Consultant answer sheet generated: {save_path}"
+        logging.info(log_message)
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 5000)
+        try:
+            if sys.platform.startswith('win'):
+                os.startfile(save_path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.Popen(['open', save_path])
+            else:
+                subprocess.Popen(['xdg-open', save_path])
+        except Exception as e:
+            logging.error(f"Failed to open answer sheet: {e}")
+
+    def on_consultant_error(self, error):
+        """Handle errors during consultant reply generation"""
+        log_message = f"Consultant reply generation error: {error}"
+        logging.error(log_message)
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        self.showMessage("JobOps Error", log_message, QSystemTrayIcon.MessageIcon.Critical, 5000)
+        QMessageBox.critical(None, "Consultant Reply Error", error)
 
 class UploadWorker(QThread):
     """Background worker for document upload"""
@@ -811,7 +938,7 @@ class GenerateWorker(QThread):
 
 class ReportWorker(QThread):
     """Background worker for report generation"""
-    finished = Signal(str)
+    finished = Signal(str, str)
     error = Signal(str)
 
     def __init__(self, app_instance, job_data, save_path):
@@ -840,10 +967,86 @@ class ReportWorker(QThread):
             model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
             trunc_config = model_conf if model_conf else {}
             letter = generator.generate_from_markdown(job_markdown, resume_markdown, detected_language, url=url, config=trunc_config)
+            # Generate tailored resume using LLM
+            tailored_resume = generator.generate_optimized_resume_from_markdown(
+                job_markdown,
+                resume_markdown,
+                detected_language,
+                requirements=self.job_data.get('requirements', ''),
+                config=trunc_config
+            )
+            # Extract and map skills using LLM or fallback
+            job_requirements = self.job_data.get('requirements', '')
+            llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
+            skill_data = extract_skills_with_llm(llm_backend, resume_markdown, job_markdown + "\n" + job_requirements) if llm_backend else None
+            if skill_data:
+                matched = sorted(set(skill_data['matching_skills']))
+                missing = sorted(set(skill_data['missing_skills']))
+                extra = sorted(set(skill_data['extra_skills']))
+            else:
+                resume_skills = extract_skills(resume_markdown)
+                job_skills = extract_skills(job_markdown + "\n" + job_requirements)
+                matched = sorted(resume_skills & job_skills)
+                missing = sorted(job_skills - resume_skills)
+                extra = sorted(resume_skills - job_skills)
+            # Build descriptive Markdown report
+            total_required = len(matched) + len(missing)
+            summary = f"You have matched {len(matched)} of {total_required} required skills."
+            report_lines = [
+                "# Skills Match Report", "",
+                summary, "",
+                "## Skill Details", ""
+            ]
+            if matched:
+                report_lines.append("**Matched Skills:**")
+                report_lines.extend([f"- {s}" for s in matched])
+            if missing:
+                report_lines.append("")
+                report_lines.append("**Missing Skills:**")
+                report_lines.extend([f"- {s}" for s in missing])
+            if extra:
+                report_lines.append("")
+                report_lines.append("**Additional Skills:**")
+                report_lines.extend([f"- {s}" for s in extra])
+            report_md = "\n".join(report_lines)
+            # Create ZIP with all markdown docs
             with zipfile.ZipFile(self.save_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 zipf.writestr('job_description.md', job_markdown)
-                zipf.writestr('resume.md', resume_markdown)
+                zipf.writestr('tailored_resume.md', tailored_resume)
                 zipf.writestr('cover_letter.md', letter.content)
+                zipf.writestr('match_report.md', report_md)
+            self.finished.emit(self.save_path, "")
+        except Exception as e:
+            self.error.emit(str(e))
+
+class ConsultantReplyWorker(QThread):
+    """Background worker for consultant reply sheet generation"""
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, app_instance, email_message, resume_markdown, language, save_path):
+        super().__init__()
+        self.app_instance = app_instance
+        self.email_message = email_message
+        self.resume_markdown = resume_markdown
+        self.language = language
+        self.save_path = save_path
+
+    def run(self):
+        try:
+            generator = getattr(self.app_instance, 'generator', None)
+            if generator is None:
+                raise Exception("Application generator is missing.")
+            llm_backend = getattr(generator, 'llm_backend', None)
+            # Build prompt and generate reply
+            prompt = build_consultant_reply_prompt(self.email_message, self.resume_markdown, self.language)
+            if llm_backend:
+                reply_md = llm_backend.generate_response(prompt)
+            else:
+                reply_md = generator.backend.generate_response(prompt, "")
+            # Save Markdown to file
+            with open(self.save_path, 'w', encoding='utf-8') as f:
+                f.write(reply_md)
             self.finished.emit(self.save_path)
         except Exception as e:
             self.error.emit(str(e))

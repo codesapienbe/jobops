@@ -139,6 +139,33 @@ Instructions:
 """
     return prompt.strip()
 
+def build_consultant_reply_prompt(
+    consultant_message: str,
+    resume_markdown: str,
+    language: str = "en",
+) -> str:
+    """
+    Build a prompt for generating a consultant reply sheet in Markdown format.
+    """
+    prompt = f"""
+You are an experienced developer responding to consultant company requests for potential assignments.
+Auto-detect the language of the consultant request and generate the answer sheet in the same language.
+Generate a professional Markdown answer sheet including:
+- A concise introduction and closing
+- Clear headings and bullet points for key details
+- A Markdown table with columns "Skill" and "Match" (use ✔ for matched skills and ✘ for missing skills)
+Do not include any extra explanations, comments, or metadata.
+
+Consultant Request:
+{consultant_message}
+
+Candidate Resume Summary:
+{resume_markdown}
+
+Answer Sheet:
+"""
+    return prompt.strip()
+
 class ConcreteLetterGenerator:
     def __init__(self, llm_backend: BaseLLMBackend):
         self.backend = llm_backend
@@ -170,7 +197,7 @@ class ConcreteLetterGenerator:
         job_markdown = job_markdown[:job_limit]
         prompt = f"""
 You are an expert in writing formal European motivation letters for job applications.
-Write a motivation letter in {language}.
+Write a concise, inspiring motivation letter in {language}.
 
 You are given two documents:
 
@@ -184,10 +211,9 @@ You are given two documents:
 {job_markdown}
 ------------------
 
-Write a tailored, authentic, and compelling motivation letter for this job application. Highlight relevant skills, experience, and motivation. Use a confident, positive, and proactive tone, while remaining formal and respectful. Vary sentence structure for readability.
+Write a tailored, authentic motivation letter limited to exactly two paragraphs. Highlight only the most relevant skills and experiences; use clear, concise, and inspiring language. Avoid generic praise, clichés, or imaginary content. Include one unique detail about the company in one or two sentences to show you've researched them.
 
 - Output only the motivation letter, with no extra explanations, comments, or metadata.
-- Format the letter as a single, continuous text block, using paragraph breaks only where appropriate.
 """
         content = self.backend.generate_response(prompt, "")
         from jobops.models import MotivationLetter, JobData
@@ -207,6 +233,41 @@ Write a tailored, authentic, and compelling motivation letter for this job appli
             language=language,
             generated_at=datetime.datetime.now()
         )
+    
+    def generate_optimized_resume_from_markdown(self, job_markdown: str, resume_markdown: str, language: str, requirements: str = "", config: dict = None) -> str:
+        self._logger.info("Generating optimized resume from raw markdowns.")
+        default_limit = 4000
+        resume_limit = default_limit
+        job_limit = default_limit
+        if config:
+            resume_limit = int(config.get('resume_truncate_chars', resume_limit))
+            job_limit = int(config.get('job_truncate_chars', job_limit))
+        resume_markdown = resume_markdown[:resume_limit]
+        job_markdown = job_markdown[:job_limit]
+        prompt = f"""
+You are an expert career consultant and resume writer.
+Rewrite the candidate's resume in {language} to be highly tailored for the following job description and requirements.
+Focus only on the most relevant and matching skills, experience, and projects that align with the job description and requirements. Remove or minimize unrelated content.
+If the job description emphasizes certain technologies or skills, make those the focus of the rewritten resume.
+Output only the tailored resume in markdown format, with no extra explanation, comments, or metadata.
+
+Candidate's original resume:
+------------------
+{resume_markdown}
+------------------
+
+Job description:
+------------------
+{job_markdown}
+------------------
+
+Job requirements:
+------------------
+{requirements}
+------------------
++"""
+        tailored_resume = self.backend.generate_response(prompt, "")
+        return tailored_resume.strip()
     
     def _create_system_prompt(self, company: str, language: str) -> str:
         prompt = f"""You are a professional career consultant. Write an authentic, compelling motivation letter for '{company}'.
