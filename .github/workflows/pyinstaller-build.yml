@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +31,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y upx
 
+      - name: Install UPX on macOS
+        if: matrix.os == 'macos-latest'
+        run: brew install upx
+
       - name: Build with PyInstaller via UV
+        shell: bash
         run: |
           uv run pyinstaller \
             --noconfirm \
@@ -60,8 +65,38 @@ jobs:
         run: |
           mv dist/jobops-toolbar dist/jobops-toolbar-linux
 
+      - name: Rename output (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mv dist/jobops-toolbar dist/jobops-toolbar-macos
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: jobops-toolbar-${{ matrix.os }}
-          path: dist/jobops-toolbar-* 
+          path: dist/jobops-toolbar-*
+
+  publish_release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Download Linux build
+        uses: actions/download-artifact@v3
+        with:
+          name: jobops-toolbar-ubuntu-latest
+          path: dist_linux
+      - name: Download Windows build
+        uses: actions/download-artifact@v3
+        with:
+          name: jobops-toolbar-windows-latest
+          path: dist_windows
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            dist_linux/jobops-toolbar-linux
+            dist_windows/jobops-toolbar-windows.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
