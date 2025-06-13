@@ -31,12 +31,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      - name: Update agenda from ICS
-        run: python3 scripts/update_agenda.py
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
