@@ -143,3 +143,31 @@ class AppConfig(BaseModel):
         'output_format': 'markdown'
     }
     sqlite_timeout: float = 30.0
+
+# Add models for solicitation reporting
+class Solicitation(BaseModel):
+    id: Optional[str] = Field(default_factory=lambda: str(uuid4()), description="Unique ID for the solicitation record")
+    report_id: Optional[str] = Field(None, description="ID of the solicitation report")
+    datum: str
+    bedrijf: str
+    functie: str
+    status: str
+    resultaat: str
+    locatie: str
+    platform: str
+
+class SolicitationReport(BaseModel):
+    id: Optional[str] = Field(default_factory=lambda: str(uuid4()), description="Unique ID for the solicitation report")
+    periode: str
+    totaal_sollicitaties: int
+    sollicitaties: List[Solicitation]
+    status_overzicht: Dict[str, int]
+    sollicitatie_platforms: List[str]
+    locatie_verdeling: Dict[str, int]
+    motivatiebrieven: Dict[str, int]
+    interviews_assessments: Dict[str, Any]
+    networking: Dict[str, Any]
+    documenten_gereed: Dict[str, Any]
+    vdab_opdrachten: Dict[str, Any]
+    opmerkingen: str
+    generated_at: datetime = Field(default_factory=datetime.now)

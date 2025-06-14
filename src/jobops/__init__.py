@@ -15,6 +15,7 @@ from jobops.utils import ResourceManager, NotificationService, check_platform_co
 import uuid
 import subprocess
 from jobops.models import Document, DocumentType
+from jobops.models import Solicitation
 import zipfile
 import time
 
@@ -300,6 +301,136 @@ class ConsultantInputDialog(QDialog):
         })
         self.accept()
 
+# Add classes for parsing and input of Solicitation records
+class SolicitationParseWorker(QThread):
+    """Background worker to parse free-text solicitation report into structured fields"""
+    finished = Signal(dict)
+    error = Signal(str)
+
+    def __init__(self, app_instance, text):
+        super().__init__()
+        self.app_instance = app_instance
+        self.text = text
+
+    def run(self):
+        try:
+            # Use the LLM backend for extraction
+            generator = getattr(self.app_instance, 'generator', None)
+            if generator is None:
+                raise Exception('Generator not available')
+            backend = getattr(generator, 'llm_backend', generator)
+            # Instruct LLM to output only a valid JSON object
+            prompt = (
+                'You are a JSON extractor. '  
+                'Return ONLY a valid JSON object with keys: datum, bedrijf, functie, status, resultaat, locatie, platform. '  
+                'Do NOT include any additional text or markdown.'  
+                f'\n\nReport Text:\n{self.text}'
+            )
+            reply = backend.generate_response(prompt)
+            raw = reply.strip()
+            # Extract JSON substring between first { and last }
+            start = raw.find('{')
+            end = raw.rfind('}')
+            json_str = raw[start:end+1] if start != -1 and end != -1 else raw
+            data = json.loads(json_str)
+            self.finished.emit(data)
+        except Exception as e:
+            # Emit error for UI to display
+            self.error.emit(str(e))
+
+class SolicitationInputDialog(QDialog):
+    """Dialog to create a Solicitation record, with optional auto-mapping from report text"""
+    solicitation_ready = Signal(Solicitation)
+
+    def __init__(self, app_instance=None):
+        super().__init__()
+        self.app_instance = app_instance
+        self.setWindowTitle('Add Solicitation Record')
+        self.setMinimumSize(600, 400)
+        self.setWindowIcon(ResourceManager.create_app_icon())
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        # Raw text input for auto-mapping
+        layout.addWidget(QLabel('Paste Sollicitatierapport content (optional for auto-mapping):'))
+        self.raw_text_edit = QTextEdit()
+        self.raw_text_edit.setPlaceholderText('Paste full solicitation report here...')
+        self.raw_text_edit.setMinimumHeight(100)
+        layout.addWidget(self.raw_text_edit)
+        # Form fields
+        form = QFormLayout()
+        self.date_input = QLineEdit()
+        self.company_input = QLineEdit()
+        self.role_input = QLineEdit()
+        self.status_input = QLineEdit()
+        self.result_input = QLineEdit()
+        self.location_input = QLineEdit()
+        self.platform_input = QLineEdit()
+        form.addRow('Datum:', self.date_input)
+        form.addRow('Bedrijf:', self.company_input)
+        form.addRow('Functie:', self.role_input)
+        form.addRow('Status:', self.status_input)
+        form.addRow('Resultaat:', self.result_input)
+        form.addRow('Locatie:', self.location_input)
+        form.addRow('Platform:', self.platform_input)
+        layout.addLayout(form)
+        # Buttons
+        btn_layout = QHBoxLayout()
+        self.parse_btn = QPushButton('Auto Map')
+        self.parse_btn.clicked.connect(self._on_parse)
+        self.save_btn = QPushButton('Save')
+        self.save_btn.clicked.connect(self._on_save)
+        self.cancel_btn = QPushButton('Cancel')
+        self.cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self.parse_btn)
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addWidget(self.cancel_btn)
+        layout.addLayout(btn_layout)
+
+    def _on_parse(self):
+        text = self.raw_text_edit.toPlainText().strip()
+        if not text:
+            QMessageBox.warning(self, 'Error', 'Please paste report content for auto-mapping.')
+            return
+        self.progress = QProgressDialog('Parsing report...', None, 0, 0, self)
+        self.progress.setWindowTitle('JobOps')
+        self.progress.setWindowModality(Qt.WindowModal)
+        self.progress.setCancelButton(None)
+        self.progress.show()
+        self.worker = SolicitationParseWorker(self.app_instance, text)
+        self.worker.finished.connect(self._on_parse_finished)
+        self.worker.error.connect(self._on_parse_error)
+        self.worker.start()
+
+    def _on_parse_finished(self, data):
+        self.progress.close()
+        # Populate form with parsed values
+        self.date_input.setText(data.get('datum',''))
+        self.company_input.setText(data.get('bedrijf',''))
+        self.role_input.setText(data.get('functie',''))
+        self.status_input.setText(data.get('status',''))
+        self.result_input.setText(data.get('resultaat',''))
+        self.location_input.setText(data.get('locatie',''))
+        self.platform_input.setText(data.get('platform',''))
+
+    def _on_parse_error(self, error):
+        self.progress.close()
+        QMessageBox.critical(self, 'Parse Error', f'Failed to parse report: {error}')
+
+    def _on_save(self):
+        sol = Solicitation(
+            datum=self.date_input.text().strip(),
+            bedrijf=self.company_input.text().strip(),
+            functie=self.role_input.text().strip(),
+            status=self.status_input.text().strip(),
+            resultaat=self.result_input.text().strip(),
+            locatie=self.location_input.text().strip(),
+            platform=self.platform_input.text().strip()
+        )
+        self.solicitation_ready.emit(sol)
+        self.accept()
+
 class SystemTrayIcon(QSystemTrayIcon):
     """Custom system tray icon with JobOps functionality"""
     
@@ -367,6 +498,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action = QAction("📁 Upload Document", self)
         generate_action = QAction("✨ Generate Letter", self)
         report_action = QAction("📦 Generate Report", self)
+        add_sol_action = QAction("➕ Add Solicitation Record", self)
         consultant_action = QAction("📝 Consultant Answer", self)
         reply_action = QAction("💬 Reply to Offer", self)
         archive_action = QAction("💾 View Archive", self)
@@ -379,6 +511,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action.triggered.connect(self.upload_document)
         generate_action.triggered.connect(self.generate_letter)
         report_action.triggered.connect(self.generate_report)
+        add_sol_action.triggered.connect(self.add_solicitation_record)
         consultant_action.triggered.connect(self.generate_consultant_reply)
         reply_action.triggered.connect(self.reply_to_offer)
         archive_action.triggered.connect(self.show_archive)
@@ -391,9 +524,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(upload_action)
         menu.addAction(generate_action)
         menu.addAction(report_action)
+        menu.addAction(add_sol_action)
         menu.addAction(consultant_action)
-        menu.addAction(reply_action)
         menu.addSeparator()
+        menu.addAction(reply_action)
         menu.addAction(archive_action)
         menu.addAction(log_viewer_action)
         menu.addAction(settings_action)
@@ -770,6 +904,22 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.showMessage("JobOps Error", log_message, QSystemTrayIcon.MessageIcon.Critical, 5000)
         QMessageBox.critical(None, "Consultant Reply Error", error)
 
+    def add_solicitation_record(self):
+        logging.info("User triggered: Add Solicitation Record")
+        dialog = SolicitationInputDialog(self.app_instance)
+        dialog.solicitation_ready.connect(self._save_solicitation)
+        dialog.exec()
+
+    def _save_solicitation(self, solicitation: Solicitation):
+        try:
+            rid = self.solicitation_repository.save_solicitation(solicitation)
+            msg = f"Solicitation record saved (ID: {rid})"
+            logging.info(msg)
+            self.showMessage("JobOps", msg, QSystemTrayIcon.MessageIcon.Information, 3000)
+        except Exception as e:
+            logging.error(f"Error saving solicitation record: {e}")
+            self.showMessage("JobOps Error", f"Failed to save solicitation: {e}", QSystemTrayIcon.MessageIcon.Critical, 5000)
+
 class UploadWorker(QThread):
     """Background worker for document upload"""
     finished = Signal(str)
@@ -1135,6 +1285,8 @@ class JobOpsQtApplication(QApplication):
         from jobops.repositories import SQLiteDocumentRepository
         db_path = str(self.base_dir / "jobops.db")
         self.repository = SQLiteDocumentRepository(db_path)
+        from jobops.repositories import SQLiteSolicitationRepository
+        self.solicitation_repository = SQLiteSolicitationRepository(db_path)
 
         # Load config.json
         self.config_path = self.base_dir / "config.json"
