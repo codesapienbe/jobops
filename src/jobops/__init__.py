@@ -86,6 +86,10 @@ class JobInputDialog(QDialog):
             clip_text = clipboard.text().strip()
             if re.match(r"^https?://", clip_text):
                 self.url_input.setText(clip_text)
+                # Trigger the URL paste handler to extract markdown automatically
+                self._on_url_pasted()
+                # Move focus to Generate button so Enter key will activate it
+                self.generate_btn.setFocus()
         except Exception as e:
             logging.warning(f"Failed to retrieve clipboard URL: {e}")
 
@@ -108,6 +112,8 @@ class JobInputDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
         self.generate_btn = QPushButton("Generate Letter")
+        self.generate_btn.setDefault(True)
+        self.generate_btn.setAutoDefault(True)
         self.cancel_btn = QPushButton("Cancel")
         self.generate_btn.clicked.connect(self.generate_letter)
         self.cancel_btn.clicked.connect(self.reject)
