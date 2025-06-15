@@ -80,6 +80,14 @@ class JobInputDialog(QDialog):
         self._setup_ui()
         self._last_crawled_url = None
         self._last_crawled_markdown = None
+        # Auto-fill URL from clipboard if an HTTP/HTTPS URL is present
+        try:
+            clipboard = QApplication.clipboard()
+            clip_text = clipboard.text().strip()
+            if re.match(r"^https?://", clip_text):
+                self.url_input.setText(clip_text)
+        except Exception as e:
+            logging.warning(f"Failed to retrieve clipboard URL: {e}")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -1436,16 +1444,41 @@ def main():
     if sys.platform.startswith('linux'):
         create_desktop_entry()
     
-    # Setup global shortcuts (if available)
-    try:
-        # Global shortcut for quick letter generation (Ctrl+Alt+J)
-        shortcut = QShortcut(QKeySequence("Ctrl+Alt+J"), None)
-        shortcut.activated.connect(app.system_tray.generate_letter)
-        log_message = "Global shortcut registered: Ctrl+Alt+J"
-        logging.info(log_message)
-    except Exception as e:
-        log_message = f"Failed to setup global shortcut: {e}"
-        logging.warning(log_message)
+    # Setup global hotkey: Win+Shift+J on Windows, application shortcut on others
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            from ctypes import wintypes
+            WM_HOTKEY = 0x0312
+            MOD_WIN = 0x0008
+            MOD_SHIFT = 0x0004
+            HOTKEY_ID = 1
+            class WindowsHotkeyFilter(QAbstractNativeEventFilter):
+                def __init__(self, callback):
+                    super().__init__()
+                    self.callback = callback
+                def nativeEventFilter(self, eventType, message):
+                    msg = ctypes.wintypes.MSG.from_address(int(message.__int__()))
+                    if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
+                        QTimer.singleShot(0, self.callback)
+                    return False, 0
+            user32 = ctypes.windll.user32
+            if not user32.RegisterHotKey(None, HOTKEY_ID, MOD_WIN | MOD_SHIFT, ord("J")):
+                raise Exception("RegisterHotKey failed")
+            hotkey_filter = WindowsHotkeyFilter(app.system_tray.generate_letter)
+            app.installNativeEventFilter(hotkey_filter)
+            logging.info("Global hotkey registered: Win+Shift+J")
+        except Exception as e:
+            logging.warning(f"Failed to register global hotkey: {e}")
+    else:
+        try:
+            # Application-level shortcut for quick letter generation (Ctrl+Alt+J)
+            shortcut = QShortcut(QKeySequence("Ctrl+Alt+J"), None)
+            shortcut.setContext(Qt.ApplicationShortcut)
+            shortcut.activated.connect(app.system_tray.generate_letter)
+            logging.info("Application shortcut registered: Ctrl+Alt+J")
+        except Exception as e:
+            logging.warning(f"Failed to setup application shortcut: {e}")
     
     # Show startup message
     log_message = "JobOps Qt application started successfully"
