@@ -59,7 +59,7 @@ jobs:
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          move dist\jobops\jobops.exe dist\jobops-windows.exe
+          move dist\jobops.exe dist\jobops-windows.exe
 
       - name: Rename output (Linux)
         if: matrix.os == 'ubuntu-latest'
