@@ -95,17 +95,17 @@ jobs:
           fi
 
       - name: Download Linux build
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: jobops-ubuntu-latest
           path: dist_linux
       - name: Download Windows build
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: jobops-windows-latest
           path: dist_windows
       - name: Download macOS build
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: jobops-macos-latest
           path: dist_macos
