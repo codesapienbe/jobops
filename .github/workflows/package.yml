@@ -1,11 +1,13 @@
 name: Build PyInstaller Release
+permissions:
+  contents: write
 
 on:
   push:
     branches: [main]
     tags: ['v*']
   release:
-    types: [created]
+    types: [published]
 
 jobs:
   build:
