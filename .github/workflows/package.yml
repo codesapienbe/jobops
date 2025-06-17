@@ -51,7 +51,6 @@ jobs:
         run: |
            uv run pyinstaller \
             --noconfirm \
-            --windowed \
             --onefile \
             --collect-all PyQt6 \
             --collect-all joblib \
@@ -61,8 +60,7 @@ jobs:
             --collect-all ollama \
             --collect-all groq \
             src/jobops/__init__.py \
-            --name jobops \
-            --strip
+            --name jobops 
 
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
