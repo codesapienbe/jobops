@@ -9,10 +9,10 @@ on:
     branches: [main]
     tags: ['v*']
 
+  workflow_dispatch:
+
   release:
     types: [published]
-
-  workflow_dispatch:
 
 jobs:
   build:
