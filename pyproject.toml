@@ -28,7 +28,6 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "PySide6",        # Qt GUI framework
-    "PyQt6",          # Alternative Qt GUI framework
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-instrumentation",
@@ -50,12 +49,6 @@ dependencies = [
     "pyzmq",
     "emoji",
     "nltk",
-    "pytest",
-    "pytest-cov",
-    "pytest-mock",
-    "pytest-asyncio",
-    "pytest-timeout",
-    "pytest-xdist",
     "markdown"
 ]
 

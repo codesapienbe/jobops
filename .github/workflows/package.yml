@@ -52,13 +52,7 @@ jobs:
            uv run pyinstaller \
             --noconfirm \
             --onefile \
-            --collect-all PyQt6 \
-            --collect-all joblib \
-            --collect-all numpy \
-            --collect-all pandas \
-            --collect-all openai \
-            --collect-all ollama \
-            --collect-all groq \
+            --collect-all \
             src/jobops/__init__.py \
             --name jobops 
 

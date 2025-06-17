@@ -27,15 +27,9 @@ try:
     from PySide6.QtGui import *
     QT_AVAILABLE = True
 except ImportError:
-    try:
-        from PyQt6.QtWidgets import *
-        from PyQt6.QtCore import *
-        from PyQt6.QtGui import *
-        QT_AVAILABLE = True
-    except ImportError:
-        QT_AVAILABLE = False
-        print("Neither PySide6 nor PyQt6 is installed. Please install one of them.")
-        sys.exit(1)
+    QT_AVAILABLE = False
+    print("PySide6 is not installed. Please install PySide6.")
+    sys.exit(1)
 
 
 from dotenv import load_dotenv

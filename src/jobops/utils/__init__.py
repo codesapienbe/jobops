@@ -756,11 +756,11 @@ def check_platform_compatibility():
     platform_info = {
         'system': os.name,
         'platform': sys.platform,
-        'qt_available': 'PySide6' in sys.modules or 'PyQt6' in sys.modules
+        'qt_available': 'PySide6' in sys.modules
     }
     logging.info(f"Platform info: {platform_info}")
-    if not ('PySide6' in sys.modules or 'PyQt6' in sys.modules):
-        print("Qt is not available. Please install PySide6 or PyQt6.")
+    if not ('PySide6' in sys.modules):
+        print("Qt is not available. Please install PySide6.")
         return False
     return True
 
