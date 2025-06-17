@@ -52,9 +52,50 @@ jobs:
            uv run pyinstaller \
             --noconfirm \
             --onefile \
-            --collect-all \
+             --collect-binaries requests \
+             --collect-binaries beautifulsoup4 \
+             --collect-binaries openai \
+             --collect-binaries ollama \
+             --collect-binaries groq \
+             --collect-binaries pynput \
+             --collect-binaries Pillow \
+             --collect-binaries python-dotenv \
+             --collect-binaries pystray \
+             --collect-binaries Pillow \
+             --collect-binaries pdfplumber \
+             --collect-binaries plyer \
+             --collect-binaries crawl4ai \
+             --collect-binaries reportlab \
+             --collect-binaries markdown2 \
+             --collect-binaries fpdf \
+             --collect-binaries fastapi \
+             --collect-binaries uvicorn \
+             --collect-binaries PySide6 \
+             --collect-binaries opentelemetry-api \
+             --collect-binaries opentelemetry-sdk \
+             --collect-binaries opentelemetry-instrumentation \
+             --collect-binaries opentelemetry-exporter-otlp \
+             --collect-binaries reportlab \
+             --collect-binaries pyperclip \
+             --collect-binaries markitdown[all] \
+             --collect-binaries python-json-logger \
+             --collect-binaries sentence-transformers \
+             --collect-binaries torch \
+             --collect-binaries numpy \
+             --collect-binaries matplotlib \
+             --collect-binaries langdetect \
+             --collect-binaries markdownify \
+             --collect-binaries scikit-learn \
+             --collect-binaries joblib \
+             --collect-binaries pandas \
+             --collect-binaries scipy \
+             --collect-binaries pyzmq \
+             --collect-binaries emoji \
+             --collect-binaries nltk \
+             --collect-binaries markdown \
             src/jobops/__init__.py \
-            --name jobops 
+            --name jobops \
+            --strip
 
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
