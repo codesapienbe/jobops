@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -47,22 +49,20 @@ jobs:
       - name: Build with PyInstaller via UV
         shell: bash
         run: |
-          uv run pyinstaller \
+           uv run pyinstaller \
             --noconfirm \
             --windowed \
-            --onefile src/jobops/__init__.py \
+            --onefile \
+            --collect-all PyQt6 \
+            --collect-all joblib \
+            --collect-all numpy \
+            --collect-all pandas \
+            --collect-all openai \
+            --collect-all ollama \
+            --collect-all groq \
+            src/jobops/__init__.py \
             --name jobops \
-            --strip \
-            --upx-dir /usr/bin \
-            --exclude-module PyQt6 \
-            --exclude-module torch \
-            --exclude-module sentence_transformers \
-            --exclude-module numpy \
-            --exclude-module matplotlib \
-            --exclude-module pandas \
-            --exclude-module scipy \
-            --exclude-module sklearn \
-            --exclude-module joblib
+            --strip
 
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
@@ -91,6 +91,14 @@ jobs:
         with:
           name: jobops-${{ matrix.os }}
           path: dist/jobops-*
+      - name: Create Git tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          DATE=$(date +'%Y.%m.%d')
+          git tag v$DATE
+          git push origin v$DATE
 
   publish_release:
     needs: build
