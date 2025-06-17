@@ -8,8 +8,10 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+
   release:
     types: [published]
+
   workflow_dispatch:
 
 jobs:
@@ -98,12 +100,8 @@ jobs:
       - name: Set release tag name
         id: set_tag
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "TAG_NAME=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          else
-            # Extract tag from ref
-            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          fi
+          DATE=$(date +'%Y.%m.%d')
+          echo "TAG_NAME=v${DATE}" >> $GITHUB_ENV
 
       - name: Download Linux build
         uses: actions/download-artifact@v4
