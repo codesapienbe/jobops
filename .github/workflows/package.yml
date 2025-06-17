@@ -1,7 +1,8 @@
 name: Build PyInstaller Release
+
 permissions:
   contents: write
-  actions: write
+  id-token: write
 
 on:
   push:
@@ -14,6 +15,7 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
@@ -61,8 +63,15 @@ jobs:
 
       - name: Rename output (Windows)
         if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          move dist\jobops.exe dist\jobops-windows.exe
+          Write-Host "Listing contents of dist directory:"
+          Get-ChildItem -Path "dist" -Recurse
+          if (Test-Path -Path "dist\jobops.exe") {
+            Move-Item -Path "dist\jobops.exe" -Destination "dist\jobops-windows.exe"
+          } else {
+            Write-Error "File not found: dist\jobops.exe"
+          }
 
       - name: Rename output (Linux)
         if: matrix.os == 'ubuntu-latest'
