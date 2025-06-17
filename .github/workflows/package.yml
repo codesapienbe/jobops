@@ -53,13 +53,46 @@ jobs:
             --noconfirm \
             --windowed \
             --onefile \
-            --collect-all PyQt6 \
-            --collect-all joblib \
-            --collect-all numpy \
-            --collect-all pandas \
+            --collect-all requests \
+            --collect-all beautifulsoup4 \
             --collect-all openai \
             --collect-all ollama \
             --collect-all groq \
+            --collect-all pynput \
+            --collect-all Pillow \
+            --collect-all python-dotenv \
+            --collect-all pystray \
+            --collect-all pdfplumber \
+            --collect-all plyer \
+            --collect-all crawl4ai \
+            --collect-all reportlab \
+            --collect-all markdown2 \
+            --collect-all fpdf \
+            --collect-all fastapi \
+            --collect-all uvicorn \
+            --collect-all PySide6 \
+            --collect-all PyQt6 \
+            --collect-all opentelemetry-api \
+            --collect-all opentelemetry-sdk \
+            --collect-all opentelemetry-instrumentation \
+            --collect-all opentelemetry-exporter-otlp \
+            --collect-all pyperclip \
+            --collect-all markitdown[all] \
+            --collect-all python-json-logger \
+            --collect-all sentence-transformers \
+            --collect-all torch \
+            --collect-all numpy \
+            --collect-all matplotlib \
+            --collect-all langdetect \
+            --collect-all markdownify \
+            --collect-all scikit-learn \
+            --collect-all joblib \
+            --collect-all pandas \
+            --collect-all scipy \
+            --collect-all pyzmq \
+            --collect-all emoji \
+            --collect-all nltk \
+            --collect-all markdown \
             src/jobops/__init__.py \
             --name jobops \
             --strip
