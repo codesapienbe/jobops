@@ -1,6 +1,7 @@
 name: Build PyInstaller Release
 permissions:
   contents: write
+  actions: write
 
 on:
   push:
