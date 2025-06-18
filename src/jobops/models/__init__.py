@@ -95,12 +95,15 @@ class JobData(BaseModel):
     industry: Optional[str] = None
     company_size: Optional[str] = None
     benefits: Optional[str] = None
+    technology_stack: Optional[str] = Field(None, description="Technologies used in the job")
+    job_reference_number: Optional[str] = Field(None, description="Job reference or ID number")
+    content_language: Optional[str] = Field(None, description="Detected language of the job posting content")
+    company_offers: Optional[str] = Field(None, description="Related company offers (benefits, perks)")
     scraped_at: datetime = Field(default_factory=datetime.now)
     company_profile_url: Optional[str] = None
     company_profile: Optional[str] = None
     job_responsibilities: Optional[str] = None
     candidate_profile: Optional[str] = None
-    company_offers: Optional[str] = None
     
     @validator('url')
     def validate_url(cls, v):

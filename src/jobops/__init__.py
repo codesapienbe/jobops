@@ -97,11 +97,35 @@ class JobInputDialog(QDialog):
         url_layout.addWidget(self.url_input)
         layout.addLayout(url_layout)
         self.url_input.editingFinished.connect(self._on_url_pasted)
+        # Company, Job Title, and Location inputs
+        company_layout = QHBoxLayout()
+        self.company_input = QLineEdit()
+        self.company_input.setPlaceholderText("Enter company name (optional)")
+        company_layout.addWidget(QLabel("Company Name:"))
+        company_layout.addWidget(self.company_input)
+        layout.addLayout(company_layout)
+
+        title_layout = QHBoxLayout()
+        self.title_input = QLineEdit()
+        self.title_input.setPlaceholderText("Enter job title (optional)")
+        title_layout.addWidget(QLabel("Job Title:"))
+        title_layout.addWidget(self.title_input)
+        layout.addLayout(title_layout)
+
+        location_layout = QHBoxLayout()
+        self.location_input = QLineEdit()
+        self.location_input.setPlaceholderText("Enter location (optional)")
+        location_layout.addWidget(QLabel("Location:"))
+        location_layout.addWidget(self.location_input)
+        layout.addLayout(location_layout)
+
         # Markdown job description (user-provided)
         layout.addWidget(QLabel("Job Description (Markdown, required):"))
         self.markdown_edit = QTextEdit()
         self.markdown_edit.setPlaceholderText("Paste or write the job description here in markdown format...")
         self.markdown_edit.setMinimumHeight(300)
+        # Auto-fill company, title, location when job markdown is pasted
+        self.markdown_edit.textChanged.connect(self._on_markdown_changed)
         layout.addWidget(self.markdown_edit)
         # Buttons
         button_layout = QHBoxLayout()
@@ -119,38 +143,50 @@ class JobInputDialog(QDialog):
         url = self.url_input.text().strip()
         span_id = get_span_id()
         logging.info(f"URL pasted: {url}", extra={"span_id": span_id})
-        if url and url == self._last_crawled_url and self._last_crawled_markdown:
-            logging.info("URL already crawled, reusing existing markdown.", extra={"span_id": span_id})
-            self.markdown_edit.setPlainText(self._last_crawled_markdown)
+        if not url:
             return
-        if not url or self.markdown_edit.toPlainText().strip():
-            logging.info("No URL or markdown already present, skipping extraction.", extra={"span_id": span_id})
-            return
-        import re
-        if not re.match(r"^https?://", url):
-            logging.info("URL does not match http/https, skipping extraction.", extra={"span_id": span_id})
-            return
-        wait_dialog = QMessageBox(self)
-        wait_dialog.setWindowTitle("Extracting Markdown")
-        wait_dialog.setText("Extracting job description from URL. Please wait...")
-        wait_dialog.setStandardButtons(QMessageBox.NoButton)
-        wait_dialog.show()
-        QApplication.processEvents()
+        # Extract metadata for company, title, and location from page head
         try:
-            from jobops.scrapers import extract_markdown_from_url
-            markdown = extract_markdown_from_url(url)
-            self.markdown_edit.setPlainText(markdown)
-            self._last_crawled_url = url
-            self._last_crawled_markdown = markdown
+            import requests, re
+            from bs4 import BeautifulSoup
+            from urllib.parse import urlparse
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.content, 'html.parser')
+            # Job title
+            title_meta = soup.find('meta', property='og:title') or soup.find('meta', attrs={'name':'title'})
+            title = title_meta['content'] if title_meta and title_meta.get('content') else None
+            if not title and soup.title and soup.title.string:
+                title = soup.title.string
+            if title and hasattr(self, 'title_input'):
+                self.title_input.setText(title.strip())
+            # Company name
+            company_meta = soup.find('meta', property='og:site_name') or soup.find('meta', attrs={'name':'application-name'})
+            company = company_meta['content'] if company_meta and company_meta.get('content') else None
+            if not company:
+                host = urlparse(url).netloc
+                company = host.replace('www.', '').split('.')[0].capitalize()
+            if company and hasattr(self, 'company_input'):
+                self.company_input.setText(company.strip())
+            # Location
+            loc = None
+            for attr in ('name','property'):
+                m = soup.find('meta', attrs={attr: re.compile('location', re.I)})
+                if m and m.get('content'):
+                    loc = m['content']
+                    break
+            if loc and hasattr(self, 'location_input'):
+                self.location_input.setText(loc.strip())
         except Exception as e:
-            logging.error(f"Markdown extraction error: {e}", extra={"span_id": span_id})
-            QMessageBox.warning(self, "Extraction Error", f"Could not extract markdown from URL: {e}")
-        finally:
-            wait_dialog.done(0)
+            logging.warning(f"Metadata extraction failed: {e}", extra={"span_id": span_id})
+        # User will paste markdown manually
 
     def generate_letter(self):
         url = self.url_input.text().strip()
         markdown = self.markdown_edit.toPlainText().strip()
+        company = self.company_input.text().strip()
+        title = self.title_input.text().strip()
+        location = self.location_input.text().strip()
         if not markdown:
             QMessageBox.warning(self, "Error", "Job description in markdown is required.")
             return
@@ -163,10 +199,44 @@ class JobInputDialog(QDialog):
         self.job_data = {
             'url': url,
             'job_markdown': markdown,
-            'detected_language': detected_language
+            'detected_language': detected_language,
+            'company': company,
+            'title': title,
+            'location': location
         }
         self.job_data_ready.emit(self.job_data)
         self.accept()
+
+    def _on_markdown_changed(self):
+        # Trigger auto-fill of company, title, and location from pasted markdown
+        markdown = self.markdown_edit.toPlainText().strip()
+        if not markdown:
+            return
+        try:
+            from bs4 import BeautifulSoup
+            from jobops.scrapers import WebJobScraper
+            llm = getattr(self.app_instance.generator, 'llm_backend', None)
+            if not llm:
+                return
+            # Use LLM scraper to extract job info from markdown
+            soup = BeautifulSoup(markdown, 'html.parser')
+            scraper = WebJobScraper(llm)
+            jobinfo = scraper._extract_with_llm('', soup)
+            # Populate fields if extracted
+            if hasattr(self, 'company_input'):
+                self.company_input.setText(jobinfo.company or '')
+            if hasattr(self, 'title_input'):
+                self.title_input.setText(jobinfo.title or '')
+            if hasattr(self, 'location_input'):
+                self.location_input.setText(jobinfo.location or '')
+        except Exception:
+            pass
+        finally:
+            # Only run once
+            try:
+                self.markdown_edit.textChanged.disconnect(self._on_markdown_changed)
+            except Exception:
+                pass
 
 class UploadDialog(QDialog):
     """File upload dialog"""
@@ -570,6 +640,35 @@ class SystemTrayIcon(QSystemTrayIcon):
         dialog.exec()
     
     def _start_generate_worker(self, job_data):
+        # Privacy policy consent: ask user to paste the policy text and analyze compliance
+        policy_text, ok = QInputDialog.getMultiLineText(
+            None,
+            'Privacy Policy Consent',
+            'Please paste the site\'s privacy policy text (markdown or plain text). Leave blank if not available:'
+        )
+        if not ok:
+            return
+        policy_text = policy_text.strip()
+        # If policy text provided, analyze compliance via LLM
+        if policy_text:
+            llm = getattr(self.app_instance.generator, 'llm_backend', None)
+            if llm:
+                check_prompt = f"""
+You are a legal expert. Analyze the following privacy policy and respond with only COMPLIANT or NON-COMPLIANT regarding GDPR and safe data handling:
+{policy_text}
+"""
+                response = llm.generate_response(check_prompt, '')
+                if 'non-compliant' in response.lower():
+                    reply = QMessageBox.question(
+                        None,
+                        'Privacy Policy Consent',
+                        'The privacy policy appears non-compliant. Do you want to continue anyway?',
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.No
+                    )
+                    if reply != QMessageBox.Yes:
+                        return
+        
         logging.info(f"Starting letter generation for job data: {job_data}")
         self.generate_worker = GenerateWorker(self.app_instance, job_data)
         self.generate_worker.finished.connect(self.on_generation_finished)
@@ -857,7 +956,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         dialog.exec()
 
     def _start_consultant_worker(self, data):
-        """Start background worker for consultant reply generation"""
+        """Start background worker for consultant reply sheet generation"""
         email_msg = data.get('email_message')
         resume_md = data.get('resume_markdown', '')
         language = data.get('language', 'en')
@@ -1068,7 +1167,16 @@ class GenerateWorker(QThread):
             backend_settings = config.get('backend_settings', {}) if config else {}
             model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
             trunc_config = model_conf if model_conf else {}
-            letter = generator.generate_from_markdown(job_markdown, resume_markdown, detected_language, url=url, config=trunc_config)
+            letter = generator.generate_from_markdown(
+                job_markdown,
+                resume_markdown,
+                detected_language,
+                url=url,
+                config=trunc_config,
+                company_name=self.job_data.get('company', ''),
+                job_title=self.job_data.get('title', ''),
+                location=self.job_data.get('location', '')
+            )
             motivations_dir = os.path.expanduser("~/.jobops/motivations")
             base_domain = urlparse(url).netloc
             safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', base_domain)

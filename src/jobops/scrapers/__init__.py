@@ -67,15 +67,27 @@ class WebJobScraper:
         output_schema = JobData.model_json_schema()
         
         prompt = f"""
-        Extract job information from the following web page content and return ONLY valid JSON that matches this exact schema:
+Extract the following fields from the web page content and return ONLY valid JSON matching this exact schema:
 
-        {json.dumps(output_schema, indent=2)}
+- application_url
+- job_title
+- company_name
+- company_location
+- job_responsibilities
+- job_requirements
+- company_offers
+- company_profile
+- technology_stack
+- job_reference_number
+- content_language
 
-        Web page content:
-        {text_content[:10000]}
+{json.dumps(output_schema, indent=2)}
 
-        Return only the JSON object with no additional text, formatting, or code blocks.
-        """
+Web page content:
+{text_content[:10000]}
+
+Return only the JSON object with no additional text, formatting, or code blocks.
+"""
         
         try:
             response = self.llm_backend.generate_response(prompt)
@@ -87,6 +99,17 @@ class WebJobScraper:
                 cleaned_response = cleaned_response[:-3]
             
             job_info = json.loads(cleaned_response.strip())
+            # Map new field names to JobData model fields for compatibility
+            if 'application_url' in job_info:
+                job_info['url'] = job_info.pop('application_url')
+            if 'job_title' in job_info:
+                job_info['title'] = job_info.pop('job_title')
+            if 'company_name' in job_info:
+                job_info['company'] = job_info.pop('company_name')
+            if 'company_location' in job_info:
+                job_info['location'] = job_info.pop('company_location')
+            if 'job_requirements' in job_info:
+                job_info['requirements'] = job_info.pop('job_requirements')
             job_info['url'] = url
             # Use user-provided overrides if present
             job_info['title'] = title if title else job_info.get('title', 'Unknown Position')
@@ -171,27 +194,4 @@ class ScraperFactory:
             return WebJobScraper(llm_backend)
         else:
             raise ValueError(f"Invalid scraper type: {scraper_type}")
-
-def extract_markdown_from_url(url: str) -> str:
-    """Extract markdown from a URL using crawl4ai's markdown generator."""
-    import asyncio
-    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-    async def crawl():
-        md_generator = DefaultMarkdownGenerator(
-            options={
-                "ignore_links": True,
-                "escape_html": False,
-                "body_width": 80
-            }
-        )
-        config = CrawlerRunConfig(markdown_generator=md_generator)
-        async with AsyncWebCrawler() as crawler:
-            result = await crawler.arun(url, config=config)
-            return result.markdown
-    result = asyncio.run(crawl())
-    if result and len(result.strip()) > 30:
-        return result
-    else:
-        raise Exception(f"crawl4ai extraction failed or returned empty markdown: {getattr(result, 'error_message', '')}")
 

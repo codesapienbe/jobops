@@ -184,7 +184,17 @@ class ConcreteLetterGenerator:
             language=language
         )
     
-    def generate_from_markdown(self, job_markdown: str, resume_markdown: str, language: str, url: str = "", config: dict = None) -> MotivationLetter:
+    def generate_from_markdown(
+        self,
+        job_markdown: str,
+        resume_markdown: str,
+        language: str,
+        url: str = "",
+        config: dict = None,
+        company_name: str = "",
+        job_title: str = "",
+        location: str = "",
+    ) -> MotivationLetter:
         self._logger.info("Generating motivation letter from raw markdowns.")
         # Truncation logic
         default_limit = 4000
@@ -215,21 +225,49 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
 
 - Output only the motivation letter, with no extra explanations, comments, or metadata.
 """
-        content = self.backend.generate_response(prompt, "")
+        # Generate the core letter content
+        content_body = self.backend.generate_response(prompt, "")
         from jobops.models import MotivationLetter, JobData
         import datetime
-        # Create a minimal JobData object for compatibility
+        from jobops.utils import get_personal_info_footer
+
+        # Build a minimal JobData object for compatibility using provided company, title, location
         job_data = JobData(
             url=url or "http://unknown",
-            title="",
-            company="",
+            title=job_title,
+            company=company_name,
             description=job_markdown or "",
-            requirements=""
+            requirements="",
+            location=location or None,
         )
+
+        # Prepare header with date, company, job title, location, and source
+        date_time_str = datetime.datetime.now().strftime("%B %d, %Y %H:%M")
+        personal_footer = get_personal_info_footer()
+        header = (
+            "# Motivation\n\n"
+            "---\n\n"
+            f"Date and Time: {date_time_str}\n"
+            f"Company Name: {job_data.company}\n"
+            f"Job Title: {job_data.title}\n"
+            f"Location: {job_data.location or ''}\n"
+            f"Application Source: {url}\n\n"
+            "---\n\n"
+            f"Dear {job_data.company or ''} Team,\n\n"
+        )
+
+        # Combine header, body, and signature
+        full_content = (
+            header
+            + content_body.strip()
+            + "\n\n---\n\nRegards,\n"
+            + personal_footer
+        )
+
         return MotivationLetter(
             job_data=job_data,
             resume=resume_markdown,
-            content=content,
+            content=full_content,
             language=language,
             generated_at=datetime.datetime.now()
         )
