@@ -11,7 +11,7 @@ from PIL import Image
 from io import BytesIO
 from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
-from jobops.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, compute_match_score_and_chart, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
+from jobops.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
 import uuid
 import subprocess
 from jobops.models import Document, DocumentType
@@ -67,10 +67,15 @@ class JobInputDialog(QDialog):
     
     def __init__(self, app_instance=None):
         super().__init__()
+        # Ensure dialog appears on top when opened
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         self.app_instance = app_instance
         self.setWindowTitle("Generate Motivation Letter")
         self.setFixedSize(700, 400)
         self.setWindowIcon(ResourceManager.create_app_icon())
+        # Raise and activate to bring to front
+        self.raise_()
+        self.activateWindow()
         self._setup_ui()
         self._last_crawled_url = None
         self._last_crawled_markdown = None
