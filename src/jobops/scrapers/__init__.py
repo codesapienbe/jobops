@@ -3,6 +3,7 @@ import logging
 from typing import Protocol
 
 from bs4 import BeautifulSoup
+from markdownify import markdownify
 import requests
 from jobops.models import JobData
 from jobops.clients import BaseLLMBackend
@@ -63,11 +64,17 @@ class WebJobScraper:
             raise Exception(f"Failed to scrape job description: {str(e)}")
     
     def _extract_with_llm(self, url: str, soup: BeautifulSoup, company: str = None, title: str = None, location: str = None) -> JobData:
-        text_content = soup.get_text(separator='\n', strip=True)
+        self._logger.info("Converting HTML to Markdown for cleaning and extraction")
+        
+        try:
+            md_content = markdownify(str(soup), heading_style="ATX")
+        except Exception:
+            md_content = soup.get_text(separator='\n', strip=True)
+        text_content = md_content
         output_schema = JobData.model_json_schema()
         
         prompt = f"""
-Extract the following fields from the web page content and return ONLY valid JSON matching this exact schema:
+You are given a job posting in markdown format. First, remove any content unrelated to the job posting such as cookie notices, navigation menus, external URLs, code blocks, advertisements, similar job listings, and pagination. Then extract the following fields and return ONLY valid JSON matching this exact schema:
 
 - application_url
 - job_title
@@ -83,10 +90,10 @@ Extract the following fields from the web page content and return ONLY valid JSO
 
 {json.dumps(output_schema, indent=2)}
 
-Web page content:
+Web page content in markdown:
 {text_content[:10000]}
 
-Return only the JSON object with no additional text, formatting, or code blocks.
+Return ONLY the JSON object with no additional text, formatting, or code blocks.
 """
         
         try:

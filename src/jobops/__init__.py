@@ -18,6 +18,7 @@ from jobops.models import Document, DocumentType
 from jobops.models import Solicitation
 import zipfile
 import time
+from markdownify import markdownify
 
 
 # Qt imports
@@ -182,9 +183,21 @@ class JobInputDialog(QDialog):
                     break
             if loc and hasattr(self, 'location_input'):
                 self.location_input.setText(loc.strip())
+            # Auto-load job description markdown using markdownify
+            try:
+                # Remove scripts and styles for clean HTML
+                for script in soup(["script", "style"]):
+                    script.extract()
+                html = str(soup)
+                md = markdownify(html, heading_style="ATX")
+            except Exception:
+                md = soup.get_text(separator='\n', strip=True)
+            if hasattr(self, 'markdown_edit'):
+                self.markdown_edit.setPlainText(md)
+                self._last_crawled_markdown = md
         except Exception as e:
             logging.warning(f"Metadata extraction failed: {e}", extra={"span_id": span_id})
-        # User will paste markdown manually
+        # Markdown auto-loaded from URL
 
     def generate_letter(self):
         url = self.url_input.text().strip()

@@ -1,141 +1,162 @@
 # JobOps Toolbar - AI-Powered Job Application Assistant
 
-**For Job Seekers and Developers**
+**An AI-powered application to streamline job applications and generate personalized motivation letters.**
 
----
+## Introduction
 
-## Overview
+JobOps Toolbar helps job seekers automate and personalize their job application process. By scraping job postings, integrating various AI backends, and providing an intuitive desktop UI, it accelerates motivation letter generation and workflow management.
 
-JobOps Toolbar is a Python application designed to help job seekers quickly generate personalized motivation letters and manage job application workflows using multiple AI backends. It also provides a robust, extensible codebase for developers to contribute and extend its functionality.
+## Use Cases
 
----
+- **Individual Applicants**: Generate tailored motivation letters quickly for each job posting.
+- **Recruitment Agencies**: Batch-generate personalized letters for multiple candidates.
+- **HR Teams**: Maintain and re-use templates across the organization.
+- **Developers**: Extend backend integrations, scrapers, and UI features.
 
-## What does it do?
+## Features
 
-- **For End-Users:**
-  - Paste a job posting URL, company name, job title, and location.
-  - The app scrapes the job page for the job description.
-  - It uses your resume and the job details to generate a tailored motivation letter.
-  - Output: a ready-to-send motivation letter.
-- **For Developers:**
-  - Modular, extensible architecture under `src/jobops/`.
-  - Easily add new scrapers, AI backends, or UI features.
+- Multi-LLM Backend Support (OpenAI, Ollama, Groq).
+- Intelligent Job Scraping from popular job boards.
+- Personalized, multi-language motivation letter generation.
+- Resume Profile Management with version control.
+- Electron-based Desktop UI with tabbed interface.
+- Batch Processing and Template Management.
+- History and Export Options (PDF, DOCX).
 
----
+## Architecture
 
-## What it does NOT do
+![Architecture Diagram](docs/architecture.png)
 
-- Does **not** act as a recruiter or agency.
-- Does **not** send applications automatically or on your behalf.
-- Does **not** process applications for companies.
+1. **Scrapers**: Fetch and parse job descriptions.
+2. **Pipeline**: Normalize data and orchestrate AI calls.
+3. **Clients & Services**: Wrap AI backend APIs and business logic.
+4. **Views**: Electron front-end components (Configuration, Resume, Letter Generator).
+5. **Repositories & Models**: Store user profiles and history.
+6. **Utils**: Shared helpers (logging, validation).
 
----
+## Modules & Project Structure
 
-## Quick Start (End-Users)
+```
+src/jobops/
+├── clients/       # AI backend integration
+├── config/        # Configuration schemas and loaders
+├── models/        # Domain and data models
+├── pipeline/      # Core processing flow
+├── repositories/  # Persistence (files, DB)
+├── scrapers/      # Job posting scrapers
+├── services/      # Business logic services
+├── utils/         # Utility functions
+└── views/         # Electron front-end code
+```
+
+## Technology Stack
+
+- **Backend**: Python 3.8+ (FastAPI for local API, internal modules).
+- **Frontend**: Electron (Node.js, app.js, index.html, style.css).
+- **AI Backends**: OpenAI API, Ollama, Groq.
+- **Packaging**: setuptools, pyinstaller.
+- **Testing**: pytest.
+
+## Getting Started
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- Internet connection for AI backends and job scraping
-- 4GB RAM recommended for local AI models
+- Node.js & npm (for Electron)
+- Internet connection for scraping and AI services
 
-### Installation
+### Clone & Build
 
-1. **Clone the Repository**
+```bash
+git clone https://github.com/codesapienbe/jobops-toolbar.git
+cd jobops-toolbar
+```
 
-   ```bash
-   git clone https://github.com/codesapienbe/jobops-toolbar.git
-   cd jobops-toolbar
-   ```
+- **Backend**:
 
-2. **Install Dependencies**
+```bash
+pip install -e .
+```
 
-   ```bash
-   pip install .
-   # or, if you prefer pip-tools:
-   pip install -r uv.lock
-   ```
+- **Frontend** (in a separate terminal):
 
-   Or, for editable/development mode:
+```bash
+cd docs
+npm install
+npm run build
+```
 
-   ```bash
-   pip install -e .
-   ```
+### Desktop Client
 
-3. **Run the Application**
+Launch the Electron-based desktop application:
 
-   ```bash
-   # If a GUI/CLI entrypoint is provided (update as needed):
-   python -m jobops
-   # Or, if built as an executable:
-   ./jobops.exe
-   ```
+```bash
+npm start # from docs directory
+# or, run the packaged executable:
+./dist/jobops-toolbar.exe
+```
 
----
+### Mobile App (Future Plan)
 
-## Features
+A cross-platform mobile application (iOS/Android) is planned. Stay tuned for updates.
 
-- **Multi-LLM Backend Support:** OpenAI, Ollama (local), Groq
-- **Intelligent Job Scraping:** Extracts job descriptions from most job sites
-- **Personalized Letter Generation:** AI-powered, multi-language, context-aware
-- **Resume Management:** Integrated CV editor, skills, experience, education
-- **Modern UI:** Tabbed interface, real-time status, history, export
-- **Advanced Automation:** Batch processing, template management, cross-platform
+## Manual Testing Guide
 
----
+1. Start the desktop client.
+2. Configure an AI backend in the **Configuration** tab.
+3. Add or edit your resume profile in the **Resume** tab.
+4. Paste a job URL, fill in details, and generate a letter in the **Letter Generator** tab.
+5. Review and export the generated letter.
+6. Validate scraping accuracy, letter quality, and error handling.
 
-## Configuration
+## Developer Guide
 
-### AI Backend Setup
+- **Adding Scrapers**: Create a new class in `src/jobops/scrapers/` implementing the `BaseScraper` interface.
+- **New AI Backend**: Add a client under `src/jobops/clients/` and register it in `config`.
+- **UI Development**: Modify or extend Electron views in `docs/` (React/Vanilla JS).
+- **Testing**: Write tests under `test/` and run `pytest`.
+- **Code Style**: Follow PEP8. Use `black` and `flake8` for formatting and linting.
 
-- **OpenAI:** Enter your API key in the configuration UI.
-- **Groq:** Enter your API key in the configuration UI.
-- **Ollama (Local):**
-  - Install [Ollama](https://ollama.ai/)
-  - Start Ollama: `ollama serve`
-  - Download a model: `ollama pull llama3.1`
-  - Configure the URL in settings (default: <http://localhost:11434>)
+## Packaging & Deployment
 
-### Resume Profile Setup
+- **Python Package**:
 
-- Use the Resume tab in the UI to enter and save your professional information.
+```bash
+python setup.py sdist bdist_wheel
+```
 
----
+- **Executable**:
 
-## Usage Guide
+```bash
+pyinstaller --onefile --name jobops-toolbar jobops/__main__.py
+```
 
-1. **Configure your AI backend** in the Configuration tab.
-2. **Set up your professional profile** in the Resume tab.
-3. **Generate a motivation letter** in the Letter Generator tab by pasting a job URL and filling in details.
-4. **Review, edit, and save** your generated letter.
-5. **Access saved letters** in the History tab.
+- **Releases**: Use GitHub Actions for CI/CD, auto-publish to PyPI and GitHub Releases.
 
----
+## FAQ
 
-## Troubleshooting
+**Q: I get "API key required" errors.**
+A: Ensure your API key is set in Configuration > AI Backends.
 
-- **Backend Error: API key required**: Check your API key in the configuration.
-- **Scraping Failed**: Try a different job URL or enter the job description manually.
-- **Model not found (Ollama)**: Ensure the model is downloaded and Ollama is running.
-- **Application Won't Start**: Check Python version and dependencies.
-- **Poor Letter Quality**: Complete your resume and try a different AI model.
+**Q: Scraping fails on certain sites.**
+A: Use manual input or extend the scraper for that site.
 
----
+**Q: "Model not found" with Ollama.**
+A: Run `ollama serve` and `ollama pull llama3.1` before launching.
+
+**Q: Letter quality is poor.**
+A: Complete your resume profile and try different AI models.
+
+## Contributing
+
+We welcome contributions:
+
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feature/my-feature`.
+3. Commit changes with clear messages.
+4. Push to your fork and open a Pull Request.
+5. Ensure tests pass and code is linted.
 
 ## License
 
-JobOps Toolbar is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-## Support & Community
-
-- **GitHub Issues**: Report bugs and request features
-- **Discussions**: Ask questions and share experiences
-- **Wiki**: Community-maintained documentation and tips
-- **Email**: <support@jobops.dev>
-- **Docs**: <https://docs.jobops.dev>
-
----
-
-> **Built with ❤️ for job seekers and developers worldwide**
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
