@@ -133,6 +133,26 @@ pyinstaller --onefile --name jobops-toolbar jobops/__main__.py
 
 - **Releases**: Use GitHub Actions for CI/CD, auto-publish to PyPI and GitHub Releases.
 
+## Run with uvx (zero-install)
+
+If you have the [uv](https://github.com/astral-sh/uv) package manager installed, you can run JobOps without cloning or installing it system-wide:
+
+```bash
+# Install uv once (if you don't have it yet)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Run the latest released version of JobOps in an isolated environment
+uvx jobops  # or specify a version: uvx [email protected]
+```
+
+`uvx` will download the wheel that was published in the CI step above, create a temporary virtual environment, install JobOps and all its dependencies, and finally invoke the `jobops` CLI. Nothing is left behind except for a cached copy of the packages, so subsequent runs start instantly.
+
+> Tip: If you are testing a pre-release or a commit that hasn't been published to PyPI yet, you can point `uvx` at the wheel attached to a GitHub release artifact:
+>
+> ```bash
+> uvx --from "https://github.com/<org>/jobops-toolbar/releases/download/<tag>/jobops-<version>-py3-none-any.whl" jobops
+> ```
+
 ## FAQ
 
 **Q: I get "API key required" errors.**

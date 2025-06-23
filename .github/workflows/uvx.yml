@@ -1,0 +1,62 @@
+name: Build & Publish Wheel for UVX
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-wheel:
+    name: Build wheel (pyproject)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install uv & build backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv build
+      - name: Sync dependencies (prod only)
+        run: uv sync --production
+      - name: Build wheel and sdist
+        run: python -m build --sdist --wheel --outdir dist
+      - name: Upload distribution artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobops-dist
+          path: dist/*
+      - name: Attach wheel to the current release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build-wheel
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download distribution artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jobops-dist
+          path: dist
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages_dir: dist
+        env:
+          # Set PYPI_API_TOKEN in repo secrets
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }} 
