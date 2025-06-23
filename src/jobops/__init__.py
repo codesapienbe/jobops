@@ -908,13 +908,8 @@ You are a legal expert. Analyze the following privacy policy and respond with on
 
     def _start_report_worker(self, job_data):
         logging.info(f"Starting report generation for job data: {job_data}")
-        default_dir = os.path.expanduser("~/.jobops/reports")
-        os.makedirs(default_dir, exist_ok=True)
-        default_name = f"{urlparse(job_data.get('url','')).netloc}_{int(time.time())}.zip"
-        save_path, _ = QFileDialog.getSaveFileName(None, "Save Report As", os.path.join(default_dir, default_name), "Zip Files (*.zip)")
-        if not save_path:
-            return
-        worker = ReportWorker(self.app_instance, job_data, save_path)
+        # Start background report worker without file export
+        worker = ReportWorker(self.app_instance, job_data)
         self._workers.add(worker)
         worker.finished.connect(self.on_report_finished)
         worker.error.connect(self.on_report_error)
@@ -929,33 +924,14 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         worker.start()
 
     def on_report_finished(self, save_path, chart_path):
-        log_message = f"Report generation finished successfully: {save_path}"
+        log_message = "Report generation completed and saved to database."
         logging.info(log_message)
         self.stop_animation()
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
         self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 5000)
-        try:
-            if sys.platform.startswith('win'):
-                os.startfile(save_path)
-            elif sys.platform.startswith('darwin'):
-                subprocess.Popen(['open', save_path])
-            else:
-                subprocess.Popen(['xdg-open', save_path])
-        except Exception as e:
-            logging.error(f"Failed to open report: {e}")
-        # Open the generated chart PNG if available
-        if chart_path:
-            try:
-                if sys.platform.startswith('win'):
-                    os.startfile(chart_path)
-                elif sys.platform.startswith('darwin'):
-                    subprocess.Popen(['open', chart_path])
-                else:
-                    subprocess.Popen(['xdg-open', chart_path])
-            except Exception as e:
-                logging.error(f"Failed to open report chart: {e}")
+        # Skipping file opening since report is stored in database only
 
     def on_report_error(self, error):
         log_message = f"Report generation error: {error}"
@@ -978,14 +954,8 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         email_msg = data.get('email_message')
         resume_md = data.get('resume_markdown', '')
         language = data.get('language', 'en')
-        # Ask where to save the markdown file
-        default_dir = os.path.expanduser("~/.jobops/consultant_replies")
-        os.makedirs(default_dir, exist_ok=True)
-        default_name = f"consultant_reply_{int(time.time())}.md"
-        save_path, _ = QFileDialog.getSaveFileName(None, "Save Answer Sheet As", os.path.join(default_dir, default_name), "Markdown Files (*.md)")
-        if not save_path:
-            return
-        worker = ConsultantReplyWorker(self.app_instance, email_msg, resume_md, language, save_path)
+        # Start background consultant reply worker without file export
+        worker = ConsultantReplyWorker(self.app_instance, email_msg, resume_md, language)
         self._workers.add(worker)
         worker.finished.connect(self.on_consultant_finished)
         worker.error.connect(self.on_consultant_error)
@@ -1001,22 +971,14 @@ You are a legal expert. Analyze the following privacy policy and respond with on
 
     def on_consultant_finished(self, save_path):
         """Handle successful consultant reply sheet generation"""
-        log_message = f"Consultant answer sheet generated: {save_path}"
+        log_message = "Consultant answer sheet generated and saved to database."
         logging.info(log_message)
         self.stop_animation()
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
         self.showMessage("JobOps", log_message, QSystemTrayIcon.MessageIcon.Information, 5000)
-        try:
-            if sys.platform.startswith('win'):
-                os.startfile(save_path)
-            elif sys.platform.startswith('darwin'):
-                subprocess.Popen(['open', save_path])
-            else:
-                subprocess.Popen(['xdg-open', save_path])
-        except Exception as e:
-            logging.error(f"Failed to open answer sheet: {e}")
+        # Skipping file opening since consultant reply is stored in database only
 
     def on_consultant_error(self, error):
         """Handle errors during consultant reply generation"""
@@ -1195,26 +1157,20 @@ class GenerateWorker(QThread):
                 job_title=self.job_data.get('title', ''),
                 location=self.job_data.get('location', '')
             )
-            motivations_dir = os.path.expanduser("~/.jobops/motivations")
-            base_domain = urlparse(url).netloc
-            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', base_domain)
+            # Store cover letter only in the database, remove file export
             doc_id = str(uuid.uuid4())
-            md_filename = f"{safe_title}_{doc_id}.md"
-            md_path = os.path.join(motivations_dir, md_filename)
-            with open(md_path, 'w', encoding='utf-8') as f:
-                f.write(letter.content)
             doc = Document(
                 id=doc_id,
                 type=DocumentType.COVER_LETTER,
-                filename=md_path,
+                filename=None,
                 raw_content=letter.content,
                 structured_content=letter.content,
                 uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None
             )
             repository.save(doc)
-            log_message = "Letter generation, export, and storage completed."
+            log_message = "Letter generation and storage completed."
             logging.info(log_message)
-            self.finished.emit(f"Motivation letter generated, exported to markdown, and saved to database.")
+            self.finished.emit("Motivation letter generated and saved to database.")
         except Exception as e:
             log_message = f"Exception in GenerateWorker: {e}"
             logging.error(log_message)
@@ -1225,11 +1181,10 @@ class ReportWorker(QThread):
     finished = Signal(str, str)
     error = Signal(str)
 
-    def __init__(self, app_instance, job_data, save_path):
+    def __init__(self, app_instance, job_data):
         super().__init__()
         self.app_instance = app_instance
         self.job_data = job_data
-        self.save_path = save_path
 
     def run(self):
         try:
@@ -1293,13 +1248,48 @@ class ReportWorker(QThread):
                 report_lines.append("**Additional Skills:**")
                 report_lines.extend([f"- {s}" for s in extra])
             report_md = "\n".join(report_lines)
-            # Create ZIP with all markdown docs
-            with zipfile.ZipFile(self.save_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                zipf.writestr('job_description.md', job_markdown)
-                zipf.writestr('tailored_resume.md', tailored_resume)
-                zipf.writestr('cover_letter.md', letter.content)
-                zipf.writestr('match_report.md', report_md)
-            self.finished.emit(self.save_path, "")
+            # Store report components only in the database, remove file export
+            # Store job description
+            doc_id_job = str(uuid.uuid4())
+            doc_job = Document(
+                id=doc_id_job,
+                type=DocumentType.JOB_DESCRIPTION,
+                filename=None,
+                raw_content=job_markdown,
+                structured_content=job_markdown
+            )
+            repository.save(doc_job)
+            # Store tailored resume
+            doc_id_resume = str(uuid.uuid4())
+            doc_resume = Document(
+                id=doc_id_resume,
+                type=DocumentType.RESUME,
+                filename=None,
+                raw_content=tailored_resume,
+                structured_content=tailored_resume
+            )
+            repository.save(doc_resume)
+            # Store cover letter
+            doc_id_letter = str(uuid.uuid4())
+            doc_letter = Document(
+                id=doc_id_letter,
+                type=DocumentType.COVER_LETTER,
+                filename=None,
+                raw_content=letter.content,
+                structured_content=letter.content
+            )
+            repository.save(doc_letter)
+            # Store match report
+            doc_id_report = str(uuid.uuid4())
+            doc_report = Document(
+                id=doc_id_report,
+                type=DocumentType.OTHER,
+                filename=None,
+                raw_content=report_md,
+                structured_content=report_md
+            )
+            repository.save(doc_report)
+            self.finished.emit("", "")
         except Exception as e:
             self.error.emit(str(e))
 
@@ -1308,13 +1298,12 @@ class ConsultantReplyWorker(QThread):
     finished = Signal(str)
     error = Signal(str)
 
-    def __init__(self, app_instance, email_message, resume_markdown, language, save_path):
+    def __init__(self, app_instance, email_message, resume_markdown, language):
         super().__init__()
         self.app_instance = app_instance
         self.email_message = email_message
         self.resume_markdown = resume_markdown
         self.language = language
-        self.save_path = save_path
 
     def run(self):
         try:
@@ -1328,10 +1317,20 @@ class ConsultantReplyWorker(QThread):
                 reply_md = llm_backend.generate_response(prompt)
             else:
                 reply_md = generator.backend.generate_response(prompt, "")
-            # Save Markdown to file
-            with open(self.save_path, 'w', encoding='utf-8') as f:
-                f.write(reply_md)
-            self.finished.emit(self.save_path)
+            # Store consultant reply only in the database, remove file export
+            repository = getattr(self.app_instance, 'repository', None)
+            if repository is None:
+                raise Exception("Application is missing repository.")
+            doc_id = str(uuid.uuid4())
+            doc = Document(
+                id=doc_id,
+                type=DocumentType.OTHER,
+                filename=None,
+                raw_content=reply_md,
+                structured_content=reply_md
+            )
+            repository.save(doc)
+            self.finished.emit("")
         except Exception as e:
             self.error.emit(str(e))
 
