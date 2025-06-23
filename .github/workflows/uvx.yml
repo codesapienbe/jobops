@@ -28,7 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install uv build
       - name: Sync dependencies (prod only)
-        run: uv sync --production
+        run: uv sync
       - name: Build wheel and sdist
         run: python -m build --sdist --wheel --outdir dist
       - name: Upload distribution artifact

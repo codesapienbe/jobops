@@ -124,14 +124,6 @@ jobs:
         with:
           name: jobops-${{ matrix.os }}
           path: dist/jobops-*
-      - name: Create Git tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          DATE=$(date +'%Y.%m.%d')
-          git tag v$DATE
-          git push origin v$DATE
 
   publish_release:
     needs: build
