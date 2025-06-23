@@ -36,8 +36,26 @@ jobs:
         with:
           name: jobops-dist
           path: dist/*
-      - name: Attach wheel to the current release
-        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+      # Auto-create date-based tag & release on main branch
+      - name: Generate version string
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: get_date
+        run: echo "date=v$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ steps.get_date.outputs.date }}
+          release_name: Release ${{ steps.get_date.outputs.date }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach wheel assets to the release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.get_date.outputs.date }}
           files: dist/*
