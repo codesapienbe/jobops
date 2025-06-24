@@ -100,7 +100,7 @@ Subject: Application for {job_title}
 
 [Optional: Additional sections, e.g., availability, references.]
 
-Sincerely,
+Sincerely in {language},
 {contact_line}
 """
     return prompt.strip()
@@ -132,6 +132,11 @@ Instructions:
 - Highlight key skills and experiences matching the offer.
 - Express enthusiasm and inquire about next steps or a chat.
 - Maintain a positive, concise tone.
+- Write in {language}.
+- Do not include any extra newlines between contact details or between paragraphs.
+- Do not include any JSON, YAML, or code blocks.
+- Do not include any explanations, only the letter.
+- If any required information is missing, proceed with the available data and omit the missing sections.
 """
     return prompt.strip()
 
@@ -313,7 +318,8 @@ GUIDELINES:
 - Show authentic interest in the position, not empty flattery
 - Use clear, concise language with professional but warm tone
 - Structure: 3-4 short paragraphs, 250-350 words total
-- End with confident but respectful closing"""
+- End with confident but respectful closing
+- Write in {language}"""
 
         return prompt
     

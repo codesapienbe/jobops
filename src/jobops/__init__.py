@@ -591,42 +591,30 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu = QMenu()
         
         # Add actions
-        upload_action = QAction("📁 Upload Document", self)
-        generate_action = QAction("✨ Generate Letter", self)
-        report_action = QAction("📦 Generate Report", self)
-        add_sol_action = QAction("➕ Add Solicitation Record", self)
-        consultant_action = QAction("📝 Consultant Answer", self)
-        reply_action = QAction("💬 Reply to Offer", self)
-        archive_action = QAction("💾 View Archive", self)
-        log_viewer_action = QAction("📝 View Logs", self)
+        upload_action = QAction("📁 Upload", self)
+        report_action = QAction("📦 Generate", self)
+        reply_action = QAction("💬 Reply", self)
+        log_viewer_action = QAction("📝 Logs", self)
         settings_action = QAction("⚙️ Settings", self)
         help_action = QAction("❓ Help", self)
-        export_action = QAction("📤 Export Document", self)
+        export_action = QAction("📤 Export", self)
         quit_action = QAction("❌ Exit", self)
         
         # Connect actions
         upload_action.triggered.connect(self.upload_document)
-        generate_action.triggered.connect(self.generate_letter)
         report_action.triggered.connect(self.generate_report)
-        add_sol_action.triggered.connect(self.add_solicitation_record)
-        consultant_action.triggered.connect(self.generate_consultant_reply)
         reply_action.triggered.connect(self.reply_to_offer)
-        archive_action.triggered.connect(self.show_archive)
         log_viewer_action.triggered.connect(self.show_log_viewer)
         settings_action.triggered.connect(self.show_settings)
         help_action.triggered.connect(self.show_help)
         export_action.triggered.connect(self.export_document)
         quit_action.triggered.connect(self.quit_application)
         
-        # Add to menu
+        # Add to menu: only essential actions
         menu.addAction(upload_action)
-        menu.addAction(generate_action)
         menu.addAction(report_action)
-        menu.addAction(add_sol_action)
-        menu.addAction(consultant_action)
-        menu.addSeparator()
         menu.addAction(reply_action)
-        menu.addAction(archive_action)
+        menu.addSeparator()
         menu.addAction(log_viewer_action)
         menu.addAction(settings_action)
         menu.addAction(help_action)
@@ -723,7 +711,6 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         else:
             logging.error("Motivations directory does not exist.")
             QMessageBox.warning(None, "Archive", "Motivations directory does not exist.")
-
     
     def show_settings(self):
         logging.info("User triggered: Settings dialog")
