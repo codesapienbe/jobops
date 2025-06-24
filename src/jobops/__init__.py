@@ -594,6 +594,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action = QAction("📁 Upload", self)
         report_action = QAction("📦 Generate", self)
         reply_action = QAction("💬 Reply", self)
+        investigate_action = QAction("🔍 Investigate", self)
         log_viewer_action = QAction("📝 Logs", self)
         settings_action = QAction("⚙️ Settings", self)
         help_action = QAction("❓ Help", self)
@@ -604,6 +605,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         upload_action.triggered.connect(self.upload_document)
         report_action.triggered.connect(self.generate_report)
         reply_action.triggered.connect(self.reply_to_offer)
+        investigate_action.triggered.connect(self.investigate_company)
         log_viewer_action.triggered.connect(self.show_log_viewer)
         settings_action.triggered.connect(self.show_settings)
         help_action.triggered.connect(self.show_help)
@@ -614,6 +616,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(upload_action)
         menu.addAction(report_action)
         menu.addAction(reply_action)
+        menu.addAction(investigate_action)
         menu.addSeparator()
         menu.addAction(log_viewer_action)
         menu.addAction(settings_action)
@@ -1027,6 +1030,70 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         except Exception as e:
             QMessageBox.critical(None, "Export Error", str(e))
 
+    def investigate_company(self):
+        logging.info("User triggered: Investigate Company")
+        # Ask for company website URL
+        website_url, ok1 = QInputDialog.getText(
+            None,
+            "Investigate Company",
+            "Enter company website URL:",
+            QLineEdit.Normal,
+            ""
+        )
+        if not ok1 or not website_url.strip():
+            return
+        # Ask for company LinkedIn URL (optional)
+        linkedin_url, ok2 = QInputDialog.getText(
+            None,
+            "Investigate Company",
+            "Enter company LinkedIn URL (optional):",
+            QLineEdit.Normal,
+            ""
+        )
+        if not ok2:
+            return
+        website = website_url.strip()
+        linkedin = linkedin_url.strip() if linkedin_url.strip() else None
+        logging.info(f"Investigating website: {website}, LinkedIn: {linkedin}")
+        self.investigate_worker = InvestigateWorker(self.app_instance, website, linkedin)
+        self._workers.add(self.investigate_worker)
+        self.investigate_worker.finished.connect(self.on_investigation_finished)
+        self.investigate_worker.error.connect(self.on_investigation_error)
+        self.start_animation()
+        self.progress_dialog = QProgressDialog("Investigating company...", None, 0, 0)
+        self.progress_dialog.setWindowTitle("JobOps")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.show()
+        self.investigate_worker.start()
+
+    def on_investigation_finished(self, message):
+        logging.info("Company investigation finished")
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        self.showMessage("Company Investigation", "Investigation completed", QSystemTrayIcon.MessageIcon.Information, 5000)
+        dialog = QDialog()
+        dialog.setWindowTitle("Company Investigation Result")
+        dialog.setMinimumSize(600, 400)
+        layout = QVBoxLayout(dialog)
+        text_edit = QTextEdit()
+        text_edit.setPlainText(message)
+        text_edit.setReadOnly(True)
+        layout.addWidget(text_edit)
+        dialog.exec()
+
+    def on_investigation_error(self, error):
+        logging.error(f"Company investigation error: {error}")
+        self.stop_animation()
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        self.showMessage("Company Investigation Error", error, QSystemTrayIcon.MessageIcon.Critical, 5000)
+        QMessageBox.critical(None, "Investigation Error", error)
+
 class UploadWorker(QThread):
     """Background worker for document upload"""
     finished = Signal(str)
@@ -1416,6 +1483,66 @@ class LogViewerDialog(QDialog):
         text = text.lower()
         filtered = [log for log in self.all_logs if text in json.dumps(log).lower()]
         self.display_logs(filtered)
+
+class InvestigateWorker(QThread):
+    """Background worker for company investigation"""
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, app_instance, website_url, linkedin_url=None):
+        super().__init__()
+        self.app_instance = app_instance
+        self.website_url = website_url
+        self.linkedin_url = linkedin_url
+
+    def run(self):
+        try:
+            logging.info(f"InvestigateWorker started for Website: {self.website_url}, LinkedIn: {self.linkedin_url}")
+            import asyncio
+            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+            # Configure crawler
+            browser_conf = BrowserConfig(headless=True, verbose=False)
+            run_conf = CrawlerRunConfig(cache_mode=CacheMode.ENABLED)
+            # Crawl website content
+            async def crawl_website():
+                async with AsyncWebCrawler(config=browser_conf) as crawler:
+                    return await crawler.arun(url=self.website_url, config=run_conf)
+            web_result = asyncio.run(crawl_website())
+            website_content = getattr(web_result.markdown, 'raw_markdown', str(web_result.markdown))
+            # Crawl LinkedIn content if provided
+            linkedin_content = ''
+            if self.linkedin_url:
+                async def crawl_linkedin():
+                    async with AsyncWebCrawler(config=browser_conf) as crawler:
+                        return await crawler.arun(url=self.linkedin_url, config=run_conf)
+                li_result = asyncio.run(crawl_linkedin())
+                linkedin_content = getattr(li_result.markdown, 'raw_markdown', str(li_result.markdown))
+            # Combine contents for LLM analysis
+            combined_content = f"Website Content:\n{website_content}\n"
+            if linkedin_content:
+                combined_content += f"\nLinkedIn Content:\n{linkedin_content}\n"
+            # Perform LLM-based analysis
+            llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
+            if not llm_backend:
+                raise Exception("No LLM backend available for analysis.")
+            analysis_prompt = f"""
+You are an expert in corporate intelligence and security.
+Using the following information, provide:
+1) summary: Brief summary of the company.
+2) employees_count: Number of employees based on LinkedIn data.
+3) followers_count: Number of LinkedIn followers.
+4) org_structure: List the main departments or organizational units.
+5) red_flags: Any potential red flags or suspicious aspects.
+6) rating: Trustworthiness on a scale from 1 (not trustworthy) to 5 (very trustworthy).
+Output only JSON with keys: summary (string), employees_count (integer), followers_count (integer), org_structure (list of strings), red_flags (list of strings), rating (integer).
+
+{combined_content}
+"""
+            analysis = llm_backend.generate_response(analysis_prompt.strip(), "")
+            self.finished.emit(analysis)
+        except Exception as e:
+            logging.error(f"InvestigateWorker error: {e}")
+            self.error.emit(str(e))
 
 class JobOpsQtApplication(QApplication):
     """Main Qt application class"""

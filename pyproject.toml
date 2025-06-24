@@ -48,7 +48,8 @@ dependencies = [
     "emoji",
     "nltk",
     "markdown",
-    "python-docx"
+    "python-docx",
+    "crawl4ai"
 ]
 
 [project.scripts]
