@@ -1541,8 +1541,30 @@ Output only JSON with keys: summary (string), employees_count (integer), followe
             analysis = llm_backend.generate_response(analysis_prompt.strip(), "")
             self.finished.emit(analysis)
         except Exception as e:
-            logging.error(f"InvestigateWorker error: {e}")
-            self.error.emit(str(e))
+            err_msg = str(e)
+            # Fallback to local Ollama if rate limit exceeded
+            if 'rate_limit_exceeded' in err_msg or 'Request too large' in err_msg:
+                logging.warning("Rate limit error detected, falling back to Ollama backend.")
+                try:
+                    from jobops.clients import LLMBackendFactory
+                    # Load fallback settings from config
+                    cfg = getattr(self.app_instance, '_config', {})
+                    app_settings = cfg.get('app_settings', {}) or {}
+                    tokens = app_settings.get('tokens', {})
+                    backend_settings = cfg.get('backend_settings', {}) or {}
+                    ollama_conf = backend_settings.get('ollama', {})
+                    fallback_backend = LLMBackendFactory.create('ollama', ollama_conf, tokens)
+                    # Retry prompt with fallback
+                    analysis = fallback_backend.generate_response(analysis_prompt.strip(), "")
+                    self.finished.emit(analysis)
+                    return
+                except Exception as fallback_e:
+                    logging.error(f"Fallback Ollama generation failed: {fallback_e}")
+                    self.error.emit(str(fallback_e))
+                    return
+            # Propagate original error
+            logging.error(f"InvestigateWorker error: {err_msg}")
+            self.error.emit(err_msg)
 
 class JobOpsQtApplication(QApplication):
     """Main Qt application class"""
