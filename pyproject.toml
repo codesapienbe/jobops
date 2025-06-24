@@ -47,7 +47,8 @@ dependencies = [
     "pyzmq",
     "emoji",
     "nltk",
-    "markdown"
+    "markdown",
+    "python-docx"
 ]
 
 [project.scripts]

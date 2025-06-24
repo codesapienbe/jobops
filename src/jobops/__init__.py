@@ -999,60 +999,31 @@ You are a legal expert. Analyze the following privacy policy and respond with on
 
     def export_document(self):
         from PySide6.QtWidgets import QInputDialog, QFileDialog, QMessageBox
-        from jobops.models import DocumentType
-        import os
-        # Select document type
-        types = [t.value for t in DocumentType]
-        doc_type_str, ok = QInputDialog.getItem(None, "Select Document Type", "Type:", types, editable=False)
+        import os, zipfile
+        repo = self.app_instance.repository
+        group_ids = repo.list_group_ids()
+        if not group_ids:
+            QMessageBox.warning(None, "Export Documents", "No document groups found.")
+            return
+        sel_group, ok = QInputDialog.getItem(None, "Select Document Set", "Group ID:", group_ids, editable=False)
         if not ok:
             return
-        doc_type = DocumentType(doc_type_str)
-        docs = self.app_instance.repository.get_by_type(doc_type)
+        docs = repo.get_by_group(sel_group)
         if not docs:
-            QMessageBox.warning(None, "Export Document", f"No documents of type {doc_type_str} found.")
+            QMessageBox.warning(None, "Export Documents", f"No documents found for group {sel_group}.")
             return
-        # Select specific document
-        items = [f"{d.uploaded_at.isoformat()} - {d.id}" for d in docs]
-        sel, ok = QInputDialog.getItem(None, "Select Document", "Document:", items, editable=False)
-        if not ok:
-            return
-        doc_id = sel.split(" - ", 1)[1]
-        doc = self.app_instance.repository.get_by_id(doc_id)
-        if not doc:
-            QMessageBox.warning(None, "Export Document", "Document not found.")
-            return
-        # Choose export format
-        formats = ["Markdown (*.md)", "PDF (*.pdf)", "Word (*.docx)"]
-        fmt, ok = QInputDialog.getItem(None, "Select Format", "Format:", formats, editable=False)
-        if not ok:
-            return
-        # Save file dialog
         export_dir = os.path.expanduser("~/.jobops/exports")
         os.makedirs(export_dir, exist_ok=True)
-        ext = fmt.split()[1].strip("()[]*")
-        default_name = f"{doc_type_str}_{doc.id}.{ext}"
-        path, _ = QFileDialog.getSaveFileName(None, "Save Document As", os.path.join(export_dir, default_name), fmt)
+        default_name = f"documents_{sel_group}.zip"
+        path, _ = QFileDialog.getSaveFileName(None, "Save Documents As", os.path.join(export_dir, default_name), "Zip (*.zip)")
         if not path:
             return
-        content = doc.structured_content
         try:
-            if fmt.startswith("Markdown"):
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(content)
-            elif fmt.startswith("PDF"):
-                from jobops.utils import export_letter_to_pdf
-                export_letter_to_pdf(content, path)
-            else:  # DOCX
-                try:
-                    from docx import Document as DocxDoc
-                except ImportError:
-                    QMessageBox.warning(None, "Export Document", "python-docx not installed. Install with pip install python-docx")
-                    return
-                docx = DocxDoc()
-                for line in content.splitlines():
-                    docx.add_paragraph(line)
-                docx.save(path)
-            QMessageBox.information(None, "Export Document", f"Document saved to {path}")
+            with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for d in docs:
+                    filename = f"{d.type.value}_{d.id}.md"
+                    zipf.writestr(filename, d.structured_content or "")
+            QMessageBox.information(None, "Export Documents", f"Documents zipped to {path}")
         except Exception as e:
             QMessageBox.critical(None, "Export Error", str(e))
 
@@ -1296,13 +1267,16 @@ class ReportWorker(QThread):
                 report_lines.append("**Additional Skills:**")
                 report_lines.extend([f"- {s}" for s in extra])
             report_md = "\n".join(report_lines)
+            # Assign group_id for this document set
+            group_id = str(uuid.uuid4())
             # Store job description
             doc_id_job = str(uuid.uuid4())
             doc_job = Document(
                 id=doc_id_job,
                 type=DocumentType.JOB_DESCRIPTION,
                 raw_content=job_markdown,
-                structured_content=job_markdown
+                structured_content=job_markdown,
+                group_id=group_id
             )
             repository.save(doc_job)
             # Store tailored resume
@@ -1311,7 +1285,8 @@ class ReportWorker(QThread):
                 id=doc_id_resume,
                 type=DocumentType.RESUME,
                 raw_content=tailored_resume,
-                structured_content=tailored_resume
+                structured_content=tailored_resume,
+                group_id=group_id
             )
             repository.save(doc_resume)
             # Store cover letter
@@ -1320,7 +1295,8 @@ class ReportWorker(QThread):
                 id=doc_id_letter,
                 type=DocumentType.COVER_LETTER,
                 raw_content=letter.content,
-                structured_content=letter.content
+                structured_content=letter.content,
+                group_id=group_id
             )
             repository.save(doc_letter)
             # Store match report
@@ -1329,7 +1305,8 @@ class ReportWorker(QThread):
                 id=doc_id_report,
                 type=DocumentType.OTHER,
                 raw_content=report_md,
-                structured_content=report_md
+                structured_content=report_md,
+                group_id=group_id
             )
             repository.save(doc_report)
             self.finished.emit("", "")
