@@ -850,9 +850,9 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         dlg.exec()
 
     def reply_to_offer(self):
-        logging.info("User triggered: Reply to Offer dialog")
+        logging.info("User triggered: Reply dialog")
         # Prompt user for the job offer message
-        message, ok = QInputDialog.getMultiLineText(None, "Reply to Offer", "Paste the job offer message:", "")
+        message, ok = QInputDialog.getMultiLineText(None, "Reply to Message", "Paste the message to reply to (email, LinkedIn message, etc.):", "")
         if not ok or not message.strip():
             return
         # Retrieve latest resume markdown

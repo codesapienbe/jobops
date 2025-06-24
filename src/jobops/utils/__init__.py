@@ -111,32 +111,32 @@ def build_reply_prompt(
     language: str = "en",
 ) -> str:
     """
-    Build a prompt for generating a professional reply to a job offer message,
+    Build a prompt for generating a professional reply to a recruitment related message,
     using the message content and candidate's resume.
     """
     prompt = f"""
-You are a job seeker interested in new career opportunities.
-Write a concise and enthusiastic reply in {language} to the following job offer message,
-expressing your interest and highlighting relevant experience from your resume.
-Limit the reply to roughly half the usual length, and always start with a friendly greeting (e.g., "Hello Maeva,").
+You are a job seeker responding to a recruiter or potential employer.
+Write a concise and professional reply in {language} to the following message,
+addressing any questions or requests, highlighting relevant experience from your resume,
+and expressing interest or proposed next steps.
 
-Job Offer Message:
+Original Message:
 {job_offer_message}
 
 Candidate Resume Summary:
 {resume_markdown}
 
 Instructions:
-- Start with a friendly greeting.
-- Keep the reply about 50% shorter than a typical response.
-- Highlight key skills and experiences matching the offer.
-- Express enthusiasm and inquire about next steps or a chat.
-- Maintain a positive, concise tone.
+- Start with a friendly greeting (e.g., "Hello [Name],").
+- Keep the reply concise and focused.
+- Address any specific questions or requests from the original message.
+- Highlight relevant skills and experiences from your resume.
+- Close with a polite sign-off and mention next steps or availability.
 - Write in {language}.
-- Do not include any extra newlines between contact details or between paragraphs.
+- Do not include any extra newlines between paragraphs.
 - Do not include any JSON, YAML, or code blocks.
-- Do not include any explanations, only the letter.
-- If any required information is missing, proceed with the available data and omit the missing sections.
+- Do not include any explanations, only the reply content.
+- If context is missing, proceed with the available information.
 """
     return prompt.strip()
 
@@ -427,10 +427,10 @@ GUIDELINES:
         language: str = "en",
     ) -> str:
         """
-        Generate a professional reply to a job offer message based on the candidate's resume.
+        Generate a professional reply to a recruitment related message based on the candidate's resume.
         """
         self._logger.info(
-            f"Generating reply for job offer message: {job_offer_message[:50]}..."
+            f"Generating reply for message: {job_offer_message[:50]}..."
         )
         user_prompt = build_reply_prompt(job_offer_message, resume_markdown, language)
         reply = self.backend.generate_response(user_prompt, "")
