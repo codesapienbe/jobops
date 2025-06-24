@@ -1705,7 +1705,15 @@ def main():
     # Check platform compatibility
     if not check_platform_compatibility():
         sys.exit(1)
-    
+
+    # Ensure Playwright browsers are installed for website crawling
+    try:
+        import subprocess
+        logging.info("Ensuring Playwright browsers are installed...")
+        subprocess.run([sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"], check=True)
+    except Exception as e:
+        logging.warning(f"Automatic Playwright browser install failed or was skipped: {e}")
+
     # Create Qt application
     app = JobOpsQtApplication(sys.argv)
     
