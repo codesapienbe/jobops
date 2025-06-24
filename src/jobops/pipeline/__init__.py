@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Optional
 import logging
 from pathlib import Path
 import os
@@ -6,9 +6,9 @@ import re
 
 from jobops.models import Document, DocumentType
 from jobops.repositories import SQLiteDocumentRepository
-from jobops.config import CONSTANTS, JSONConfigManager
+from jobops.config import CONSTANTS
 
-from jobops.clients import embed_structured_data, LLMBackendFactory
+from jobops.clients import embed_structured_data
 import numpy as np
 import joblib
 
@@ -27,7 +27,7 @@ def clean(documents: List[Document]) -> List[Document]:
     return cleaned_docs
 
 
-def ingest(documents: List[Document]) -> Tuple[List[List[float]], List[Document]]:
+def ingest(documents: List[Document]) -> Tuple[np.ndarray, List[Document]]:
     """Convert documents into embedding vectors and keep document references."""
     embeddings_list: List[List[float]] = []
     for doc in documents:
@@ -69,7 +69,7 @@ def evaluate(recommended: List[Document], relevant: List[Document]) -> Dict[str,
     return {"precision": precision, "recall": recall, "f1": f1}
 
 
-def run_pipeline(job_description: str, db_path: str = None, model_output_path: str = None, top_k: int = 1) -> List[Document]:
+def run_pipeline(job_description: str, db_path: Optional[str] = None, model_output_path: Optional[str] = None, top_k: int = 1) -> List[Document]:
     """Run the full pipeline: clean, ingest, train retrieval model, recommend resumes, and save the model."""
     # Determine database path
     if db_path:
@@ -98,7 +98,7 @@ def run_pipeline(job_description: str, db_path: str = None, model_output_path: s
 
     # Stage 4: Predict using embedding similarity
     recommended = predict(job_description, model, docs, top_k)
-    logger.info(f"Top {top_k} recommended resumes: {[doc.filename or doc.id for doc in recommended]}")
+    logger.info(f"Top {top_k} recommended resumes: {[doc.id for doc in recommended]}")
 
     # Save retrieval model and documents metadata
     if model_output_path:
@@ -110,36 +110,6 @@ def run_pipeline(job_description: str, db_path: str = None, model_output_path: s
     logger.info(f"Retrieval model saved to {model_path}")
 
     return recommended
-
-
-def generate_custom_resume(job_description: str, db_path: str = None, llm_backend=None) -> str:
-    """
-    Retrieve the top resume via the pipeline, then use an LLM to generate a custom resume tailored to the given job description.
-    """
-    # Get the best matching resume
-    recommended = run_pipeline(job_description, db_path=db_path, top_k=1)
-    if not recommended:
-        logger.warning("No resume found to customize.")
-        return ""
-    base_resume = recommended[0]
-    # Instantiate backend if not provided
-    if llm_backend is None:
-        config_path = Path(CONSTANTS.USER_HOME_DIR) / CONSTANTS.CONFIG_NAME
-        config_manager = JSONConfigManager(str(config_path))
-        app_config = config_manager.load()
-        backend_type = app_config.backend
-        settings = app_config.backend_settings.get(backend_type, {})
-        # Gather tokens from environment variables
-        tokens = {key: os.getenv(f"{key.upper()}_API_KEY", "") for key in app_config.backend_settings}
-        llm_backend = LLMBackendFactory.create(backend_type, settings, tokens)
-    # Build prompt for customization
-    prompt = (
-        f"Rewrite this resume to be specifically tailored for the following job description:\n"
-        f"\nJob Description:\n{job_description}\n"
-        f"\nBase Resume:\n{base_resume.structured_content}\n"
-        "Return the resume in plain text or markdown, preserving standard sections."
-    )
-    return llm_backend.generate_response(prompt)
 
 
 __all__ = ['clean', 'ingest', 'train', 'predict', 'evaluate', 'run_pipeline']

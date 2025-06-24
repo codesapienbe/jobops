@@ -122,7 +122,6 @@ class DocumentType(str, Enum):
 class Document(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
     type: DocumentType
-    filename: Optional[str] = None
     raw_content: str
     structured_content: str
     uploaded_at: datetime = Field(default_factory=datetime.now)

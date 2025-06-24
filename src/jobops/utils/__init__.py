@@ -2,7 +2,6 @@ from jobops.models import MotivationLetter, GenericDocument, DocumentType, JobDa
 import logging
 import json as _json
 from jobops.clients import BaseLLMBackend
-from typing import Protocol
 import re
 import os
 import base64
@@ -25,9 +24,6 @@ import pyperclip
 from urllib.parse import urlparse
 import matplotlib.pyplot as plt
 import numpy as np
-
-class LetterGenerator(Protocol):
-    def generate(self, job_data: JobData, resume: str, language: str = "en") -> MotivationLetter: ...
 
 def build_motivation_letter_prompt(
     applicant_name: str,
@@ -733,7 +729,7 @@ def clean_job_data_dict(d: dict) -> dict:
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
-iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
+iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
 
 class ResourceManager:
     

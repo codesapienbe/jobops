@@ -1,17 +1,10 @@
 from datetime import datetime
 import logging  
 from pathlib import Path
-from typing import Protocol, List, Optional
+from typing import List, Optional
 from jobops.models import Document, DocumentType, Solicitation, SolicitationReport
 import sqlite3
 import json
-
-class DocumentRepository(Protocol):
-    def save(self, document: Document) -> str: ...
-    def get_by_id(self, doc_id: str) -> Optional[Document]: ...
-    def get_by_type(self, doc_type: DocumentType) -> List[Document]: ...
-    def get_latest_resume(self) -> Optional[str]: ...
-    def delete(self, doc_id: str) -> bool: ...
 
 class SQLiteDocumentRepository:
     def __init__(self, db_path: str, timeout: float = 30.0):
@@ -29,7 +22,6 @@ class SQLiteDocumentRepository:
                 CREATE TABLE IF NOT EXISTS documents (
                     id TEXT PRIMARY KEY,
                     type TEXT NOT NULL,
-                    filename TEXT,
                     raw_content TEXT,
                     structured_content TEXT,
                     uploaded_at TEXT
@@ -44,18 +36,29 @@ class SQLiteDocumentRepository:
                 c.execute('ALTER TABLE documents DROP COLUMN job_data_json')
             except Exception:
                 pass
+            # Migration: drop filename column if present (for existing DBs)
+            try:
+                c.execute('ALTER TABLE documents DROP COLUMN filename')
+            except Exception:
+                pass
             conn.commit()
     
-    def save(self, document: Document) -> str:
+    def save(self, document: Document) -> Optional[str]:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
-                """INSERT OR REPLACE INTO documents 
-                   (id, type, filename, raw_content, structured_content, uploaded_at) 
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (document.id, document.type.value, document.filename,
-                 document.raw_content, document.structured_content,
-                 document.uploaded_at.isoformat())
+                """
+                INSERT OR REPLACE INTO documents 
+                (id, type, raw_content, structured_content, uploaded_at) 
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    document.id,
+                    document.type.value,
+                    document.raw_content,
+                    document.structured_content,
+                    document.uploaded_at.isoformat()
+                )
             )
             conn.commit()
         return document.id
@@ -63,17 +66,16 @@ class SQLiteDocumentRepository:
     def get_by_id(self, doc_id: str) -> Optional[Document]:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
-            c.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+            c.execute("SELECT id, type, raw_content, structured_content, uploaded_at FROM documents WHERE id = ?", (doc_id,))
             row = c.fetchone()
             
             if row:
                 doc = Document(
                     id=row[0],
                     type=DocumentType(row[1]),
-                    filename=row[2],
-                    raw_content=row[3],
-                    structured_content=row[4],
-                    uploaded_at=datetime.fromisoformat(row[5])
+                    raw_content=row[2],
+                    structured_content=row[3],
+                    uploaded_at=datetime.fromisoformat(row[4])
                 )
                 return doc
         return None
@@ -83,7 +85,7 @@ class SQLiteDocumentRepository:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT * FROM documents WHERE type = ? ORDER BY uploaded_at DESC", 
+                "SELECT id, type, raw_content, structured_content, uploaded_at FROM documents WHERE type = ? ORDER BY uploaded_at DESC", 
                 (doc_type.value,)
             )
             rows = c.fetchall()
@@ -92,10 +94,9 @@ class SQLiteDocumentRepository:
                 doc = Document(
                     id=row[0],
                     type=DocumentType(row[1]),
-                    filename=row[2],
-                    raw_content=row[3],
-                    structured_content=row[4],
-                    uploaded_at=datetime.fromisoformat(row[5])
+                    raw_content=row[2],
+                    structured_content=row[3],
+                    uploaded_at=datetime.fromisoformat(row[4])
                 )
                 documents.append(doc)
         return documents
@@ -113,13 +114,6 @@ class SQLiteDocumentRepository:
             deleted = c.rowcount > 0
             conn.commit()
         return deleted
-
-# New repository for solicitation reporting
-class SolicitationReportRepository(Protocol):
-    def save_report(self, report: SolicitationReport) -> str: ...
-    def get_report_by_id(self, report_id: str) -> Optional[SolicitationReport]: ...
-    def get_latest_report(self) -> Optional[SolicitationReport]: ...
-    def list_reports(self) -> List[SolicitationReport]: ...
 
 class SQLiteSolicitationRepository:
     def __init__(self, db_path: str, timeout: float = 30.0):
@@ -165,7 +159,7 @@ class SQLiteSolicitationRepository:
             ''')
             conn.commit()
 
-    def save_report(self, report: SolicitationReport) -> str:
+    def save_report(self, report: SolicitationReport) -> Optional[str]:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
@@ -226,14 +220,14 @@ class SQLiteSolicitationRepository:
                 return self.get_report_by_id(row[0])
         return None
 
-    def list_reports(self) -> List[SolicitationReport]:
+    def list_reports(self) -> List[Optional[SolicitationReport]]:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute("SELECT id FROM solicitation_reports ORDER BY generated_at DESC")
             rows = c.fetchall()
             return [self.get_report_by_id(r[0]) for r in rows if r]
 
-    def save_solicitation(self, solicitation: Solicitation) -> str:
+    def save_solicitation(self, solicitation: Solicitation) -> Optional[str]:
         """Save a single solicitation record independently."""
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
@@ -257,7 +251,7 @@ class SQLiteSolicitationRepository:
             conn.commit()
         return solicitation.id
 
-    def list_solicitations(self) -> List[Solicitation]:
+    def list_solicitations(self) -> List[Optional[Solicitation]]:
         """List all independent solicitation records."""
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()

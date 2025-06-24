@@ -4,20 +4,9 @@ from jobops.models import AppConfig
 import os
 import logging
 from pathlib import Path
-from typing import Protocol
-
-class ConfigManager(Protocol):
-    def load(self) -> AppConfig: ...
-    def save(self, config: AppConfig) -> None: ...
-
 
 class AppConstants:
-    APP_NAME: str = 'Motivation Letter Generator'
-    VERSION: str = '1.0.0'
     USER_HOME_DIR: str = os.path.expanduser('~/.jobops')
-    MOTIVATIONS_DIR: str = os.path.expanduser('~/.jobops/motivations')
-    WINDOW_SIZE: str = "600x200"
-    ICON_SIZE: tuple = (64, 64)
     DB_NAME: str = 'jobops.db'
     CONFIG_NAME: str = 'config.json'
 
@@ -35,8 +24,7 @@ class JSONConfigManager:
         - Adds new required fields with sensible defaults if missing.
         - Prompts user for new required fields if needed (optional, currently uses defaults).
         """
-        # Import AppConfig for defaults
-        from . import AppConfig
+        # Use AppConfig imported at the module top
         new_config = AppConfig().dict()
         # Copy over existing fields
         for k, v in old_data.items():
@@ -54,7 +42,7 @@ class JSONConfigManager:
             if self.config_path.exists():
                 with open(self.config_path, 'r') as f:
                     config_data = json.load(f)
-                from . import AppConfig
+                # Use AppConfig imported at the module top
                 needs_migration = False
                 default_config = AppConfig().dict()
                 for key in default_config:
@@ -86,11 +74,6 @@ class JSONConfigManager:
                     with open(self.config_path, 'w') as f:
                         json.dump(migrated_data, f, indent=2)
                     self._logger.info(f"Config migrated and backup created at {backup_path}")
-                    try:
-                        from . import SystemNotificationService
-                        SystemNotificationService().notify("JobOps", f"Config migrated. Backup saved as {backup_path.name}.")
-                    except Exception:
-                        pass
                     return AppConfig(**migrated_data)
                 else:
                     return AppConfig(**config_data)
@@ -100,11 +83,13 @@ class JSONConfigManager:
                 return config
         except Exception as e:
             self._logger.warning(f"Error loading config: {e}, using defaults")
-            return OllamaBackend
+            # Fallback to default AppConfig
+            return AppConfig()
     
     def save(self, config: AppConfig) -> None:
         try:
-            self.coOpenAIBackendent.mkdir(parents=True, exist_ok=True)
+            # Ensure config directory exists
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.config_path, 'w') as f:
                 json.dump(config.dict(), f, indent=2)
         except Exception as e:

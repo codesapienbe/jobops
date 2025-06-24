@@ -601,6 +601,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         log_viewer_action = QAction("📝 View Logs", self)
         settings_action = QAction("⚙️ Settings", self)
         help_action = QAction("❓ Help", self)
+        export_action = QAction("📤 Export Document", self)
         quit_action = QAction("❌ Exit", self)
         
         # Connect actions
@@ -614,6 +615,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         log_viewer_action.triggered.connect(self.show_log_viewer)
         settings_action.triggered.connect(self.show_settings)
         help_action.triggered.connect(self.show_help)
+        export_action.triggered.connect(self.export_document)
         quit_action.triggered.connect(self.quit_application)
         
         # Add to menu
@@ -629,6 +631,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         menu.addAction(settings_action)
         menu.addAction(help_action)
         menu.addSeparator()
+        menu.addAction(export_action)
         menu.addAction(quit_action)
         
         self.setContextMenu(menu)
@@ -1007,6 +1010,65 @@ You are a legal expert. Analyze the following privacy policy and respond with on
             logging.error(f"Error saving solicitation record: {e}")
             self.showMessage("JobOps Error", f"Failed to save solicitation: {e}", QSystemTrayIcon.MessageIcon.Critical, 5000)
 
+    def export_document(self):
+        from PySide6.QtWidgets import QInputDialog, QFileDialog, QMessageBox
+        from jobops.models import DocumentType
+        import os
+        # Select document type
+        types = [t.value for t in DocumentType]
+        doc_type_str, ok = QInputDialog.getItem(None, "Select Document Type", "Type:", types, editable=False)
+        if not ok:
+            return
+        doc_type = DocumentType(doc_type_str)
+        docs = self.app_instance.repository.get_by_type(doc_type)
+        if not docs:
+            QMessageBox.warning(None, "Export Document", f"No documents of type {doc_type_str} found.")
+            return
+        # Select specific document
+        items = [f"{d.uploaded_at.isoformat()} - {d.id}" for d in docs]
+        sel, ok = QInputDialog.getItem(None, "Select Document", "Document:", items, editable=False)
+        if not ok:
+            return
+        doc_id = sel.split(" - ", 1)[1]
+        doc = self.app_instance.repository.get_by_id(doc_id)
+        if not doc:
+            QMessageBox.warning(None, "Export Document", "Document not found.")
+            return
+        # Choose export format
+        formats = ["Markdown (*.md)", "PDF (*.pdf)", "Word (*.docx)"]
+        fmt, ok = QInputDialog.getItem(None, "Select Format", "Format:", formats, editable=False)
+        if not ok:
+            return
+        # Save file dialog
+        export_dir = os.path.expanduser("~/.jobops/exports")
+        os.makedirs(export_dir, exist_ok=True)
+        ext = fmt.split()[1].strip("()[]*")
+        default_name = f"{doc_type_str}_{doc.id}.{ext}"
+        path, _ = QFileDialog.getSaveFileName(None, "Save Document As", os.path.join(export_dir, default_name), fmt)
+        if not path:
+            return
+        content = doc.structured_content
+        try:
+            if fmt.startswith("Markdown"):
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(content)
+            elif fmt.startswith("PDF"):
+                from jobops.utils import export_letter_to_pdf
+                export_letter_to_pdf(content, path)
+            else:  # DOCX
+                try:
+                    from docx import Document as DocxDoc
+                except ImportError:
+                    QMessageBox.warning(None, "Export Document", "python-docx not installed. Install with pip install python-docx")
+                    return
+                docx = DocxDoc()
+                for line in content.splitlines():
+                    docx.add_paragraph(line)
+                docx.save(path)
+            QMessageBox.information(None, "Export Document", f"Document saved to {path}")
+        except Exception as e:
+            QMessageBox.critical(None, "Export Error", str(e))
+
 class UploadWorker(QThread):
     """Background worker for document upload"""
     finished = Signal(str)
@@ -1097,7 +1159,6 @@ class UploadWorker(QThread):
             doc_type_enum = DocumentType.RESUME if self.doc_type.upper() == "RESUME" else DocumentType.CERTIFICATION
             doc = Document(
                 type=doc_type_enum,
-                filename=filename_for_db,
                 raw_content=raw_content,
                 structured_content=structured_content,
                 uploaded_at=datetime.now()
@@ -1248,13 +1309,11 @@ class ReportWorker(QThread):
                 report_lines.append("**Additional Skills:**")
                 report_lines.extend([f"- {s}" for s in extra])
             report_md = "\n".join(report_lines)
-            # Store report components only in the database, remove file export
             # Store job description
             doc_id_job = str(uuid.uuid4())
             doc_job = Document(
                 id=doc_id_job,
                 type=DocumentType.JOB_DESCRIPTION,
-                filename=None,
                 raw_content=job_markdown,
                 structured_content=job_markdown
             )
@@ -1264,7 +1323,6 @@ class ReportWorker(QThread):
             doc_resume = Document(
                 id=doc_id_resume,
                 type=DocumentType.RESUME,
-                filename=None,
                 raw_content=tailored_resume,
                 structured_content=tailored_resume
             )
@@ -1274,7 +1332,6 @@ class ReportWorker(QThread):
             doc_letter = Document(
                 id=doc_id_letter,
                 type=DocumentType.COVER_LETTER,
-                filename=None,
                 raw_content=letter.content,
                 structured_content=letter.content
             )
@@ -1284,7 +1341,6 @@ class ReportWorker(QThread):
             doc_report = Document(
                 id=doc_id_report,
                 type=DocumentType.OTHER,
-                filename=None,
                 raw_content=report_md,
                 structured_content=report_md
             )
@@ -1325,7 +1381,6 @@ class ConsultantReplyWorker(QThread):
             doc = Document(
                 id=doc_id,
                 type=DocumentType.OTHER,
-                filename=None,
                 raw_content=reply_md,
                 structured_content=reply_md
             )
