@@ -1437,8 +1437,6 @@ class JobOpsQtApplication(QApplication):
         from jobops.repositories import SQLiteDocumentRepository
         db_path = str(self.base_dir / "jobops.db")
         self.repository = SQLiteDocumentRepository(db_path)
-        from jobops.repositories import SQLiteSolicitationRepository
-        self.solicitation_repository = SQLiteSolicitationRepository(db_path)
 
         # Load config.json
         self.config_path = self.base_dir / "config.json"
