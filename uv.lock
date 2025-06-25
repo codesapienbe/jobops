@@ -1334,6 +1334,7 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "sentence-transformers" },
+    { name = "tiktoken" },
     { name = "torch" },
     { name = "uvicorn" },
 ]
@@ -1389,6 +1390,7 @@ requires-dist = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "sentence-transformers" },
+    { name = "tiktoken" },
     { name = "torch" },
     { name = "uvicorn" },
 ]

@@ -1074,16 +1074,13 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         if self.progress_dialog:
             self.progress_dialog.close()
             self.progress_dialog = None
-        self.showMessage("Company Investigation", "Investigation completed", QSystemTrayIcon.MessageIcon.Information, 5000)
-        dialog = QDialog()
-        dialog.setWindowTitle("Company Investigation Result")
-        dialog.setMinimumSize(600, 400)
-        layout = QVBoxLayout(dialog)
-        text_edit = QTextEdit()
-        text_edit.setPlainText(message)
-        text_edit.setReadOnly(True)
-        layout.addWidget(text_edit)
-        dialog.exec()
+        # Notify that the investigation result has been saved to the database
+        self.showMessage(
+            "Company Investigation",
+            "Investigation results saved to database.",
+            QSystemTrayIcon.MessageIcon.Information,
+            5000
+        )
 
     def on_investigation_error(self, error):
         logging.error(f"Company investigation error: {error}")
@@ -1120,16 +1117,10 @@ class UploadWorker(QThread):
                 logging.error("Application is missing repository.", extra={"span_id": span_id})
                 raise Exception("Application is missing repository.")
 
-            # Copy uploaded file to ~/.jobops/resumes/
-            resumes_dir = os.path.expanduser("~/.jobops/resumes")
-            os.makedirs(resumes_dir, exist_ok=True)
-            dest_path = os.path.join(resumes_dir, os.path.basename(self.file_path))
-            shutil.copy2(self.file_path, dest_path)
-            logging.info(f"Copied file to: {dest_path}", extra={"span_id": span_id})
+            # No need to store resume in file IO since already in database; use original filename for logging
+            filename_for_db = os.path.basename(self.file_path)
 
-            # Use dest_path as the filename for the Document
-            filename_for_db = dest_path
-
+            filename_for_db = os.path.basename(self.file_path)
             # Determine file extension
             _, ext = os.path.splitext(self.file_path)
             ext = ext.lower()
@@ -1503,43 +1494,46 @@ class InvestigateWorker(QThread):
             # Configure crawler
             browser_conf = BrowserConfig(headless=True, verbose=False)
             run_conf = CrawlerRunConfig(cache_mode=CacheMode.ENABLED)
-            # Crawl website content
+            # Removed sitemap and multi-page crawl logic
+            # Perform a simple crawl of the homepage and generate a summary
+            import asyncio
             async def crawl_website():
                 async with AsyncWebCrawler(config=browser_conf) as crawler:
                     return await crawler.arun(url=self.website_url, config=run_conf)
             web_result = asyncio.run(crawl_website())
-            website_content = getattr(web_result.markdown, 'raw_markdown', str(web_result.markdown))
-            # Crawl LinkedIn content if provided
-            linkedin_content = ''
-            if self.linkedin_url:
-                async def crawl_linkedin():
-                    async with AsyncWebCrawler(config=browser_conf) as crawler:
-                        return await crawler.arun(url=self.linkedin_url, config=run_conf)
-                li_result = asyncio.run(crawl_linkedin())
-                linkedin_content = getattr(li_result.markdown, 'raw_markdown', str(li_result.markdown))
-            # Combine contents for LLM analysis
-            combined_content = f"Website Content:\n{website_content}\n"
-            if linkedin_content:
-                combined_content += f"\nLinkedIn Content:\n{linkedin_content}\n"
-            # Perform LLM-based analysis
+            company_profile_content = getattr(web_result.markdown, 'raw_markdown', str(web_result.markdown))
+ 
+            from jobops.utils import remove_think_blocks
             llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
             if not llm_backend:
                 raise Exception("No LLM backend available for analysis.")
             analysis_prompt = f"""
-You are an expert in corporate intelligence and security.
-Using the following information, provide:
-1) summary: Brief summary of the company.
-2) employees_count: Number of employees based on LinkedIn data.
-3) followers_count: Number of LinkedIn followers.
-4) org_structure: List the main departments or organizational units.
-5) red_flags: Any potential red flags or suspicious aspects.
-6) rating: Trustworthiness on a scale from 1 (not trustworthy) to 5 (very trustworthy).
-Output only JSON with keys: summary (string), employees_count (integer), followers_count (integer), org_structure (list of strings), red_flags (list of strings), rating (integer).
-
-{combined_content}
-"""
+            As a corporate researcher, provide a concise summary of this company's profile based on the following website content. Include mission, core products/services, industry focus, history, and any notable facts. Output only the summary as plain text.
+ 
+            {company_profile_content}
+            """
             analysis = llm_backend.generate_response(analysis_prompt.strip(), "")
-            self.finished.emit(analysis)
+            analysis = remove_think_blocks(analysis)
+            # Save investigation results to database
+            repo = getattr(self.app_instance, 'repository', None)
+            from jobops.models import Document, DocumentType
+            from datetime import datetime
+            import uuid
+            group_id = str(uuid.uuid4())
+            if repo:
+                doc_id = str(uuid.uuid4())
+                doc = Document(
+                    id=doc_id,
+                    type=DocumentType.COMPANY_INVESTIGATION,
+                    raw_content=company_profile_content,
+                    structured_content=analysis,
+                    group_id=group_id
+                )
+                repo.save(doc)
+                self.finished.emit(doc_id)
+            else:
+                logging.error("Repository not found for saving investigation results.")
+                self.error.emit("Repository not available")
         except Exception as e:
             err_msg = str(e)
             # Fallback to local Ollama if rate limit exceeded
@@ -1556,8 +1550,30 @@ Output only JSON with keys: summary (string), employees_count (integer), followe
                     fallback_backend = LLMBackendFactory.create('ollama', ollama_conf, tokens)
                     # Retry prompt with fallback
                     analysis = fallback_backend.generate_response(analysis_prompt.strip(), "")
-                    self.finished.emit(analysis)
-                    return
+                    from jobops.utils import remove_think_blocks
+                    analysis = remove_think_blocks(analysis)
+                    # Save fallback investigation results to database
+                    repo = getattr(self.app_instance, 'repository', None)
+                    from jobops.models import Document, DocumentType
+                    from datetime import datetime
+                    import uuid
+                    if repo:
+                        group_id = str(uuid.uuid4())
+                        doc_id = str(uuid.uuid4())
+                        doc = Document(
+                            id=doc_id,
+                            type=DocumentType.COMPANY_INVESTIGATION,
+                            raw_content=company_profile_content,
+                            structured_content=analysis,
+                            group_id=group_id
+                        )
+                        repo.save(doc)
+                        self.finished.emit(doc_id)
+                        return
+                    else:
+                        logging.error("Repository not found for saving investigation results.")
+                        self.error.emit("Repository not available")
+                        return
                 except Exception as fallback_e:
                     logging.error(f"Fallback Ollama generation failed: {fallback_e}")
                     self.error.emit(str(fallback_e))

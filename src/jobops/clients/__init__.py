@@ -21,6 +21,8 @@ except ImportError:
     Perplexity = None
 
 class BaseLLMBackend(Protocol):
+    # The name of the underlying LLM model
+    model: str
     @abstractmethod
     def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str: pass
     @abstractmethod
@@ -38,7 +40,6 @@ class OllamaBackend(BaseLLMBackend):
     def __init__(self, model: str = "llama3:8b", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
-        ollama.base_url = base_url
         self._logger = logging.getLogger(self.__class__.__name__)
     
     def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
@@ -95,7 +96,7 @@ class OpenAIBackend(BaseLLMBackend):
                 temperature=0.7,
                 max_tokens=3000
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or ""
         except Exception as e:
             self._logger.error(f"OpenAI generation error: {e}")
             raise
@@ -141,7 +142,7 @@ class GroqBackend(BaseLLMBackend):
                 temperature=0.7,
                 max_tokens=3000
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or ""
         except Exception as e:
             self._logger.error(f"Groq generation error: {e}")
             raise
@@ -176,7 +177,7 @@ class GoogleGeminiBackend(BaseLLMBackend):
         try:
             full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
             response = self.model.generate_content(full_prompt)
-            return response.text
+            return response.text or ""
         except Exception as e:
             self._logger.error(f"Gemini generation error: {e}")
             raise
@@ -217,7 +218,7 @@ class XGrokBackend(BaseLLMBackend):
                 temperature=0.7,
                 max_tokens=3000
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or ""
         except Exception as e:
             self._logger.error(f"X Grok generation error: {e}")
             raise
@@ -259,7 +260,7 @@ class PerplexityBackend(BaseLLMBackend):
                 temperature=0.7,
                 max_tokens=3000
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or ""
         except Exception as e:
             self._logger.error(f"Perplexity generation error: {e}")
             raise

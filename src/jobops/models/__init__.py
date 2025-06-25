@@ -118,6 +118,7 @@ class DocumentType(str, Enum):
     REFERENCE_LETTER = "reference_letter"
     CERTIFICATION = "certification"
     OTHER = "other"
+    COMPANY_INVESTIGATION = "company_investigation"
 
 class Document(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
@@ -133,6 +134,7 @@ class MotivationLetter(BaseModel):
     resume: str  # Now just a markdown string
     content: str
     generated_at: datetime = Field(default_factory=datetime.now)
+    language: str = "en"
 
 class AppConfig(BaseModel):
     backend: str = "ollama"

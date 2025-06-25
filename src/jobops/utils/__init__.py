@@ -24,6 +24,46 @@ import pyperclip
 from urllib.parse import urlparse
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Optional
+
+# tiktoken-based utilities for prompt size control
+import tiktoken
+
+# Default maximum tokens per request
+MAX_TOKENS_PER_REQUEST = 2000
+# Maximum tokens for summarization fallback
+MAX_SUMMARY_TOKENS = 500
+
+def clean_whitespace(text: str) -> str:
+    """
+    Collapse runs of whitespace and newlines into single spaces.
+    """
+    return " ".join(text.split())
+
+
+def ensure_within_token_limit(
+    text: str,
+    max_tokens: int = MAX_TOKENS_PER_REQUEST,
+    model: str = "llama-3.3-70b-versatile",
+) -> str:
+    """
+    Normalize whitespace, tokenize the text for the given model, and truncate
+    the token list to max_tokens if necessary. Returns the cleaned or truncated text.
+    """
+    # 1) normalize whitespace
+    cleaned = clean_whitespace(text)
+
+    # 2) get the tiktoken encoder for the model
+    encoder = tiktoken.encoding_for_model(model)
+
+    # 3) encode and check length
+    tokens = encoder.encode(cleaned)
+    if len(tokens) <= max_tokens:
+        return cleaned
+
+    # 4) truncate tokens and decode back to text
+    truncated_tokens = tokens[:max_tokens]
+    return encoder.decode(truncated_tokens)
 
 def build_motivation_letter_prompt(
     applicant_name: str,
@@ -35,11 +75,11 @@ def build_motivation_letter_prompt(
     company_name: str,
     company_address: str,
     job_title: str,
-    contact_name: str = None,
-    job_description: str = None,
-    requirements: str = None,
-    candidate_background: str = None,
-    additional_sections: str = None,
+    contact_name: Optional[str] = None,
+    job_description: Optional[str] = None,
+    requirements: Optional[str] = None,
+    candidate_background: Optional[str] = None,
+    additional_sections: Optional[str] = None,
     language: str = "en",
 ) -> str:
     """
@@ -173,10 +213,32 @@ class ConcreteLetterGenerator:
         self.llm_backend = llm_backend  # Expose for crawl4ai integration
         self._logger = logging.getLogger(self.__class__.__name__)
     
+    def _verify_domain(self, url: str) -> None:
+        """
+        Verify that the given URL's domain is in the trusted list.
+        """
+        parsed = urlparse(url)
+        domain = parsed.netloc or ''
+        if not any(trusted in domain for trusted in TRUSTED_JOB_DOMAINS):
+            self._logger.error(f"Untrusted job domain: {domain}")
+            raise ValueError(f"Untrusted job domain: {domain}")
+    
+    def _summarize_section(self, text: str, section_name: str, max_tokens: int = MAX_SUMMARY_TOKENS) -> str:
+        """
+        Summarize a large section into a concise summary under max_tokens.
+        """
+        prompt = f"Summarize the following {section_name} into a concise summary:\n\n{text}"
+        prompt = ensure_within_token_limit(prompt, max_tokens=max_tokens)
+        return self.backend.generate_response(prompt, "")
+
     def generate(self, job_data: JobData, resume: str, language: str) -> MotivationLetter:
         self._logger.info(f"Generating motivation letter for job: {job_data}")
+        # verify the job URL domain is trusted
+        self._verify_domain(job_data.url)
         user_prompt = self._create_user_prompt(job_data, resume, language)
         system_prompt = ""
+        # enforce token limit on user prompt
+        user_prompt = ensure_within_token_limit(user_prompt)
         content = self.backend.generate_response(user_prompt, system_prompt)
         return MotivationLetter(
             job_data=job_data,
@@ -191,12 +253,15 @@ class ConcreteLetterGenerator:
         resume_markdown: str,
         language: str,
         url: str = "",
-        config: dict = None,
+        config: Optional[dict] = None,
         company_name: str = "",
         job_title: str = "",
         location: str = "",
     ) -> MotivationLetter:
         self._logger.info("Generating motivation letter from raw markdowns.")
+        # verify the provided URL domain is trusted (if any)
+        if url:
+            self._verify_domain(url)
         # Truncation logic
         default_limit = 4000
         resume_limit = default_limit
@@ -206,6 +271,13 @@ class ConcreteLetterGenerator:
             job_limit = int(config.get('job_truncate_chars', job_limit))
         resume_markdown = resume_markdown[:resume_limit]
         job_markdown = job_markdown[:job_limit]
+        # Summarize long inputs to reduce token count
+        from tiktoken import encoding_for_model
+        encoder = encoding_for_model(self.backend.model)
+        if len(encoder.encode(resume_markdown)) > MAX_TOKENS_PER_REQUEST:
+            resume_markdown = self._summarize_section(resume_markdown, "candidate resume")
+        if len(encoder.encode(job_markdown)) > MAX_TOKENS_PER_REQUEST:
+            job_markdown = self._summarize_section(job_markdown, "job description")
         prompt = f"""
 You are an expert in writing formal European motivation letters for job applications.
 Write a concise, inspiring motivation letter in {language}.
@@ -226,6 +298,8 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
 
 - Output only the motivation letter, with no extra explanations, comments, or metadata.
 """
+        # enforce token limit on prompt
+        prompt = ensure_within_token_limit(prompt)
         # Generate the core letter content
         content_body = self.backend.generate_response(prompt, "")
         from jobops.models import MotivationLetter, JobData
@@ -234,12 +308,16 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
 
         # Build a minimal JobData object for compatibility using provided company, title, location
         job_data = JobData(
-            url=url or "http://unknown",
+            url=url or "",
             title=job_title,
             company=company_name,
             description=job_markdown or "",
             requirements="",
             location=location or None,
+            technology_stack=None,
+            job_reference_number="",
+            content_language=language,
+            company_offers=None
         )
 
         # Prepare header with date, company, job title, location, and source
@@ -273,7 +351,7 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
             generated_at=datetime.datetime.now()
         )
     
-    def generate_optimized_resume_from_markdown(self, job_markdown: str, resume_markdown: str, language: str, requirements: str = "", config: dict = None) -> str:
+    def generate_optimized_resume_from_markdown(self, job_markdown: str, resume_markdown: str, language: str, requirements: str = "", config: Optional[dict] = None) -> str:
         self._logger.info("Generating optimized resume from raw markdowns.")
         default_limit = 4000
         resume_limit = default_limit
@@ -283,6 +361,13 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
             job_limit = int(config.get('job_truncate_chars', job_limit))
         resume_markdown = resume_markdown[:resume_limit]
         job_markdown = job_markdown[:job_limit]
+        # Summarize long inputs to reduce token count
+        from tiktoken import encoding_for_model
+        encoder = encoding_for_model(self.backend.model)
+        if len(encoder.encode(resume_markdown)) > MAX_TOKENS_PER_REQUEST:
+            resume_markdown = self._summarize_section(resume_markdown, "candidate resume")
+        if len(encoder.encode(job_markdown)) > MAX_TOKENS_PER_REQUEST:
+            job_markdown = self._summarize_section(job_markdown, "job description")
         prompt = f"""
 You are an expert career consultant and resume writer.
 Rewrite the candidate's resume in {language} to be highly tailored for the following job description and requirements.
@@ -305,6 +390,8 @@ Job requirements:
 {requirements}
 ------------------
 +"""
+        # enforce token limit on prompt
+        prompt = ensure_within_token_limit(prompt)
         tailored_resume = self.backend.generate_response(prompt, "")
         return tailored_resume.strip()
     
@@ -433,6 +520,8 @@ GUIDELINES:
             f"Generating reply for message: {job_offer_message[:50]}..."
         )
         user_prompt = build_reply_prompt(job_offer_message, resume_markdown, language)
+        # enforce token limit on user prompt
+        user_prompt = ensure_within_token_limit(user_prompt)
         reply = self.backend.generate_response(user_prompt, "")
         return reply
 
@@ -466,7 +555,8 @@ REQUIREMENTS:
 - Standardize date formats (MM/YYYY-MM/YYYY)
 - Eliminate redundancy and filler words
 - Ensure ATS compatibility (no columns/graphics)"""
-
+        # enforce token limit on extraction prompt
+        prompt = ensure_within_token_limit(prompt)
         try:
             cleaned_text = self.llm_backend.generate_response(prompt, system_prompt).strip()
             return cleaned_text
@@ -499,7 +589,8 @@ RULES:
 - No markdown/code blocks in output
 - Escape special characters properly
 - Validate JSON syntax strictly"""
-
+        # enforce token limit on extraction prompt
+        prompt = ensure_within_token_limit(prompt)
         try:
             response = self.llm_backend.generate_response(prompt, system_prompt)
             cleaned_response = response.strip().removeprefix('``````').strip()
@@ -513,6 +604,9 @@ RULES:
         return GenericDocument(
             content_type=doc_type.value,
             title=self._extract_title(raw_content),
+            author="",
+            date="",
+            organization="",
             key_points=[],
             sections={},
             metadata={}
@@ -980,6 +1074,8 @@ Job Description and Requirements:
 
 Return only the JSON object, no extra text or formatting.
 '''
+    # enforce token limit on skill extraction prompt
+    prompt = ensure_within_token_limit(prompt)
     try:
         response = llm_backend.generate_response(prompt)
         # Try to extract JSON from response
@@ -997,7 +1093,7 @@ Return only the JSON object, no extra text or formatting.
         logging.warning(f"LLM skill extraction failed: {e}")
     return None
 
-def compute_match_score_and_chart(resume_text: str, job_description: str, job_requirements: str, llm_backend=None, output_dir: str = None) -> dict:
+def compute_match_score_and_chart(resume_text: str, job_description: str, job_requirements: str, llm_backend: Optional[BaseLLMBackend] = None, output_dir: Optional[str] = None) -> Optional[dict]:
     """
     Use LLM to extract skills if possible, else fallback to regex. Only generate chart if valid data is available.
     """
