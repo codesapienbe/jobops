@@ -1,6 +1,6 @@
 # JobOps
 
-[![PyPI version](https://img.shields.io/pypi/v/jobops-toolbar.svg)](https://pypi.org/project/jobops-toolbar/)
+[![PyPI version](https://img.shields.io/pypi/v/jobops.svg)](https://pypi.org/project/jobops/)
 [![Build Status](https://github.com/codesapienbe/jobops-toolbar/workflows/CI/badge.svg)](https://github.com/codesapienbe/jobops-toolbar/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -13,6 +13,8 @@
 ## Table of Contents
 
 - [Features](#features)
+- [How It Works](#how-it-works)
+- [Benefits](#benefits)
 - [Screenshots](#screenshots)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -34,6 +36,34 @@
 - **Electron-Based UI**: User-friendly desktop application with tabbed interface.
 - **Batch Processing**: Generate letters at scale for agencies and teams.
 - **History & Export**: View past letters and export as PDF or DOCX.
+
+---
+
+## How It Works
+
+1. **Configure AI Backend**: Set up your preferred AI service (OpenAI, Groq, or local Ollama).
+2. **Setup Profile**: Manage your resume and professional profile within the tray interface.
+3. **Generate Letter**: Right-click the tray icon and select **Generate** to create a personalized motivation letter.
+4. **Review & Save**: Edit generated letters as needed and save to your application history.
+
+---
+
+## Benefits
+
+### What It Does
+- Generate personalized motivation letters using AI.
+- Scrape job descriptions from job posting URLs.
+- Manage your resume profile seamlessly.
+- Support multiple AI backends for flexibility.
+- Minimal, tray-based interface for quick access.
+- Work offline with local AI models.
+
+### What It Doesn't Do
+- Act as a recruiter or agency.
+- Send applications automatically.
+- Process applications for companies.
+- Guarantee interview success.
+- Replace human judgment and customization.
 
 ---
 
