@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../.jobops"
+		}
+	],
+	"settings": {
+		"cSpell.words": [
+			"Groq",
+			"ollama",
+			"xgrok"
+		]
+	}
+}
