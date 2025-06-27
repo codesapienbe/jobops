@@ -1218,7 +1218,8 @@ class UploadWorker(QThread):
                 raw_content=raw_content,
                 structured_content=structured_content,
                 uploaded_at=datetime.now(),
-                embedding=embedding
+                embedding=embedding,
+                group_id=str(uuid.uuid4())
             )
             repository.save(doc)
             logging.info(f"Document saved to database: {filename_for_db}", extra={"span_id": span_id})
