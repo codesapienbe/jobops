@@ -51,6 +51,7 @@
 ## Benefits
 
 ### What It Does
+
 - Generate personalized motivation letters using AI.
 - Scrape job descriptions from job posting URLs.
 - Manage your resume profile seamlessly.
@@ -59,6 +60,7 @@
 - Work offline with local AI models.
 
 ### What It Doesn't Do
+
 - Act as a recruiter or agency.
 - Send applications automatically.
 - Process applications for companies.
@@ -91,7 +93,8 @@ Or zero-install via uvx:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uvx jobops
+# Use the latest stable version
+uvx --from https://github.com/codesapienbe/jobops/releases/download/v2025.06.27.1409/jobops-0.0.1-py3-none-any.whl 
 ```
 
 ### Developer Setup
