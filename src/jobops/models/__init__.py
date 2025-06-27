@@ -126,6 +126,7 @@ class Document(BaseModel):
     structured_content: str
     uploaded_at: datetime = Field(default_factory=datetime.now)
     group_id: Optional[str] = Field(None, description="Group identifier for related document sets")
+    embedding: Optional[List[float]] = Field(None, description="Embedding vector for RAG usage")
 
 class MotivationLetter(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))

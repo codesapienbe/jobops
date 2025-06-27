@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Optional
 from jobops.models import Document, DocumentType
 import sqlite3
+import json
 
 class SQLiteDocumentRepository:
     def __init__(self, db_path: str, timeout: float = 30.0):
@@ -24,7 +25,8 @@ class SQLiteDocumentRepository:
                     raw_content TEXT,
                     structured_content TEXT,
                     uploaded_at TEXT,
-                    group_id TEXT
+                    group_id TEXT,
+                    embedding BLOB
                 )
             ''')
             # Migration: drop json_content and job_data_json columns if they exist
@@ -46,6 +48,11 @@ class SQLiteDocumentRepository:
                 c.execute('ALTER TABLE documents ADD COLUMN group_id TEXT')
             except Exception:
                 pass
+            # Migration: add embedding column if not exists
+            try:
+                c.execute('ALTER TABLE documents ADD COLUMN embedding BLOB')
+            except Exception:
+                pass
             conn.commit()
     
     def save(self, document: Document) -> Optional[str]:
@@ -54,8 +61,8 @@ class SQLiteDocumentRepository:
             c.execute(
                 """
                 INSERT OR REPLACE INTO documents 
-                (id, type, raw_content, structured_content, uploaded_at, group_id) 
-                VALUES (?, ?, ?, ?, ?, ?)
+                (id, type, raw_content, structured_content, uploaded_at, group_id, embedding) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     document.id,
@@ -63,7 +70,8 @@ class SQLiteDocumentRepository:
                     document.raw_content,
                     document.structured_content,
                     document.uploaded_at.isoformat(),
-                    document.group_id
+                    document.group_id,
+                    json.dumps(document.embedding) if document.embedding is not None else None
                 )
             )
             conn.commit()
@@ -72,17 +80,20 @@ class SQLiteDocumentRepository:
     def get_by_id(self, doc_id: str) -> Optional[Document]:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
-            c.execute("SELECT id, type, raw_content, structured_content, uploaded_at, group_id FROM documents WHERE id = ?", (doc_id,))
+            c.execute("SELECT id, type, raw_content, structured_content, uploaded_at, group_id, embedding FROM documents WHERE id = ?", (doc_id,))
             row = c.fetchone()
             
             if row:
+                embedding_data = row[6]
+                embedding = json.loads(embedding_data) if embedding_data else None
                 doc = Document(
                     id=row[0],
                     type=DocumentType(row[1]),
                     raw_content=row[2],
                     structured_content=row[3],
                     uploaded_at=datetime.fromisoformat(row[4]),
-                    group_id=row[5]
+                    group_id=row[5],
+                    embedding=embedding  # type: ignore
                 )
                 return doc
         return None
@@ -92,19 +103,22 @@ class SQLiteDocumentRepository:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT id, type, raw_content, structured_content, uploaded_at, group_id FROM documents WHERE type = ? ORDER BY uploaded_at DESC", 
+                "SELECT id, type, raw_content, structured_content, uploaded_at, group_id, embedding FROM documents WHERE type = ? ORDER BY uploaded_at DESC", 
                 (doc_type.value,)
             )
             rows = c.fetchall()
             
             for row in rows:
+                embedding_data = row[6]
+                embedding = json.loads(embedding_data) if embedding_data else None
                 doc = Document(
                     id=row[0],
                     type=DocumentType(row[1]),
                     raw_content=row[2],
                     structured_content=row[3],
                     uploaded_at=datetime.fromisoformat(row[4]),
-                    group_id=row[5]
+                    group_id=row[5],
+                    embedding=embedding
                 )
                 documents.append(doc)
         return documents
@@ -129,18 +143,21 @@ class SQLiteDocumentRepository:
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT id, type, raw_content, structured_content, uploaded_at, group_id FROM documents WHERE group_id = ? ORDER BY type", 
+                "SELECT id, type, raw_content, structured_content, uploaded_at, group_id, embedding FROM documents WHERE group_id = ? ORDER BY type", 
                 (group_id,)
             )
             rows = c.fetchall()
             for row in rows:
+                embedding_data = row[6]
+                embedding = json.loads(embedding_data) if embedding_data else None
                 doc = Document(
                     id=row[0],
                     type=DocumentType(row[1]),
                     raw_content=row[2],
                     structured_content=row[3],
                     uploaded_at=datetime.fromisoformat(row[4]),
-                    group_id=row[5]
+                    group_id=row[5],
+                    embedding=embedding
                 )
                 documents.append(doc)
         return documents

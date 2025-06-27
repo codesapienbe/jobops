@@ -5,7 +5,6 @@ import logging
 import base64
 from pathlib import Path
 import threading
-from urllib.parse import urlparse
 import webbrowser
 from PIL import Image
 from io import BytesIO
@@ -16,9 +15,8 @@ import uuid
 import subprocess
 from jobops.models import Document, DocumentType
 from jobops.models import Solicitation
-import zipfile
-import time
 from markdownify import markdownify
+from jobops.clients import embed_structured_data
 
 
 # Qt imports
@@ -1015,6 +1013,13 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         if not docs:
             QMessageBox.warning(None, "Export Documents", f"No documents found for group {sel_group}.")
             return
+
+        # Ask for export format (default .md)
+        formats = [".md", ".docx", ".pdf"]
+        fmt, ok = QInputDialog.getItem(None, "Select Export Format", "Format:", formats, editable=False)
+        if not ok:
+            return
+
         export_dir = os.path.expanduser("~/.jobops/exports")
         os.makedirs(export_dir, exist_ok=True)
         default_name = f"documents_{sel_group}.zip"
@@ -1023,9 +1028,32 @@ You are a legal expert. Analyze the following privacy policy and respond with on
             return
         try:
             with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                import io
                 for d in docs:
-                    filename = f"{d.type.value}_{d.id}.md"
-                    zipf.writestr(filename, d.structured_content or "")
+                    content = d.structured_content or ""
+                    if fmt == ".md":
+                        filename = f"{d.type.value}_{d.id}.md"
+                        data = content.encode("utf-8")
+                    elif fmt == ".docx":
+                        from docx import Document as DocxDocument
+                        doc = DocxDocument()
+                        for line in content.splitlines():
+                            doc.add_paragraph(line)
+                        bio = io.BytesIO()
+                        doc.save(bio)
+                        data = bio.getvalue()
+                    elif fmt == ".pdf":
+                        from reportlab.pdfgen.canvas import Canvas
+                        from reportlab.lib.pagesizes import letter
+                        bio = io.BytesIO()
+                        c = Canvas(bio, pagesize=letter)
+                        textobject = c.beginText(40, 750)
+                        for line in content.splitlines():
+                            textobject.textLine(line)
+                        c.drawText(textobject)
+                        c.save()
+                        data = bio.getvalue()
+                    zipf.writestr(filename, data)
             QMessageBox.information(None, "Export Documents", f"Documents zipped to {path}")
         except Exception as e:
             QMessageBox.critical(None, "Export Error", str(e))
@@ -1181,12 +1209,16 @@ class UploadWorker(QThread):
                 raw_content = result.raw_text if hasattr(result, 'raw_text') else structured_content
                 logging.info(f"Extraction complete, structured length: {len(structured_content)}", extra={"span_id": span_id})
 
+            # Compute embedding for RAG similarity
+            embedding = embed_structured_data(structured_content)
+
             doc_type_enum = DocumentType.RESUME if self.doc_type.upper() == "RESUME" else DocumentType.CERTIFICATION
             doc = Document(
                 type=doc_type_enum,
                 raw_content=raw_content,
                 structured_content=structured_content,
-                uploaded_at=datetime.now()
+                uploaded_at=datetime.now(),
+                embedding=embedding
             )
             repository.save(doc)
             logging.info(f"Document saved to database: {filename_for_db}", extra={"span_id": span_id})
