@@ -1,5 +1,7 @@
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator, root_validator
+# Use the v1-compatible Field helper to avoid mixing v2 FieldInfo objects with v1 BaseModel,
+# which caused SQLite binding errors (FieldInfo was being stored instead of actual values).
+from pydantic.v1 import BaseModel, Field, validator, root_validator
 from uuid import uuid4
 from datetime import datetime
 from enum import Enum
@@ -175,3 +177,25 @@ class SolicitationReport(BaseModel):
     vdab_opdrachten: Dict[str, Any]
     opmerkingen: str
     generated_at: datetime = Field(default_factory=datetime.now)
+
+# ---------------------------------------------------------------------------
+# Runtime-side helper models (UI ↔ workers ↔ services)
+# ---------------------------------------------------------------------------
+
+
+class JobInput(BaseModel):
+    """Data collected from the *Generate Letter / Report* dialog."""
+
+    url: str | None = Field(None, description="Job posting URL (optional)")
+    job_markdown: str = Field(..., description="Full job description in markdown")
+    detected_language: str = "en"
+    company: str | None = None
+    title: str | None = None
+    location: str | None = None
+    requirements: str | None = None
+
+
+class SkillsExtractionResult(BaseModel):
+    matching_skills: list[str] = []
+    missing_skills: list[str] = []
+    extra_skills: list[str] = []

@@ -14,6 +14,32 @@ class SQLiteDocumentRepository:
         self._init_db()
     
     def _init_db(self):
+        """Initialise or migrate the SQLite schema.
+
+        If the standalone `scripts.db_migrate` module is available (e.g. when
+        running from a source-checkout), its *migrate* function is executed
+        first to keep the DB fully up-to-date.  When the package is installed
+        without the optional *scripts* package, we gracefully fall back to the
+        in-line legacy migration logic below.
+        """
+
+        # 1. Try dedicated migration helper (no hard dependency)
+        try:
+            from scripts.db_migrate import migrate as _auto_migrate  # type: ignore
+
+            _auto_migrate(self.db_path)
+            # Early return – helper already created table & columns.
+            return
+        except ModuleNotFoundError:
+            # Packaged/installed version – run minimal, built-in migration.
+            self._logger.debug("scripts.db_migrate not found; falling back to inline migration")
+        except Exception as exc:
+            # Helper present but failed; log and continue with inline path.
+            self._logger.warning("External DB migration failed: %s – continuing with inline migration", exc)
+
+        # ------------------------------------------------------------------
+        # 2. Inline (legacy) migration – safe & idempotent
+        # ------------------------------------------------------------------
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()

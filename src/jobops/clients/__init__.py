@@ -1,22 +1,24 @@
 from abc import abstractmethod
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import ollama
 from typing import Protocol
 
+import requests
+
 try:
-    import google.generativeai as genai
+    import google.generativeai as genai  # type: ignore
 except ImportError:
     genai = None
 
 try:
-    from xgrok import XGrokClient  # Hypothetical SDK
+    from xgrok import XGrokClient  # type: ignore # Hypothetical SDK
 except ImportError:
     XGrokClient = None
 
 try:    
-    from perplexity import Perplexity  # Hypothetical SDK
+    from perplexity import Perplexity  # type: ignore # Hypothetical SDK
 except ImportError:
     Perplexity = None
 
@@ -28,17 +30,30 @@ class BaseLLMBackend(Protocol):
     @abstractmethod
     def embed_structured_data(self, job_data) -> list: pass
 
-def embed_structured_data(text: str) -> list:
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    return model.encode(text).tolist()
+def embed_structured_data(text: str, logger: Optional[logging.Logger] = None) -> list:  # noqa: ANN001
+    """Return sentence transformer embedding list for the given *text*.
+
+    The *logger* parameter is optional so callers that do not yet pass a
+    dedicated :pyclass:`~logging.Logger` instance remain compatible.  When
+    *logger* is *None*, a module-level logger is used instead.
+    """
+
+    _log = logger or logging.getLogger(__name__)
+    try:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+        encoded = model.encode(text).tolist()
+        _log.info("Embedded structured data length: %s", len(encoded))
+        return encoded
+    except Exception as exc:  # noqa: BLE001
+        _log.error("Error embedding structured data: %s", exc)
+        return []
 
 class OllamaBackend(BaseLLMBackend):
     name = "ollama"
     def __init__(self, model: str = "llama3:8b", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
-        ollama.base_url = base_url
         self._logger = logging.getLogger(self.__class__.__name__)
     
     def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
@@ -57,21 +72,70 @@ class OllamaBackend(BaseLLMBackend):
     
     def health_check(self) -> bool:
         try:
-            return True
-            # resp = requests.get("http://localhost:8000/health/ollama")
-            # return resp.status_code == 200 and resp.json().get("status") == "ok"
+            resp = requests.get(f"{self.base_url}/health")
+            return resp.status_code == 200 and resp.json().get("status") == "ok"
         except Exception as e:
             self._logger.error(f"Proxy health check failed: {e}")
             return False
 
     def embed_structured_data(self, job_data):
         try:
-            return embed_structured_data(job_data.description)
+            return embed_structured_data(job_data.description, self._logger)
         except Exception as e:
             self._logger.error(f"Ollama embedding error: {e}")
             raise
 
-class OpenAIBackend(BaseLLMBackend):
+# ---------------------------------------------------------------------------
+# 🧹  Deduplication helpers                                                   
+# ---------------------------------------------------------------------------
+
+
+class _StructuredDataMixin:
+    """Mixin that provides a default :py:meth:`embed_structured_data` implementation."""
+
+    _logger: logging.Logger  # subclasses set
+    model: str  # populated by concrete backend
+    client: Any  # populated by concrete backend
+
+    def embed_structured_data(self, job_data):  # type: ignore[override]
+        """Return sentence-transformer embeddings of *job_data.description*."""
+        return embed_structured_data(job_data.description, self._logger)
+
+
+class _ChatCompletionMixin(_StructuredDataMixin):
+    """Shared implementation for OpenAI-compatible chat-completion APIs.
+
+    Back-ends using an OpenAI-style SDK only need to set ``self.client``
+    (with a ``.chat.completions.create`` method), ``self.model`` and
+    ``self._logger``.  This mixin provides the *generate_response* and
+    *embed_structured_data* implementations, removing significant
+    duplication across back-ends.
+    """
+
+    def _build_messages(self, prompt: str, system_prompt: Optional[str] = None):
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
+    def generate_response(  # type: ignore[override]
+        self, prompt: str, system_prompt: Optional[str] = None
+    ) -> str:
+        self._logger.info("Generating response with model: %s", self.model)
+        try:
+            response = self.client.chat.completions.create(  # type: ignore[attr-defined]
+                model=self.model,
+                messages=self._build_messages(prompt, system_prompt),
+                temperature=0.7,
+                max_tokens=3000,
+            )
+            return response.choices[0].message.content  # type: ignore[index]
+        except Exception as e:  # noqa: BLE001
+            self._logger.error("%s generation error: %s", self.__class__.__name__, e)
+            raise
+
+class OpenAIBackend(_ChatCompletionMixin, BaseLLMBackend):
     name = "openai"
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", base_url: str = "https://api.openai.com/v1"):
         if not api_key:
@@ -80,25 +144,6 @@ class OpenAIBackend(BaseLLMBackend):
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self._logger = logging.getLogger(self.__class__.__name__)
-    
-    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        self._logger.info(f"Generating response with model: {self.model}")
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=3000
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self._logger.error(f"OpenAI generation error: {e}")
-            raise
     
     def health_check(self) -> bool:
         try:
@@ -109,15 +154,7 @@ class OpenAIBackend(BaseLLMBackend):
             self._logger.error(f"Proxy health check failed: {e}")
             return False
 
-    def embed_structured_data(self, job_data):
-        try:
-            return embed_structured_data(job_data.description)
-        except Exception as e:
-            self._logger.error(f"OpenAI embedding error: {e}")
-            raise
-
-
-class GroqBackend(BaseLLMBackend):
+class GroqBackend(_ChatCompletionMixin, BaseLLMBackend):
     name = "groq"
     def __init__(self, api_key: str, model: str = "mistral:7b-instruct-q4_0", base_url: str = "https://api.groq.com/openai/v1"):
         if not api_key:
@@ -127,25 +164,6 @@ class GroqBackend(BaseLLMBackend):
         self.model = model
         self._logger = logging.getLogger(self.__class__.__name__)
     
-    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        self._logger.info(f"Generating response with model: {self.model}")
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=3000
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self._logger.error(f"Groq generation error: {e}")
-            raise
-    
     def health_check(self) -> bool:
         try:
             return True
@@ -154,21 +172,15 @@ class GroqBackend(BaseLLMBackend):
         except Exception as e:
             self._logger.error(f"Proxy health check failed: {e}")
             return False
-        
-    def embed_structured_data(self, job_data):
-        try:
-            return embed_structured_data(job_data.description)
-        except Exception as e:
-            self._logger.error(f"Groq embedding error: {e}")
-            raise
-            
 
 class GoogleGeminiBackend(BaseLLMBackend):
     def __init__(self, api_key: str, model: str = "gemini-pro"):
+        if genai is None:
+            raise ImportError("google-generativeai package is not installed")
         if not api_key:
             raise ValueError("Gemini API key required")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model)
+        cast("Any", genai).configure(api_key=api_key)
+        self.model = cast("Any", genai).GenerativeModel(model)
         self._logger = logging.getLogger(self.__class__.__name__)
 
     def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
@@ -191,36 +203,20 @@ class GoogleGeminiBackend(BaseLLMBackend):
 
     def embed_structured_data(self, job_data):
         try:
-            return embed_structured_data(job_data.description)
+            return embed_structured_data(job_data.description, self._logger)
         except Exception as e:
             self._logger.error(f"Gemini embedding error: {e}")
             raise
 
-class XGrokBackend(BaseLLMBackend):
+class XGrokBackend(_ChatCompletionMixin, BaseLLMBackend):
     def __init__(self, api_key: str, model: str = "grok-1"):
+        if XGrokClient is None:
+            raise ImportError("xgrok SDK is not installed")
         if not api_key:
             raise ValueError("X Grok API key required")
-        self.client = XGrokClient(api_key=api_key)
+        self.client = XGrokClient(api_key=api_key)  # type: ignore[call-arg]
         self.model = model
         self._logger = logging.getLogger(self.__class__.__name__)
-
-    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        self._logger.info(f"Generating response with model: {self.model}")
-        try:
-            messages = [{"role": "user", "content": prompt}]
-            if system_prompt:
-                messages.insert(0, {"role": "system", "content": system_prompt})
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=3000
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self._logger.error(f"X Grok generation error: {e}")
-            raise
 
     def health_check(self) -> bool:
         try:
@@ -230,39 +226,15 @@ class XGrokBackend(BaseLLMBackend):
             self._logger.error(f"X Grok health check failed: {e}")
             return False
 
-    def embed_structured_data(self, job_data):
-        try:
-            return embed_structured_data(job_data.description)
-        except Exception as e:
-            self._logger.error(f"X Grok embedding error: {e}")
-            raise
-
-class PerplexityBackend(BaseLLMBackend):
+class PerplexityBackend(_ChatCompletionMixin, BaseLLMBackend):
     def __init__(self, api_key: str, model: str = "pplx-7b-online"):
+        if Perplexity is None:
+            raise ImportError("perplexity SDK is not installed")
         if not api_key:
             raise ValueError("Perplexity API key required")
-        self.client = Perplexity(api_key=api_key)
+        self.client = Perplexity(api_key=api_key)  # type: ignore[call-arg]
         self.model = model
         self._logger = logging.getLogger(self.__class__.__name__)
-
-    def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        self._logger.info(f"Generating response with model: {self.model}")
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=3000
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self._logger.error(f"Perplexity generation error: {e}")
-            raise
 
     def health_check(self) -> bool:
         try:
@@ -271,13 +243,6 @@ class PerplexityBackend(BaseLLMBackend):
         except Exception as e:
             self._logger.error(f"Perplexity health check failed: {e}")
             return False
-
-    def embed_structured_data(self, job_data):
-        try:
-            return embed_structured_data(job_data.description)
-        except Exception as e:
-            self._logger.error(f"Perplexity embedding error: {e}")
-            raise
 
 class LLMBackendFactory:
     @staticmethod

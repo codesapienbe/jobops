@@ -12,6 +12,14 @@
 			"Groq",
 			"ollama",
 			"xgrok"
+		],
+		"sqltools.connections": [
+			{
+				"previewLimit": 50,
+				"driver": "SQLite",
+				"name": "jobopsdb",
+				"database": "${workspaceFolder:.jobops}/jobops.db"
+			}
 		]
 	}
 }

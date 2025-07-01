@@ -13,7 +13,7 @@ import json
 from jobops.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
 import uuid
 import subprocess
-from jobops.models import Document, DocumentType
+from jobops.models import Document, DocumentType, JobInput
 from jobops.models import Solicitation
 from markdownify import markdownify
 from jobops.clients import embed_structured_data
@@ -24,9 +24,9 @@ try:
     from PySide6.QtWidgets import *
     from PySide6.QtCore import *
     from PySide6.QtGui import *
-    QT_AVAILABLE = True
+    _QT_AVAILABLE = True
 except ImportError:
-    QT_AVAILABLE = False
+    _QT_AVAILABLE = False
     print("PySide6 is not installed. Please install PySide6.")
     sys.exit(1)
 
@@ -62,7 +62,7 @@ def get_span_id():
 
 class JobInputDialog(QDialog):
     """Job input dialog: user provides URL (as a link) and markdown manually."""
-    job_data_ready = Signal(dict)
+    job_data_ready = Signal(object)
     
     def __init__(self, app_instance=None):
         super().__init__()
@@ -212,15 +212,15 @@ class JobInputDialog(QDialog):
             detected_language = detect(markdown)
         except Exception:
             detected_language = "en"
-        self.job_data = {
-            'url': url,
-            'job_markdown': markdown,
-            'detected_language': detected_language,
-            'company': company,
-            'title': title,
-            'location': location
-        }
-        self.job_data_ready.emit(self.job_data)
+        job_input = JobInput(
+            url=url or None,
+            job_markdown=markdown,
+            detected_language=detected_language,
+            company=company or None,
+            title=title or None,
+            location=location or None,
+        )
+        self.job_data_ready.emit(job_input)
         self.accept()
 
     def _on_markdown_changed(self):
@@ -641,6 +641,16 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._workers.add(worker)
         worker.finished.connect(lambda msg, w=worker: self._on_worker_done(w, msg, is_error=False))
         worker.error.connect(lambda err, w=worker: self._on_worker_done(w, err, is_error=True))
+        # Start tray animation and show progress indicator
+        self.start_animation()
+        self.progress_dialog = QProgressDialog("Uploading document...", None, 0, 0)
+        self.progress_dialog.setWindowTitle("JobOps")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.show()
+        # Notify user via tray message
+        self.showMessage("JobOps", "Uploading your document...", QSystemTrayIcon.MessageIcon.Information, 2000)
         worker.start()
     
     def generate_letter(self):
@@ -649,7 +659,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         dialog.job_data_ready.connect(self._start_generate_worker)
         dialog.exec()
     
-    def _start_generate_worker(self, job_data):
+    def _start_generate_worker(self, job_input: JobInput):
         # Privacy policy consent: ask user to paste the policy text and analyze compliance
         policy_text, ok = QInputDialog.getMultiLineText(
             None,
@@ -679,8 +689,8 @@ You are a legal expert. Analyze the following privacy policy and respond with on
                     if reply != QMessageBox.Yes:
                         return
         
-        logging.info(f"Starting letter generation for job data: {job_data}")
-        self.generate_worker = GenerateWorker(self.app_instance, job_data)
+        logging.info(f"Starting letter generation for job data: {job_input}")
+        self.generate_worker = GenerateWorker(self.app_instance, job_input)
         self.generate_worker.finished.connect(self.on_generation_finished)
         self.generate_worker.error.connect(self.on_generation_error)
         self.start_animation()
@@ -844,6 +854,12 @@ You are a legal expert. Analyze the following privacy policy and respond with on
             self.on_upload_error(message)
         else:
             self.on_upload_finished(message)
+        # Stop animation when all workers are finished
+        if not self._workers:
+            self.stop_animation()
+            if self.progress_dialog:
+                self.progress_dialog.close()
+                self.progress_dialog = None
 
     def show_log_viewer(self):
         log_file = str(Path.home() / ".jobops" / "app.log")
@@ -897,10 +913,10 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         dialog.job_data_ready.connect(self._start_report_worker)
         dialog.exec()
 
-    def _start_report_worker(self, job_data):
-        logging.info(f"Starting report generation for job data: {job_data}")
+    def _start_report_worker(self, job_input: JobInput):
+        logging.info(f"Starting report generation for job data: {job_input}")
         # Start background report worker without file export
-        worker = ReportWorker(self.app_instance, job_data)
+        worker = ReportWorker(self.app_instance, job_input)
         self._workers.add(worker)
         worker.finished.connect(self.on_report_finished)
         worker.error.connect(self.on_report_error)
@@ -914,7 +930,7 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         self.showMessage("JobOps", "Generating your report...", QSystemTrayIcon.MessageIcon.Information, 2000)
         worker.start()
 
-    def on_report_finished(self, save_path, chart_path):
+    def on_report_finished(self, _save_path, _chart_path):
         log_message = "Report generation completed and saved to database."
         logging.info(log_message)
         self.stop_animation()
@@ -960,7 +976,7 @@ You are a legal expert. Analyze the following privacy policy and respond with on
         self.showMessage("JobOps", "Generating your answer sheet...", QSystemTrayIcon.MessageIcon.Information, 2000)
         worker.start()
 
-    def on_consultant_finished(self, save_path):
+    def on_consultant_finished(self, _save_path):
         """Handle successful consultant reply sheet generation"""
         log_message = "Consultant answer sheet generated and saved to database."
         logging.info(log_message)
@@ -1234,7 +1250,7 @@ class GenerateWorker(QThread):
     finished = Signal(str)
     error = Signal(str)
     
-    def __init__(self, app_instance, job_data):
+    def __init__(self, app_instance, job_data: JobInput):
         super().__init__()
         self.app_instance = app_instance
         self.job_data = job_data
@@ -1255,88 +1271,52 @@ class GenerateWorker(QThread):
                 logging.error(log_message)
                 raise Exception("No resume found. Please upload your resume first.")
             logging.info(f"Resume markdown (first 100 chars): {resume_markdown[:100]}")
-            job_markdown = self.job_data.get('job_markdown', '')
+            job_markdown = self.job_data.job_markdown
             if not job_markdown:
                 raise Exception("Job description markdown is required.")
-            detected_language = self.job_data.get('detected_language', 'en')
-            url = self.job_data.get('url', '')
+            detected_language = self.job_data.detected_language
+            url = self.job_data.url or ''
             # Get truncation config from app_instance if available
             config = getattr(self.app_instance, '_config', None)
             backend_type = config.get('backend', 'ollama') if config else None
             backend_settings = config.get('backend_settings', {}) if config else {}
             model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
             trunc_config = model_conf if model_conf else {}
+
+            # ------------------------------------------------------------------
+            # 1) Generate Cover Letter
+            # ------------------------------------------------------------------
             letter = generator.generate_from_markdown(
                 job_markdown,
                 resume_markdown,
                 detected_language,
                 url=url,
                 config=trunc_config,
-                company_name=self.job_data.get('company', ''),
-                job_title=self.job_data.get('title', ''),
-                location=self.job_data.get('location', '')
+                company_name=self.job_data.company or '',
+                job_title=self.job_data.title or '',
+                location=self.job_data.location or ''
             )
-            # Store cover letter only in the database, remove file export
-            doc_id = str(uuid.uuid4())
-            doc = Document(
-                id=doc_id,
-                type=DocumentType.COVER_LETTER,
-                filename=None,
-                raw_content=letter.content,
-                structured_content=letter.content,
-                uploaded_at=letter.generated_at if hasattr(letter, 'generated_at') else None
-            )
-            repository.save(doc)
-            log_message = "Letter generation and storage completed."
-            logging.info(log_message)
-            self.finished.emit("Motivation letter generated and saved to database.")
-        except Exception as e:
-            log_message = f"Exception in GenerateWorker: {e}"
-            logging.error(log_message)
-            self.error.emit(str(e))
 
-class ReportWorker(QThread):
-    """Background worker for report generation"""
-    finished = Signal(str, str)
-    error = Signal(str)
-
-    def __init__(self, app_instance, job_data):
-        super().__init__()
-        self.app_instance = app_instance
-        self.job_data = job_data
-
-    def run(self):
-        try:
-            repository = getattr(self.app_instance, 'repository', None)
-            generator = getattr(self.app_instance, 'generator', None)
-            if repository is None or generator is None:
-                raise Exception("Application is missing repository or generator.")
-            resume_markdown = repository.get_latest_resume()
-            if resume_markdown is None:
-                raise Exception("No resume found. Please upload your resume first.")
-            job_markdown = self.job_data.get('job_markdown', '')
-            if not job_markdown:
-                raise Exception("Job description markdown is required.")
-            detected_language = self.job_data.get('detected_language', 'en')
-            url = self.job_data.get('url', '')
-            config = getattr(self.app_instance, '_config', None)
-            backend_type = config.get('backend', 'ollama') if config else None
-            backend_settings = config.get('backend_settings', {}) if config else {}
-            model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
-            trunc_config = model_conf if model_conf else {}
-            letter = generator.generate_from_markdown(job_markdown, resume_markdown, detected_language, url=url, config=trunc_config)
-            # Generate tailored resume using LLM
+            # ------------------------------------------------------------------
+            # 2) Generate Tailored Resume and Skills Report
+            # ------------------------------------------------------------------
             tailored_resume = generator.generate_optimized_resume_from_markdown(
                 job_markdown,
                 resume_markdown,
                 detected_language,
-                requirements=self.job_data.get('requirements', ''),
-                config=trunc_config
+                requirements=self.job_data.requirements or '',
+                config=trunc_config,
             )
-            # Extract and map skills using LLM or fallback
-            job_requirements = self.job_data.get('requirements', '')
+
+            # Extract skills
+            from jobops.utils import extract_skills, extract_skills_with_llm
             llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
-            skill_data = extract_skills_with_llm(llm_backend, resume_markdown, job_markdown + "\n" + job_requirements) if llm_backend else None
+            job_requirements = self.job_data.requirements or ''
+            skill_data = (
+                extract_skills_with_llm(llm_backend, resume_markdown, job_markdown + "\n" + job_requirements)
+                if llm_backend
+                else None
+            )
             if skill_data:
                 matched = sorted(set(skill_data['matching_skills']))
                 missing = sorted(set(skill_data['missing_skills']))
@@ -1347,13 +1327,16 @@ class ReportWorker(QThread):
                 matched = sorted(resume_skills & job_skills)
                 missing = sorted(job_skills - resume_skills)
                 extra = sorted(resume_skills - job_skills)
-            # Build descriptive Markdown report
+
             total_required = len(matched) + len(missing)
             summary = f"You have matched {len(matched)} of {total_required} required skills."
             report_lines = [
-                "# Skills Match Report", "",
-                summary, "",
-                "## Skill Details", ""
+                "# Skills Match Report",
+                "",
+                summary,
+                "",
+                "## Skill Details",
+                "",
             ]
             if matched:
                 report_lines.append("**Matched Skills:**")
@@ -1409,6 +1392,129 @@ class ReportWorker(QThread):
                 group_id=group_id
             )
             repository.save(doc_report)
+            self.finished.emit("Motivation package generated and saved to database.")
+        except Exception as e:
+            self.error.emit(str(e))
+
+# ---------------------------------------------------------------------------
+# ReportWorker (restored after refactor)
+# ---------------------------------------------------------------------------
+
+
+class ReportWorker(QThread):
+    """Background worker for generating tailored resume, cover letter, and skills match report."""
+
+    finished = Signal(str, str)
+    error = Signal(str)
+
+    def __init__(self, app_instance, job_data: JobInput):
+        super().__init__()
+        self.app_instance = app_instance
+        self.job_data = job_data
+
+    def run(self):
+        try:
+            repository = getattr(self.app_instance, 'repository', None)
+            generator = getattr(self.app_instance, 'generator', None)
+            if repository is None or generator is None:
+                raise Exception("Application is missing repository or generator.")
+
+            resume_markdown = repository.get_latest_resume()
+            if resume_markdown is None:
+                raise Exception("No resume found. Please upload your resume first.")
+
+            job_markdown = self.job_data.job_markdown
+            if not job_markdown:
+                raise Exception("Job description markdown is required.")
+
+            detected_language = self.job_data.detected_language
+            url = self.job_data.url or ''
+
+            config = getattr(self.app_instance, '_config', None)
+            backend_type = config.get('backend', 'ollama') if config else None
+            backend_settings = config.get('backend_settings', {}) if config else {}
+            model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
+            trunc_config = model_conf if model_conf else {}
+
+            letter = generator.generate_from_markdown(
+                job_markdown,
+                resume_markdown,
+                detected_language,
+                url=url,
+                config=trunc_config,
+            )
+
+            tailored_resume = generator.generate_optimized_resume_from_markdown(
+                job_markdown,
+                resume_markdown,
+                detected_language,
+                requirements=self.job_data.requirements or '',
+                config=trunc_config,
+            )
+
+            from jobops.utils import extract_skills, extract_skills_with_llm
+
+            job_requirements = self.job_data.requirements or ''
+            llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
+            skill_data = (
+                extract_skills_with_llm(llm_backend, resume_markdown, job_markdown + "\n" + job_requirements)
+                if llm_backend else None
+            )
+
+            if skill_data:
+                matched = sorted(set(skill_data['matching_skills']))
+                missing = sorted(set(skill_data['missing_skills']))
+                extra = sorted(set(skill_data['extra_skills']))
+            else:
+                resume_skills = extract_skills(resume_markdown)
+                job_skills = extract_skills(job_markdown + "\n" + job_requirements)
+                matched = sorted(resume_skills & job_skills)
+                missing = sorted(job_skills - resume_skills)
+                extra = sorted(resume_skills - job_skills)
+
+            total_required = len(matched) + len(missing)
+            summary = f"You have matched {len(matched)} of {total_required} required skills."
+            report_lines = [
+                "# Skills Match Report",
+                "",
+                summary,
+                "",
+                "## Skill Details",
+                "",
+            ]
+            if matched:
+                report_lines.append("**Matched Skills:**")
+                report_lines.extend([f"- {s}" for s in matched])
+            if missing:
+                report_lines.append("")
+                report_lines.append("**Missing Skills:**")
+                report_lines.extend([f"- {s}" for s in missing])
+            if extra:
+                report_lines.append("")
+                report_lines.append("**Additional Skills:**")
+                report_lines.extend([f"- {s}" for s in extra])
+            report_md = "\n".join(report_lines)
+
+            group_id = str(uuid.uuid4())
+
+            from jobops.models import Document, DocumentType
+
+            for doc_type, content in [
+                (DocumentType.JOB_DESCRIPTION, job_markdown),
+                (DocumentType.RESUME, tailored_resume),
+                (DocumentType.COVER_LETTER, letter.content),
+                (DocumentType.OTHER, report_md),
+            ]:
+                repository.save(
+                    Document(
+                        id=str(uuid.uuid4()),
+                        type=doc_type,
+                        raw_content=content,
+                        structured_content=content,
+                        group_id=group_id,
+                    )
+                )
+
             self.finished.emit("", "")
         except Exception as e:
             self.error.emit(str(e))
@@ -1451,130 +1557,6 @@ class ConsultantReplyWorker(QThread):
             repository.save(doc)
             self.finished.emit("")
         except Exception as e:
-            self.error.emit(str(e))
-
-class LogViewerDialog(QDialog):
-    def __init__(self, log_file, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("JobOps Log Viewer")
-        self.setMinimumSize(900, 600)
-        layout = QVBoxLayout(self)
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search logs...")
-        self.search_input.textChanged.connect(self.filter_logs)
-        layout.addWidget(self.search_input)
-        self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["Timestamp", "Level", "Logger", "Message", "span_id", "trace_id"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        layout.addWidget(self.table)
-        self.log_file = log_file
-        self.all_logs = []
-        self.load_logs()
-
-    def load_logs(self):
-        self.all_logs.clear()
-        self.table.setRowCount(0)
-        if not os.path.exists(self.log_file):
-            return
-        with open(self.log_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    log = json.loads(line)
-                except Exception:
-                    # Fallback: try to parse as plain text
-                    log = {"timestamp": "", "level": "", "logger": "", "message": line, "span_id": "", "trace_id": ""}
-                self.all_logs.append(log)
-        self.display_logs(self.all_logs)
-
-    def display_logs(self, logs):
-        self.table.setRowCount(len(logs))
-        for row, log in enumerate(logs):
-            ts = log.get("timestamp", log.get("asctime", ""))
-            lvl = log.get("level", log.get("levelname", ""))
-            logger = log.get("logger", log.get("name", ""))
-            msg = log.get("message", "")
-            span_id = log.get("span_id", "")
-            trace_id = log.get("trace_id", "")
-            for col, val in enumerate([ts, lvl, logger, msg, span_id, trace_id]):
-                item = QTableWidgetItem(str(val))
-                if col == 1:  # Level
-                    if lvl == "ERROR":
-                        item.setForeground(QColor("red"))
-                    elif lvl == "WARNING":
-                        item.setForeground(QColor("orange"))
-                    elif lvl == "INFO":
-                        item.setForeground(QColor("blue"))
-                    elif lvl == "DEBUG":
-                        item.setForeground(QColor("gray"))
-                self.table.setItem(row, col, item)
-
-    def filter_logs(self, text):
-        text = text.lower()
-        filtered = [log for log in self.all_logs if text in json.dumps(log).lower()]
-        self.display_logs(filtered)
-
-class InvestigateWorker(QThread):
-    """Background worker for company investigation"""
-    finished = Signal(str)
-    error = Signal(str)
-
-    def __init__(self, app_instance, website_url, linkedin_url=None):
-        super().__init__()
-        self.app_instance = app_instance
-        self.website_url = website_url
-        self.linkedin_url = linkedin_url
-
-    def run(self):
-        try:
-            logging.info(f"InvestigateWorker started for Website: {self.website_url}, LinkedIn: {self.linkedin_url}")
-            import asyncio
-            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-            # Configure crawler
-            browser_conf = BrowserConfig(headless=True, verbose=False)
-            run_conf = CrawlerRunConfig(cache_mode=CacheMode.ENABLED)
-            # Crawl website content
-            async def crawl_website():
-                async with AsyncWebCrawler(config=browser_conf) as crawler:
-                    return await crawler.arun(url=self.website_url, config=run_conf)
-            web_result = asyncio.run(crawl_website())
-            website_content = getattr(web_result.markdown, 'raw_markdown', str(web_result.markdown))
-            # Crawl LinkedIn content if provided
-            linkedin_content = ''
-            if self.linkedin_url:
-                async def crawl_linkedin():
-                    async with AsyncWebCrawler(config=browser_conf) as crawler:
-                        return await crawler.arun(url=self.linkedin_url, config=run_conf)
-                li_result = asyncio.run(crawl_linkedin())
-                linkedin_content = getattr(li_result.markdown, 'raw_markdown', str(li_result.markdown))
-            # Combine contents for LLM analysis
-            combined_content = f"Website Content:\n{website_content}\n"
-            if linkedin_content:
-                combined_content += f"\nLinkedIn Content:\n{linkedin_content}\n"
-            # Perform LLM-based analysis
-            llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
-            if not llm_backend:
-                raise Exception("No LLM backend available for analysis.")
-            analysis_prompt = f"""
-You are an expert in corporate intelligence and security.
-Using the following information, provide:
-1) summary: Brief summary of the company.
-2) employees_count: Number of employees based on LinkedIn data.
-3) followers_count: Number of LinkedIn followers.
-4) org_structure: List the main departments or organizational units.
-5) red_flags: Any potential red flags or suspicious aspects.
-6) rating: Trustworthiness on a scale from 1 (not trustworthy) to 5 (very trustworthy).
-Output only JSON with keys: summary (string), employees_count (integer), followers_count (integer), org_structure (list of strings), red_flags (list of strings), rating (integer).
-
-{combined_content}
-"""
-            analysis = llm_backend.generate_response(analysis_prompt.strip(), "")
-            self.finished.emit(analysis)
-        except Exception as e:
-            logging.error(f"InvestigateWorker error: {e}")
             self.error.emit(str(e))
 
 class JobOpsQtApplication(QApplication):
@@ -1759,7 +1741,7 @@ def main():
                 def __init__(self, callback):
                     super().__init__()
                     self.callback = callback
-                def nativeEventFilter(self, eventType, message):
+                def nativeEventFilter(self, _eventType, message):
                     msg = ctypes.wintypes.MSG.from_address(int(message.__int__()))
                     if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
                         QTimer.singleShot(0, self.callback)
@@ -1807,3 +1789,164 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# ---------------------------------------------------------------------------
+# LogViewerDialog (restored)
+# ---------------------------------------------------------------------------
+
+
+class LogViewerDialog(QDialog):
+    def __init__(self, log_file, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("JobOps Log Viewer")
+        self.setMinimumSize(900, 600)
+        layout = QVBoxLayout(self)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search logs...")
+        self.search_input.textChanged.connect(self.filter_logs)
+        layout.addWidget(self.search_input)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels([
+            "Timestamp",
+            "Level",
+            "Logger",
+            "Message",
+            "span_id",
+            "trace_id",
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.table)
+
+        self.log_file = log_file
+        self.all_logs: list[dict] = []
+        self.load_logs()
+
+    # -------------------------- Helpers ----------------------------------
+
+    def load_logs(self):
+        self.all_logs.clear()
+        self.table.setRowCount(0)
+        if not os.path.exists(self.log_file):
+            return
+        import json as _json
+        with open(self.log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    log = _json.loads(line)
+                except Exception:
+                    # Fallback: treat as plain text
+                    log = {
+                        "timestamp": "",
+                        "level": "",
+                        "logger": "",
+                        "message": line,
+                        "span_id": "",
+                        "trace_id": "",
+                    }
+                self.all_logs.append(log)
+        self.display_logs(self.all_logs)
+
+    def display_logs(self, logs):
+        self.table.setRowCount(len(logs))
+        from PySide6.QtGui import QColor
+        for row, log in enumerate(logs):
+            ts = log.get("timestamp", log.get("asctime", ""))
+            lvl = log.get("level", log.get("levelname", ""))
+            logger = log.get("logger", log.get("name", ""))
+            msg = log.get("message", "")
+            span_id = log.get("span_id", "")
+            trace_id = log.get("trace_id", "")
+            for col, val in enumerate([ts, lvl, logger, msg, span_id, trace_id]):
+                item = QTableWidgetItem(str(val))
+                if col == 1:  # Level column
+                    if lvl == "ERROR":
+                        item.setForeground(QColor("red"))
+                    elif lvl == "WARNING":
+                        item.setForeground(QColor("orange"))
+                    elif lvl == "INFO":
+                        item.setForeground(QColor("blue"))
+                    elif lvl == "DEBUG":
+                        item.setForeground(QColor("gray"))
+                self.table.setItem(row, col, item)
+
+    def filter_logs(self, text):
+        text = text.lower()
+        import json as _json
+        filtered = [log for log in self.all_logs if text in _json.dumps(log).lower()]
+        self.display_logs(filtered)
+
+
+# ---------------------------------------------------------------------------
+# InvestigateWorker (restored)
+# ---------------------------------------------------------------------------
+
+
+class InvestigateWorker(QThread):
+    """Background worker for company investigation"""
+
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, app_instance, website_url, linkedin_url=None):
+        super().__init__()
+        self.app_instance = app_instance
+        self.website_url = website_url
+        self.linkedin_url = linkedin_url
+
+    def run(self):
+        try:
+            logging.info(
+                "InvestigateWorker started for Website: %s, LinkedIn: %s",
+                self.website_url,
+                self.linkedin_url,
+            )
+            import asyncio
+            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+
+            # Configure crawler
+            browser_conf = BrowserConfig(headless=True, verbose=False)
+            run_conf = CrawlerRunConfig(cache_mode=CacheMode.ENABLED)
+
+            async def crawl_site(url):
+                async with AsyncWebCrawler(config=browser_conf) as crawler:
+                    return await crawler.arun(url=url, config=run_conf)
+
+            web_result = asyncio.run(crawl_site(self.website_url))
+            website_content = getattr(web_result.markdown, "raw_markdown", str(web_result.markdown))
+
+            linkedin_content = ""
+            if self.linkedin_url:
+                li_result = asyncio.run(crawl_site(self.linkedin_url))
+                linkedin_content = getattr(li_result.markdown, "raw_markdown", str(li_result.markdown))
+
+            combined_content = f"Website Content:\n{website_content}\n"
+            if linkedin_content:
+                combined_content += f"\nLinkedIn Content:\n{linkedin_content}\n"
+
+            llm_backend = getattr(self.app_instance.generator, "llm_backend", None)
+            if not llm_backend:
+                raise Exception("No LLM backend available for analysis.")
+
+            analysis_prompt = f"""
+You are an expert in corporate intelligence and security.
+Using the following information, provide:
+1) summary: Brief summary of the company.
+2) employees_count: Number of employees based on LinkedIn data.
+3) followers_count: Number of LinkedIn followers.
+4) org_structure: List the main departments or organizational units.
+5) red_flags: Any potential red flags or suspicious aspects.
+6) rating: Trustworthiness on a scale from 1 (not trustworthy) to 5 (very trustworthy).
+Output only JSON with keys: summary (string), employees_count (integer), followers_count (integer), org_structure (list of strings), red_flags (list of strings), rating (integer).
+
+{combined_content}
+"""
+            analysis = llm_backend.generate_response(analysis_prompt.strip(), "")
+            self.finished.emit(analysis)
+        except Exception as e:
+            logging.error("InvestigateWorker error: %s", e)
+            self.error.emit(str(e))
