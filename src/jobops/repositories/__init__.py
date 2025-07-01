@@ -5,6 +5,7 @@ from typing import List, Optional
 from jobops.models import Document, DocumentType
 import sqlite3
 import json
+from jobops.clients import embed_structured_data  # Automatic embedding helper
 
 class SQLiteDocumentRepository:
     def __init__(self, db_path: str, timeout: float = 30.0):
@@ -82,6 +83,14 @@ class SQLiteDocumentRepository:
             conn.commit()
     
     def save(self, document: Document) -> Optional[str]:
+        # ------------------------------------------------------------------
+        # Ensure each document has an embedding; compute lazily if absent.
+        # ------------------------------------------------------------------
+        if document.embedding is None and document.structured_content:
+            document.embedding = embed_structured_data(
+                document.structured_content, self._logger
+            )
+
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()
             c.execute(
