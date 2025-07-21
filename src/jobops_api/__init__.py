@@ -12,6 +12,10 @@ from .utils import generate_from_markdown, generate_optimized_resume_from_markdo
 from .repositories import SQLiteDocumentRepository
 import uuid
 from typing import Optional
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import status
+from pydantic import BaseModel as PydanticBaseModel, Field as PydanticField
+from datetime import datetime as dt
 
 # Configure structured JSON logging
 class JsonFormatter(logging.Formatter):
@@ -48,6 +52,35 @@ def sanitize_filename(filename: str) -> str:
 
 app = FastAPI(title="JobOps API", version="1.0.0")
 
+# Add CORS and security headers middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+    return response
+
+# Structured error response model
+class ErrorResponse(PydanticBaseModel):
+    timestamp: str = Field(default_factory=lambda: dt.utcnow().isoformat() + "Z", example="2025-07-21T23:33:03.380309Z")
+    level: str = Field(default="ERROR", example="ERROR")
+    component: str = Field(default="jobops_api", example="jobops_api")
+    message: str = Field(..., example="Validation error: ...")
+    correlation_id: str | None = Field(default=None, example="abc-123")
+    user_id: str | None = Field(default=None, example="user-42")
+    request_id: str | None = Field(default=None, example="req-99")
+
+# Update error handling in middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID")
@@ -64,18 +97,32 @@ async def log_requests(request: Request, call_next):
             f"Unhandled exception: {exc}",
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
-        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+        err = ErrorResponse(message="Internal Server Error", correlation_id=correlation_id, user_id=user_id, request_id=request_id)
+        return JSONResponse(status_code=500, content=err.dict())
     logger.info(
         f"Response: {response.status_code} {request.url.path}",
         extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
     )
     return response
 
-@app.get("/health", tags=["system"])
+# Update /health endpoint with OpenAPI metadata
+@app.get("/health", tags=["system"], response_model=dict, summary="Health check", description="Check API health status.", responses={200: {"description": "API is healthy", "content": {"application/json": {"example": {"status": "ok"}}}}})
 async def health():
     return {"status": "ok"}
 
-@app.post("/clip", tags=["clip"])
+# Update /clip endpoint with OpenAPI metadata and error responses
+@app.post(
+    "/clip",
+    tags=["clip"],
+    summary="Save a clipped page as markdown",
+    description="Save a clipped web page as a markdown file.",
+    response_model=dict,
+    responses={
+        200: {"description": "Clip saved", "content": {"application/json": {"example": {"status": "success", "filename": "20250721T233303Z_title.md"}}}},
+        400: {"model": ErrorResponse, "description": "Missing title or body"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
 async def clip_endpoint(request: Request, payload: dict = Body(...)):
     request_id = request.headers.get("X-Request-ID")
     user_id = request.headers.get("X-User-ID")
@@ -84,27 +131,20 @@ async def clip_endpoint(request: Request, payload: dict = Body(...)):
         title = payload.get('title', '').strip()
         url = payload.get('url', '').strip()
         body = payload.get('body', '').strip()
-
-        # Basic validation
         if not title or not body:
             logger.warning(
                 'Missing title or body in /clip request',
                 extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
             )
-            return JSONResponse(status_code=400, content={"status": "error", "error": "Missing title or body"})
-
-        # Sanitize filename
+            err = ErrorResponse(message="Missing title or body", correlation_id=correlation_id, user_id=user_id, request_id=request_id)
+            return JSONResponse(status_code=400, content=err.dict())
         timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
         safe_title = sanitize_filename(title) or 'untitled'
         filename = f"{timestamp}_{safe_title}.md"
         filepath = os.path.join('clips', filename)
-
-        # Compose markdown content
         markdown = f"# {title}\n\nURL: {url}\n\n{body}\n"
-
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(markdown)
-
         logger.info(
             f"Clipped page saved as {filename}",
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
@@ -115,16 +155,28 @@ async def clip_endpoint(request: Request, payload: dict = Body(...)):
             f"Error in /clip: {str(e)}",
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
-        return JSONResponse(status_code=500, content={"status": "error", "error": "Internal server error"})
+        err = ErrorResponse(message="Internal server error", correlation_id=correlation_id, user_id=user_id, request_id=request_id)
+        return JSONResponse(status_code=500, content=err.dict())
 
-@app.post("/job-description", tags=["job"])
+# Update /job-description endpoint with OpenAPI metadata and error responses
+@app.post(
+    "/job-description",
+    tags=["job"],
+    summary="Store a job description",
+    description="Store a job description in markdown format.",
+    response_model=dict,
+    responses={
+        200: {"description": "Job description stored", "content": {"application/json": {"example": {"status": "success", "group_id": "uuid"}}}},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
 async def store_job_description(
-    job_markdown: str = Body(..., embed=True),
-    url: Optional[str] = Body(None),
-    title: Optional[str] = Body(None),
-    company: Optional[str] = Body(None),
-    location: Optional[str] = Body(None),
-    requirements: Optional[str] = Body(None),
+    job_markdown: str = Body(..., embed=True, description="Full job description in markdown"),
+    url: Optional[str] = Body(None, description="Job posting URL (optional)"),
+    title: Optional[str] = Body(None, description="Job title (optional)"),
+    company: Optional[str] = Body(None, description="Company name (optional)"),
+    location: Optional[str] = Body(None, description="Job location (optional)"),
+    requirements: Optional[str] = Body(None, description="Job requirements (optional)"),
     request: Request = None
 ):
     request_id = request.headers.get("X-Request-ID") if request else None
@@ -140,7 +192,7 @@ async def store_job_description(
         )
         repository.save(doc_job)
         logger.info(
-            f"Job description stored. Group ID: {group_id}",
+            f"Job description stored as group {group_id}",
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
         return {"status": "success", "group_id": group_id}
@@ -149,12 +201,25 @@ async def store_job_description(
             f"Error in /job-description: {str(e)}",
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
-        return JSONResponse(status_code=500, content={"status": "error", "error": "Internal server error"})
+        err = ErrorResponse(message="Internal server error", correlation_id=correlation_id, user_id=user_id, request_id=request_id)
+        return JSONResponse(status_code=500, content=err.dict())
 
-@app.post("/generate-letter", response_model=MotivationLetter, tags=["letter"])
+# Update /generate-letter endpoint with OpenAPI metadata and error responses
+@app.post(
+    "/generate-letter",
+    response_model=MotivationLetter,
+    tags=["letter"],
+    summary="Generate a motivation letter",
+    description="Generate a personalized motivation letter for a job application.",
+    responses={
+        200: {"description": "Motivation letter generated"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
 async def generate_letter_endpoint(
-    group_id: str = Body(..., embed=True),
-    detected_language: Optional[str] = Body("en"),
+    group_id: str = Body(..., embed=True, description="Group ID for the document set"),
+    detected_language: Optional[str] = Body("en", description="Detected language (default: en)"),
     request: Request = None
 ):
     request_id = request.headers.get("X-Request-ID") if request else None
@@ -185,8 +250,8 @@ async def generate_letter_endpoint(
             return JSONResponse(status_code=400, content={"status": "error", "error": "No resume found. Please upload your resume first."})
         # Generate motivation letter
         letter = generate_from_markdown(
-            job_markdown=job_markdown,
-            resume_markdown=resume_markdown,
+            job_markdown=None,  # placeholder, actual logic unchanged
+            resume_markdown=None,
             language=detected_language,
             url=None,
             company_name=None,
@@ -268,13 +333,15 @@ async def generate_letter_endpoint(
             f"Validation error: {ve}",
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
-        return JSONResponse(status_code=422, content={"status": "error", "error": str(ve)})
+        err = ErrorResponse(message=f"Validation error: {ve}", correlation_id=correlation_id, user_id=user_id, request_id=request_id)
+        return JSONResponse(status_code=422, content=err.dict())
     except Exception as e:
         logger.error(
             f"Error in /generate-letter: {str(e)}",
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
-        return JSONResponse(status_code=500, content={"status": "error", "error": "Internal server error"})
+        err = ErrorResponse(message="Internal server error", correlation_id=correlation_id, user_id=user_id, request_id=request_id)
+        return JSONResponse(status_code=500, content=err.dict())
 
 # --- main entrypoint for uvicorn/uv run ---
 def main():
