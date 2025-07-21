@@ -1,0 +1,72 @@
+[project]
+name = "jobops_api"
+version = "0.0.1"
+description = "Een krachtige Python applicatie die automatisch gepersonaliseerde motivatiebrieven genereert op basis van job descriptions van URLs, gebruikmakend van verschillende AI backends."
+readme = "README.md"
+authors = [
+    { name = "Yilmaz Mustafa", email = "yilmaz@codesapien.net" }
+]
+
+requires-python = ">=3.11"
+dependencies = [
+    "requests",
+    "beautifulsoup4",
+    "openai",
+    "ollama",
+    "groq",
+    "pynput",         
+    "Pillow",         
+    "python-dotenv",  
+    "pystray",        
+    "Pillow",         
+    "pdfplumber",      
+    "plyer",
+    "reportlab",
+    "markdown2",
+    "fpdf",
+    "PySide6",        
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-instrumentation",
+    "opentelemetry-exporter-otlp",
+    "reportlab",
+    "pyperclip",
+    "markitdown[all]",
+    "python-json-logger",
+    "sentence-transformers",
+    "torch",
+    "numpy",
+    "matplotlib",
+    "langdetect",
+    "markdownify",
+    "scikit-learn",
+    "joblib",
+    "pandas",
+    "scipy",
+    "pyzmq",
+    "emoji",
+    "nltk",
+    "markdown",
+    "python-docx",
+    "crawl4ai"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+jobops_api = "jobops_api:main"
+
+[dependency-groups]
+dev = [
+    "autopep8",
+    "autoflake",
+    "black",
+    "pytest",
+    "vulture"
+] 
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["jobops_api"] 

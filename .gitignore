@@ -2,7 +2,6 @@
 __pycache__/
 *.py[oc]
 build/
-dist/
 wheels/
 *.egg-info
 
@@ -10,3 +9,9 @@ wheels/
 .venv
 .environments
 .jobops/
+
+# Node and build outputs
+src/jobops_clipper/node_modules/
+dist/jobops_clipper/
+dist/jobops_api/
+dist/jobops_tray/

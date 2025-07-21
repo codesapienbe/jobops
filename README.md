@@ -106,30 +106,51 @@ uv pip install -e .
 
 ---
 
-## Quick Start
+## Module Build Steps
 
-Launch the Tray Application:
+
+### 1. JobOps API (FastAPI Backend)
 
 ```bash
-jobops-toolbar
+cd src/jobops_api
+uv sync
+uv pip install -e .
+# Build wheel (optional, for distribution)
+uv build --out-dir ../../dist/jobops_api/
+# back to the parent dir
+cd -
 ```
 
-Once running, right-click the system tray icon to access:
+- Output: `dist/jobops_api/`
 
-- **Upload**: Upload resumes and documents
-- **Generate**: Create a new motivation letter
-- **Reply**: Draft reply letters
-- **Investigate**: View job details and scraped data
-- **Export**: Export letters and history to PDF or DOCX
-- **Logs**: Open application logs
+### 2. JobOps Tray (Tray Application)
+
+```bash
+cd src/jobops_tray
+uv sync
+uv pip install -e .
+# Build wheel (optional, for distribution)
+uv build --out-dir ../../dist/jobops_tray/
+# back to the parent dir
+cd -
+```
+
+- Output: `dist/jobops_tray/`
+
+### 3. JobOps Clipper (Chrome Extension)
+
+```bash
+cd src/jobops_clipper
+npm install
+npm run build
+# back to the parent dir
+cd -
+```
+
+- Output: `dist/jobops_clipper/` (at project root)
 
 ---
 
-## Usage
-
-Use `jobops --help` for CLI options or refer to the in-app documentation for detailed guidance.
-
----
 
 ## Configuration
 

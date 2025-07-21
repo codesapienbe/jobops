@@ -1,10 +1,10 @@
 [project]
-name = "jobops"
+name = "jobops_tray"
 version = "0.0.1"
 description = "Een krachtige Python applicatie die automatisch gepersonaliseerde motivatiebrieven genereert op basis van job descriptions van URLs, gebruikmakend van verschillende AI backends."
 readme = "README.md"
 authors = [
-    { name = "Yilmaz Mustafa", email = "ymus@tuta.io" }
+    { name = "Yilmaz Mustafa", email = "yilmaz@codesapien.net" }
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -23,8 +23,6 @@ dependencies = [
     "reportlab",
     "markdown2",
     "fpdf",
-    "fastapi",
-    "uvicorn",
     "PySide6",        
     "opentelemetry-api",
     "opentelemetry-sdk",
@@ -53,7 +51,7 @@ dependencies = [
 ]
 
 [project.scripts]
-jobops = "jobops:main"
+jobops_tray = "jobops_tray:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -65,7 +63,9 @@ dev = [
     "autoflake",
     "black",
     "pytest",
-    "vulture",
-    "pyinstaller",
-    "twine"
-]
+    "vulture"
+] 
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["jobops_tray"] 

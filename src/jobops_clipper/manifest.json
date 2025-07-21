@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "JobOps Clipper",
+  "version": "0.1.0",
+  "description": "Clip web pages and send to JobOps app.",
+  "permissions": ["scripting", "activeTab", "notifications"],
+  "host_permissions": ["http://localhost:5000/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Clip this page"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+} 

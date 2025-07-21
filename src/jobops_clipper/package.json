@@ -1,0 +1,14 @@
+{
+  "name": "jobops_clipper",
+  "version": "0.1.0",
+  "description": "Chrome extension to clip web pages and send to JobOps app.",
+  "scripts": {
+    "build": "node build.js",
+    "clean": "rm -rf ../../../dist/jobops_clipper"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "@types/chrome": "^0.0.258",
+    "esbuild": "^0.20.2"
+  }
+} 
