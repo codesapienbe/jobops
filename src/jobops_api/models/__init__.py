@@ -1,7 +1,8 @@
 from typing import Optional, List, Dict, Any
 # Use the v1-compatible Field helper to avoid mixing v2 FieldInfo objects with v1 BaseModel,
 # which caused SQLite binding errors (FieldInfo was being stored instead of actual values).
-from pydantic.v1 import BaseModel, Field, validator, root_validator
+from pydantic.v1 import BaseModel, Field, root_validator
+from pydantic import field_validator
 from uuid import uuid4
 from datetime import datetime
 from enum import Enum
@@ -84,6 +85,8 @@ class GenericDocument(BaseModel):
         return values
 
 class JobData(BaseModel):
+    """Structured job posting data for motivation letter generation."""
+    model_config = {'arbitrary_types_allowed': True}
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
     url: str
     title: str
@@ -106,8 +109,9 @@ class JobData(BaseModel):
     company_profile: Optional[str] = None
     job_responsibilities: Optional[str] = None
     candidate_profile: Optional[str] = None
-    
-    @validator('url')
+
+    @field_validator('url')
+    @classmethod
     def validate_url(cls, v):
         if not v.startswith(('http://', 'https://')):
             raise ValueError('URL must start with http:// or https://')
@@ -131,6 +135,8 @@ class Document(BaseModel):
     embedding: Optional[List[float]] = Field(None, description="Embedding vector for RAG usage")
 
 class MotivationLetter(BaseModel):
+    """Motivation letter generated for a specific job application."""
+    model_config = {'arbitrary_types_allowed': True}
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
     job_data: JobData
     resume: str  # Now just a markdown string
