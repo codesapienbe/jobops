@@ -7,9 +7,9 @@ import os
 import re
 from fastapi import Body
 from pydantic import ValidationError
-from models import MotivationLetter, Document, DocumentType
-from utils import generate_from_markdown, generate_optimized_resume_from_markdown, extract_skills, extract_skills_with_llm
-from repositories import SQLiteDocumentRepository
+from .models import MotivationLetter, Document, DocumentType
+from .utils import generate_from_markdown, generate_optimized_resume_from_markdown, extract_skills, extract_skills_with_llm
+from .repositories import SQLiteDocumentRepository
 import uuid
 from typing import Optional
 

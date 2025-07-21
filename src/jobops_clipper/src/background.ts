@@ -1,6 +1,10 @@
 /// <reference types="chrome" />
 import { BACKEND_API_BASE } from "./config";
 
+function log(...args: any[]) {
+  console.log("[JobOps Clipper]", ...args);
+}
+
 function showNotification(message: string, isError: boolean = false) {
   chrome.notifications?.create({
     type: "basic",
@@ -8,6 +12,54 @@ function showNotification(message: string, isError: boolean = false) {
     title: "JobOps Clipper",
     message: message,
     priority: 2
+  });
+}
+
+async function tryClipPage(tabId: number, attempt = 1, maxAttempts = 3): Promise<any> {
+  return new Promise((resolve, reject) => {
+    log(`Sending clip_page message to tab ${tabId}, attempt ${attempt}`);
+    let responded = false;
+    chrome.tabs.sendMessage(tabId, { action: "clip_page" }, (response) => {
+      responded = true;
+      if (chrome.runtime.lastError) {
+        log("chrome.runtime.lastError:", chrome.runtime.lastError);
+        if (attempt < maxAttempts) {
+          setTimeout(() => {
+            tryClipPage(tabId, attempt + 1, maxAttempts).then(resolve).catch(reject);
+          }, 500);
+        } else {
+          showNotification("Failed to extract content from page after multiple attempts.", true);
+          reject(chrome.runtime.lastError);
+        }
+        return;
+      }
+      if (!response || response.error || !response.title || !response.body) {
+        log("Malformed or error response from content script:", response);
+        if (attempt < maxAttempts) {
+          setTimeout(() => {
+            tryClipPage(tabId, attempt + 1, maxAttempts).then(resolve).catch(reject);
+          }, 500);
+        } else {
+          showNotification("No content extracted or malformed response after multiple attempts.", true);
+          reject(response && response.error ? response.error : "Malformed response");
+        }
+        return;
+      }
+      log("Successfully extracted content:", { title: response.title, url: response.url, bodyLength: response.body.length });
+      resolve(response);
+    });
+    // Fallback: if no response after 2 seconds, treat as failure
+    setTimeout(() => {
+      if (!responded) {
+        log("No response from content script after timeout.");
+        if (attempt < maxAttempts) {
+          tryClipPage(tabId, attempt + 1, maxAttempts).then(resolve).catch(reject);
+        } else {
+          showNotification("Content script did not respond after multiple attempts.", true);
+          reject("Timeout waiting for content script response");
+        }
+      }
+    }, 2000);
   });
 }
 
@@ -42,17 +94,7 @@ try {
     chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
       if (tab.id !== undefined) {
         try {
-          chrome.tabs.sendMessage(tab.id, { action: "clip_page" }, async (response: { title?: string; url?: string; body?: string } | undefined) => {
-            if (chrome.runtime.lastError) {
-              console.error("chrome.runtime.lastError:", chrome.runtime.lastError);
-              showNotification("Failed to extract content from page.", true);
-              return;
-            }
-            if (!response || typeof response !== 'object' || !response.title || !response.body) {
-              console.error("Malformed response from content script:", response);
-              showNotification("No content extracted or malformed response.", true);
-              return;
-            }
+          tryClipPage(tab.id).then(async (response) => {
             // Step 1: Store job description
             try {
               const jobDescRes = await fetch(`${BACKEND_API_BASE}/job-description`, {
@@ -70,7 +112,7 @@ try {
                   const err = await jobDescRes.json();
                   errMsg = err.error || errMsg;
                 } catch (err) {
-                  console.error("Error parsing backend error response:", err);
+                  log("Error parsing backend error response:", err);
                 }
                 showNotification(`Error storing job: ${errMsg}`, true);
                 return;
@@ -94,23 +136,25 @@ try {
                   const err = await genLetterRes.json();
                   errMsg = err.error || errMsg;
                 } catch (err) {
-                  console.error("Error parsing backend error response:", err);
+                  log("Error parsing backend error response:", err);
                 }
                 showNotification(`Error generating letter: ${errMsg}`, true);
                 return;
               }
               showNotification("Motivation letter generated successfully!");
             } catch (e) {
-              console.error("Fetch to backend failed:", e);
+              log("Fetch to backend failed:", e);
               showNotification("Failed to communicate with backend.", true);
             }
+          }).catch((err) => {
+            log("Final failure after retries:", err);
           });
         } catch (e) {
-          console.error("Unexpected error in onClicked handler:", e);
+          log("Unexpected error in onClicked handler:", e);
           showNotification("Unexpected error occurred.", true);
         }
       } else {
-        console.error("No active tab found.");
+        log("No active tab found.");
         showNotification("No active tab found.", true);
       }
     });

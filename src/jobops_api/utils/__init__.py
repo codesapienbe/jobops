@@ -1,7 +1,7 @@
-from jobops.models import MotivationLetter, GenericDocument, DocumentType, JobData
+from ..models import MotivationLetter, GenericDocument, DocumentType, JobData
 import logging
 import json as _json
-from jobops.clients import BaseLLMBackend
+from ..clients import BaseLLMBackend
 import re
 import os
 import base64
@@ -24,6 +24,17 @@ import pyperclip
 from urllib.parse import urlparse
 import matplotlib.pyplot as plt
 import numpy as np
+
+_default_backend = None
+
+def set_default_backend(backend):
+    global _default_backend
+    _default_backend = backend
+
+def get_default_backend():
+    if _default_backend is None:
+        raise RuntimeError("No default backend configured for letter generation.")
+    return _default_backend
 
 def build_motivation_letter_prompt(
     applicant_name: str,
@@ -228,7 +239,7 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
 """
         # Generate the core letter content
         content_body = self.backend.generate_response(prompt, "")
-        from jobops.models import MotivationLetter, JobData
+        from ..models import MotivationLetter, JobData
         import datetime
         from jobops.utils import get_personal_info_footer
 
@@ -735,7 +746,7 @@ def clean_job_data_dict(d: dict) -> dict:
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
-iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
+iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3Njape.org5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
 
 class ResourceManager:
     
@@ -1060,3 +1071,26 @@ def compute_match_score_and_chart(resume_text: str, job_description: str, job_re
         'summary': summary,
         'chart_path': chart_path
     }
+
+# Expose these for import in jobops_api/__init__.py
+
+def generate_from_markdown(*args, **kwargs):
+    backend = get_default_backend()
+    generator = ConcreteLetterGenerator(backend)
+    return generator.generate_from_markdown(*args, **kwargs)
+
+def generate_optimized_resume_from_markdown(*args, **kwargs):
+    backend = get_default_backend()
+    generator = ConcreteLetterGenerator(backend)
+    return generator.generate_optimized_resume_from_markdown(*args, **kwargs)
+
+from . import extract_skills, extract_skills_with_llm
+
+__all__ = [
+    "set_default_backend",
+    "get_default_backend",
+    "generate_from_markdown",
+    "generate_optimized_resume_from_markdown",
+    "extract_skills",
+    "extract_skills_with_llm",
+]

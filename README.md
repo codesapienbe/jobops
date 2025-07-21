@@ -109,6 +109,17 @@ uv pip install -e .
 ## Module Build Steps
 
 
+### 0. Jobops CLI (Parent project)
+
+```bash
+uv sync
+uv pip install -e .
+# Build wheel (optional, for distribution)
+uv build --out-dir ../../dist/jobops_cli/
+# back to the parent dir
+```
+
+
 ### 1. JobOps API (FastAPI Backend)
 
 ```bash

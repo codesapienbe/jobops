@@ -1768,24 +1768,36 @@ def main():
     log_message = "JobOps Qt application started successfully"
     logging.info(log_message)
     
-    # Start the application event loop
+    # Write PID file for monitoring
+    config_dir = os.path.expanduser("~/.jobops")
+    os.makedirs(config_dir, exist_ok=True)
+    pid_file = os.path.join(config_dir, "jobops_tray_pid.txt")
+    with open(pid_file, "w") as f:
+        f.write(str(os.getpid()))
     try:
-        sys.exit(app.exec())
-    except KeyboardInterrupt:
-        log_message = "Application interrupted by user"
-        logging.info(log_message)
-        sys.exit(0)
-    except Exception as e:
-        log_message = f"Application error: {e}"
-        logging.error(log_message)
-        
-        # Show error dialog
-        QMessageBox.critical(
-            None,
-            "JobOps Error",
-            f"An unexpected error occurred:\n\n{str(e)}\n\nPlease check the log file for details."
-        )
-        sys.exit(1)
+        # Start the application event loop
+        try:
+            sys.exit(app.exec())
+        except KeyboardInterrupt:
+            log_message = "Application interrupted by user"
+            logging.info(log_message)
+            sys.exit(0)
+        except Exception as e:
+            log_message = f"Application error: {e}"
+            logging.error(log_message)
+            # Show error dialog
+            QMessageBox.critical(
+                None,
+                "JobOps Error",
+                f"An unexpected error occurred:\n\n{str(e)}\n\nPlease check the log file for details."
+            )
+            sys.exit(1)
+    finally:
+        # Remove PID file on exit
+        try:
+            os.remove(pid_file)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()

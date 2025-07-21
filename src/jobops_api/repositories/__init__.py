@@ -2,10 +2,10 @@ from datetime import datetime
 import logging  
 from pathlib import Path
 from typing import List, Optional
-from jobops.models import Document, DocumentType
+from ..models import Document, DocumentType
 import sqlite3
 import json
-from jobops.clients import embed_structured_data  # Automatic embedding helper
+from ..clients import embed_structured_data  # Automatic embedding helper
 
 class SQLiteDocumentRepository:
     def __init__(self, db_path: str, timeout: float = 30.0):

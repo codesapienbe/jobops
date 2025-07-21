@@ -1,5 +1,5 @@
 [project]
-name = "jobops_api"
+name = "jobops"
 version = "0.0.1"
 description = "Een krachtige Python applicatie die automatisch gepersonaliseerde motivatiebrieven genereert op basis van job descriptions van URLs, gebruikmakend van verschillende AI backends."
 readme = "README.md"
@@ -48,15 +48,20 @@ dependencies = [
     "nltk",
     "markdown",
     "python-docx",
-    "crawl4ai"
+    "crawl4ai",
+    "fastapi",
+    "uvicorn",
+    "twine",
+    "typer",
+    "typing-extensions",
+    "kivy",
+    "psutil",
+    "rich"
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[project.scripts]
-jobops_api = "jobops_api:main"
 
 [dependency-groups]
 dev = [
@@ -67,6 +72,13 @@ dev = [
     "vulture"
 ] 
 
+[project.scripts]
+jobops = "jobops_cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["jobops_api"] 
+packages = [
+    "src/jobops_cli",
+    "src/jobops_api",
+    "src/jobops_tray"
+]
+
