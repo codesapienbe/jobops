@@ -6,9 +6,9 @@
 
   ../../dist/extension/background.js  5.7kb
 
-⚡ Done in 5ms
+⚡ Done in 7ms
 
-  ../../dist/extension/content.js  2.9kb
+  ../../dist/extension/content.js  3.2kb
 
 ⚡ Done in 1ms
 
@@ -16,6 +16,6 @@
 
 ⚡ Done in 1ms
 
-  ../../dist/extension/popup.js  1.8kb
+  ../../dist/extension/popup.js  2.3kb
 
 ⚡ Done in 1ms

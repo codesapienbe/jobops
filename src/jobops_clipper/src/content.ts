@@ -6,10 +6,13 @@ chrome.runtime.onMessage.addListener((msg: { action: string }, sender: chrome.ru
   console.log("[JobOps Clipper] Received message:", msg);
   if (msg.action === "clip_page") {
     try {
-      const title = document.title;
+      const title = document.title || "";
       const url = window.location.href;
-      // Extract visible text as a placeholder for markdown
-      const body = document.body.innerText;
+      let body = document.body?.innerText || "";
+      if (!body) {
+        // Try textContent as a fallback
+        body = document.body?.textContent || "";
+      }
       // Meta tags
       const metaDescription = document.querySelector('meta[name="description"]')?.getAttribute('content') || "";
       const metaKeywords = document.querySelector('meta[name="keywords"]')?.getAttribute('content') || "";
@@ -38,13 +41,15 @@ chrome.runtime.onMessage.addListener((msg: { action: string }, sender: chrome.ru
       } catch {}
       // Full HTML (optional, for advanced use)
       // const html = document.documentElement.outerHTML;
-      if (!title || !body) {
+      if (!title && !body) {
         console.warn("[JobOps Clipper] No title or body extracted.");
         sendResponse({ error: "No content extracted" });
         return;
       }
-      console.log("[JobOps Clipper] Extracted content:", { title, url, bodyLength: body.length, metaDescription, metaKeywords, ogTitle, ogDescription, ogImage, ogType, ogSiteName, canonical, headings, images, selectedText });
-      sendResponse({
+      if (!title || !body) {
+        console.warn(`[JobOps Clipper] Only partial content extracted. Title: '${title}', Body length: ${body.length}`);
+      }
+      const jobDataRaw = {
         title,
         url,
         body,
@@ -58,9 +63,19 @@ chrome.runtime.onMessage.addListener((msg: { action: string }, sender: chrome.ru
         canonical,
         headings,
         images,
-        selectedText
-        // html // Uncomment if you want to include full HTML
-      });
+        selectedText,
+        created_at: new Date().toISOString(),
+        jobops_action: 'generate'
+      };
+      // Remove empty fields
+      const jobData = Object.fromEntries(
+        Object.entries(jobDataRaw).filter(([_, v]) =>
+          Array.isArray(v) ? v.length > 0 : v && String(v).trim() !== ""
+        )
+      );
+      // Only send jobData to popup for preview, do NOT copy to clipboard here
+      chrome.runtime.sendMessage({ action: "show_preview", jobData });
+      // Clipboard write removed from content script
     } catch (e) {
       console.error("[JobOps Clipper] Error extracting content:", e);
       sendResponse({ error: "Exception during extraction: " + (e instanceof Error ? e.message : String(e)) });

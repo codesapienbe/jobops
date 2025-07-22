@@ -41,9 +41,13 @@ def build_motivation_letter_prompt(
     candidate_background: str = None,
     additional_sections: str = None,
     language: str = "en",
+    url: str = None,
+    location: str = None,
+    description: str = None,
+    created_at: str = None,
 ) -> str:
     """
-    Build a robust, standards-compliant, European-style motivation letter prompt for the LLM, with improved formatting, adaptability, and fallback handling.
+    Build a robust, standards-compliant, European-style motivation letter prompt for the LLM, with improved formatting, adaptability, and fallback handling. Includes all available metadata from the web page.
     """
     contact_line = f"{applicant_name} | {applicant_phone} | {applicant_email}"
     if applicant_linkedin:
@@ -52,7 +56,16 @@ def build_motivation_letter_prompt(
     # Compose the improved prompt
     prompt = f"""
 You are an expert in writing formal European motivation letters for job applications.
-Write this letter in {language}. 
+Write this letter in {language}.
+
+Here is all the information collected from the job posting web page:
+- URL: {url or '[Not provided]'}
+- Company: {company_name or '[Not provided]'}
+- Job Title: {job_title or '[Not provided]'}
+- Location: {location or '[Not provided]'}
+- Description: {description or '[Not provided]'}
+- Requirements: {requirements or '[Not provided]'}
+- Date/Time Collected: {created_at or date or '[Not provided]'}
 
 Instructions:
 - Output only the motivation letter, with no extra explanations, comments, or metadata.
@@ -195,6 +208,9 @@ class ConcreteLetterGenerator:
         company_name: str = "",
         job_title: str = "",
         location: str = "",
+        description: str = "",
+        requirements: str = "",
+        created_at: str = "",
     ) -> MotivationLetter:
         self._logger.info("Generating motivation letter from raw markdowns.")
         # Truncation logic
@@ -209,6 +225,16 @@ class ConcreteLetterGenerator:
         prompt = f"""
 You are an expert in writing formal European motivation letters for job applications.
 Write a concise, inspiring motivation letter in {language}.
+
+Here is all the information collected from the job posting web page:
+
+- URL: {url}
+- Company: {company_name}
+- Job Title: {job_title}
+- Location: {location}
+- Description: {description}
+- Requirements: {requirements}
+- Date/Time Collected: {created_at}
 
 You are given two documents:
 
@@ -232,18 +258,18 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
         import datetime
         from ..utils import get_personal_info_footer
 
-        # Build a minimal JobData object for compatibility using provided company, title, location
+        # Build a minimal JobData object for compatibility using provided company, title, location, etc.
         job_data = JobData(
             url=url or "http://unknown",
             title=job_title,
             company=company_name,
-            description=job_markdown or "",
-            requirements="",
+            description=description or job_markdown or "",
+            requirements=requirements or "",
             location=location or None,
         )
 
         # Prepare header with date, company, job title, location, and source
-        date_time_str = datetime.datetime.now().strftime("%B %d, %Y %H:%M")
+        date_time_str = created_at or datetime.datetime.now().strftime("%B %d, %Y %H:%M")
         personal_footer = get_personal_info_footer()
         header = (
             "# Motivation\n\n"
@@ -922,8 +948,14 @@ class ClipboardJobopsTriggerWatchdog(QObject):
                 clipboard_content = pyperclip.paste()
                 if clipboard_content != self._last_clipboard:
                     self._last_clipboard = clipboard_content
-                    if clipboard_content.startswith("jobops://"):
-                        self.jobops_clip_detected.emit(clipboard_content)
+                    # Check for jobops_action in JSON
+                    try:
+                        import json
+                        data = json.loads(clipboard_content)
+                        if isinstance(data, dict) and data.get('jobops_action') == 'generate':
+                            self.jobops_clip_detected.emit(clipboard_content)
+                    except Exception:
+                        pass
             except Exception as e:
                 logging.warning(f'Clipboard jobops trigger error: {e}')
             time.sleep(self.poll_interval)

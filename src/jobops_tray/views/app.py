@@ -66,36 +66,51 @@ class JobInputDialog(QDialog):
     """Job input dialog: user provides URL (as a link) and markdown manually."""
     job_data_ready = Signal(object)
     
-    def __init__(self, app_instance=None):
+    def __init__(self, app_instance=None, prefill_data=None):
         super().__init__()
         # Ensure dialog appears on top when opened
         self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         self.app_instance = app_instance
         self.setWindowTitle("Generate Motivation Letter")
-        self.setFixedSize(700, 400)
+        self.setFixedSize(700, 500)
         self.setWindowIcon(ResourceManager.create_app_icon())
-        # Raise and activate to bring to front
         self.raise_()
         self.activateWindow()
         self._setup_ui()
         self._last_crawled_url = None
         self._last_crawled_markdown = None
-        # Auto-fill URL from clipboard if an HTTP/HTTPS URL is present
+        self.created_at = None
+        # Always try to parse clipboard as JSON for autofill
         try:
             clipboard = QApplication.clipboard()
             clip_text = clipboard.text().strip()
-            if re.match(r"^https?://", clip_text):
+            import json
+            clip_data = None
+            if clip_text:
+                try:
+                    clip_data = json.loads(clip_text)
+                except Exception:
+                    clip_data = None
+            if clip_data and isinstance(clip_data, dict) and (clip_data.get('job_markdown') or clip_data.get('markdown')):
+                self.url_input.setText(clip_data.get('url', ''))
+                self.title_input.setText(clip_data.get('title', ''))
+                self.company_input.setText(clip_data.get('company', ''))
+                self.location_input.setText(clip_data.get('location', ''))
+                self.description_input.setText(clip_data.get('description', ''))
+                self.requirements_input.setText(clip_data.get('requirements', ''))
+                self.markdown_edit.setPlainText(clip_data.get('job_markdown', clip_data.get('markdown', '')))
+                self.created_at = clip_data.get('created_at', None)
+                self.generate_btn.setFocus()
+            elif re.match(r"^https?://", clip_text):
                 self.url_input.setText(clip_text)
-                # Trigger the URL paste handler to extract markdown automatically
                 self._on_url_pasted()
-                # Move focus to Generate button so Enter key will activate it
                 self.generate_btn.setFocus()
         except Exception as e:
-            logging.warning(f"Failed to retrieve clipboard URL: {e}")
+            logging.warning(f"Failed to retrieve or parse clipboard content: {e}")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        # URL input (just stored as a link)
+        # URL input
         url_layout = QHBoxLayout()
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("Paste job URL here (optional, for reference)...")
@@ -125,12 +140,27 @@ class JobInputDialog(QDialog):
         location_layout.addWidget(self.location_input)
         layout.addLayout(location_layout)
 
+        # Description input (new)
+        description_layout = QHBoxLayout()
+        self.description_input = QLineEdit()
+        self.description_input.setPlaceholderText("Enter short description or meta description (optional)")
+        description_layout.addWidget(QLabel("Description:"))
+        description_layout.addWidget(self.description_input)
+        layout.addLayout(description_layout)
+
+        # Requirements input (new)
+        requirements_layout = QHBoxLayout()
+        self.requirements_input = QLineEdit()
+        self.requirements_input.setPlaceholderText("Enter requirements (optional)")
+        requirements_layout.addWidget(QLabel("Requirements:"))
+        requirements_layout.addWidget(self.requirements_input)
+        layout.addLayout(requirements_layout)
+
         # Markdown job description (user-provided)
         layout.addWidget(QLabel("Job Description (Markdown, required):"))
         self.markdown_edit = QTextEdit()
         self.markdown_edit.setPlaceholderText("Paste or write the job description here in markdown format...")
         self.markdown_edit.setMinimumHeight(300)
-        # Auto-fill company, title, location when job markdown is pasted
         self.markdown_edit.textChanged.connect(self._on_markdown_changed)
         layout.addWidget(self.markdown_edit)
         # Buttons
@@ -205,6 +235,8 @@ class JobInputDialog(QDialog):
         company = self.company_input.text().strip()
         title = self.title_input.text().strip()
         location = self.location_input.text().strip()
+        description = self.description_input.text().strip()
+        requirements = self.requirements_input.text().strip()
         if not markdown:
             QMessageBox.warning(self, "Error", "Job description in markdown is required.")
             return
@@ -214,13 +246,17 @@ class JobInputDialog(QDialog):
             detected_language = detect(markdown)
         except Exception:
             detected_language = "en"
+        from datetime import datetime
         job_input = JobInput(
             url=url or None,
-            job_markdown=markdown,
-            detected_language=detected_language,
-            company=company or None,
             title=title or None,
+            company=company or None,
             location=location or None,
+            description=description or None,
+            job_markdown=markdown,
+            requirements=requirements or None,
+            detected_language=detected_language,
+            created_at=self.created_at or datetime.now()
         )
         self.job_data_ready.emit(job_input)
         self.accept()
@@ -1481,21 +1517,23 @@ class JobOpsQtApplication(QApplication):
         )
 
     def on_jobops_clip_detected(self, clipboard_content):
-        # Parse the content: first line is jobops://<job-title>, rest is markdown
-        lines = clipboard_content.split('\n', 2)
-        job_title = lines[0][len("jobops://"):]
-        job_markdown = lines[2] if len(lines) > 2 else ""
-        # Show notification
-        if hasattr(self, 'system_tray') and self.system_tray:
-            self.system_tray.showMessage(
-                "JobOps",
-                f"Clipboard trigger detected for job: {job_title}\nOpening generate window...",
-                QSystemTrayIcon.MessageIcon.Information,
-                3000
-            )
-        dialog = JobInputDialog(self)
-        dialog.title_input.setText(job_title)
-        dialog.markdown_edit.setPlainText(job_markdown)
+        # Always try to parse clipboard as JSON for autofill
+        import json
+        try:
+            clip_data = json.loads(clipboard_content)
+            if isinstance(clip_data, dict) and (clip_data.get('job_markdown') or clip_data.get('markdown')):
+                dialog = JobInputDialog(self, prefill_data=clip_data)
+            else:
+                raise ValueError('Not a valid job JSON')
+        except Exception:
+            # Legacy: first line is jobops://<job-title>, rest is markdown
+            lines = clipboard_content.split('\n', 2)
+            job_title = lines[0][len("jobops://"):]
+            job_markdown = lines[2] if len(lines) > 2 else ""
+            dialog = JobInputDialog(self, prefill_data={
+                'title': job_title,
+                'job_markdown': job_markdown
+            })
         dialog.exec()
 
 def main():

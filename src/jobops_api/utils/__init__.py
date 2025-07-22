@@ -214,6 +214,9 @@ class ConcreteLetterGenerator:
         company_name: str = "",
         job_title: str = "",
         location: str = "",
+        description: str = "",
+        requirements: str = "",
+        created_at: str = "",
     ) -> MotivationLetter:
         self._logger.info("Generating motivation letter from raw markdowns.")
         # Truncation logic
@@ -228,6 +231,16 @@ class ConcreteLetterGenerator:
         prompt = f"""
 You are an expert in writing formal European motivation letters for job applications.
 Write a concise, inspiring motivation letter in {language}.
+
+Here is all the information collected from the job posting web page:
+
+- URL: {url}
+- Company: {company_name}
+- Job Title: {job_title}
+- Location: {location}
+- Description: {description}
+- Requirements: {requirements}
+- Date/Time Collected: {created_at}
 
 You are given two documents:
 
@@ -251,18 +264,18 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
         import datetime
         from . import get_personal_info_footer
 
-        # Build a minimal JobData object for compatibility using provided company, title, location
+        # Build a minimal JobData object for compatibility using provided company, title, location, etc.
         job_data = JobData(
             url=url or "http://unknown",
             title=job_title,
             company=company_name,
-            description=job_markdown or "",
-            requirements="",
+            description=description or job_markdown or "",
+            requirements=requirements or "",
             location=location or None,
         )
 
         # Prepare header with date, company, job title, location, and source
-        date_time_str = datetime.datetime.now().strftime("%B %d, %Y %H:%M")
+        date_time_str = created_at or datetime.datetime.now().strftime("%B %d, %Y %H:%M")
         personal_footer = get_personal_info_footer()
         header = (
             "# Motivation\n\n"

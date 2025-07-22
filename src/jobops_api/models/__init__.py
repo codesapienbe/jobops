@@ -190,12 +190,14 @@ class JobInput(BaseModel):
     """Data collected from the *Generate Letter / Report* dialog."""
 
     url: str | None = Field(None, description="Job posting URL (optional)")
+    title: str | None = Field(None, description="Job title or page title")
+    company: str | None = Field(None, description="Company name (if available)")
+    location: str | None = Field(None, description="Job location (if available)")
+    description: str | None = Field(None, description="Short summary or meta description")
     job_markdown: str = Field(..., description="Full job description in markdown")
-    detected_language: str = "en"
-    company: str | None = None
-    title: str | None = None
-    location: str | None = None
-    requirements: str | None = None
+    requirements: str | None = Field(None, description="Job requirements (if available)")
+    detected_language: str = Field("en", description="Detected or user-selected language")
+    created_at: datetime | None = Field(None, description="Clip creation date/time (optional)")
 
 
 class SkillsExtractionResult(BaseModel):
