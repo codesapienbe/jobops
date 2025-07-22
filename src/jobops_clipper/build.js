@@ -20,4 +20,8 @@ fs.copyFileSync(path.join(__dirname, 'src', 'icon.png'), path.join(outDir, 'icon
 // Bundle scripts with esbuild
 execSync(`esbuild src/background.ts --bundle --platform=browser --outfile=${outDir}/background.js --format=iife`, { stdio: 'inherit' });
 execSync(`esbuild src/content.ts --bundle --platform=browser --outfile=${outDir}/content.js --format=iife`, { stdio: 'inherit' });
-execSync(`esbuild src/config.ts --bundle --platform=browser --outfile=${outDir}/config.js --format=iife`, { stdio: 'inherit' }); 
+execSync(`esbuild src/config.ts --bundle --platform=browser --outfile=${outDir}/config.js --format=iife`, { stdio: 'inherit' });
+execSync(`esbuild src/popup.ts --bundle --platform=browser --outfile=${outDir}/popup.js --format=iife`, { stdio: 'inherit' });
+// Copy popup.html and popup.css to dist
+fs.copyFileSync(path.join(__dirname, 'src', 'popup.html'), path.join(outDir, 'popup.html'));
+fs.copyFileSync(path.join(__dirname, 'src', 'popup.css'), path.join(outDir, 'popup.css')); 

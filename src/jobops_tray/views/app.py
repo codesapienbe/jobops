@@ -10,13 +10,15 @@ from PIL import Image
 from io import BytesIO
 from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
-from jobops.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
+from ..utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
 import uuid
 import subprocess
-from jobops.models import Document, DocumentType, JobInput
-from jobops.models import Solicitation
+from ..models import Document, DocumentType, JobInput
+from ..models import Solicitation
 from markdownify import markdownify
-from jobops.clients import embed_structured_data
+from ..clients import embed_structured_data
+import requests
+from dotenv import load_dotenv
 
 
 # Qt imports
@@ -31,12 +33,11 @@ except ImportError:
     sys.exit(1)
 
 
-from dotenv import load_dotenv
-from jobops.models import DocumentType
+from ..models import DocumentType
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
-iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="
+iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3Njape.org5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="
 """
 
 try:
@@ -230,7 +231,7 @@ class JobInputDialog(QDialog):
             return
         try:
             from bs4 import BeautifulSoup
-            from jobops.scrapers import WebJobScraper
+            from ..scrapers import WebJobScraper
             llm = getattr(self.app_instance.generator, 'llm_backend', None)
             if not llm:
                 return
@@ -408,25 +409,22 @@ class SolicitationParseWorker(QThread):
 
     def run(self):
         try:
-            # Use the LLM backend for extraction
-            generator = getattr(self.app_instance, 'generator', None)
-            if generator is None:
-                raise Exception('Generator not available')
-            backend = getattr(generator, 'llm_backend', generator)
-            # Instruct LLM to output only a valid JSON object
-            prompt = (
-                'You are a JSON extractor. '  
-                'Return ONLY a valid JSON object with keys: datum, bedrijf, functie, status, resultaat, locatie, platform. '  
-                'Do NOT include any additional text or markdown.'  
-                f'\n\nReport Text:\n{self.text}'
-            )
-            reply = backend.generate_response(prompt)
-            raw = reply.strip()
-            # Extract JSON substring between first { and last }
-            start = raw.find('{')
-            end = raw.rfind('}')
-            json_str = raw[start:end+1] if start != -1 and end != -1 else raw
-            data = json.loads(json_str)
+            # ① Load API base URL from .env in project root
+            from dotenv import load_dotenv
+            import os
+            import requests
+            load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
+            api_base_url = os.getenv("JOBOPS_API_BASE_URL", "http://localhost:8000")
+
+            # ② POST /extract-document to extract structured data
+            payload = {
+                "raw_content": self.text,
+                "doc_type": "OTHER"
+            }
+            resp = requests.post(f"{api_base_url}/extract-document", json=payload, timeout=120)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to extract document: {resp.text}")
+            data = resp.json()
             self.finished.emit(data)
         except Exception as e:
             # Emit error for UI to display
@@ -1151,248 +1149,70 @@ class UploadWorker(QThread):
     
     def run(self):
         try:
-            import os
-            import shutil
-            from datetime import datetime
-            from markitdown import MarkItDown
-            from openai import OpenAI
-            from jobops.models import Document, DocumentType
-            repository = getattr(self.app_instance, 'repository', None)
-            span_id = get_span_id()
-            logging.info(f"UploadWorker started for file: {self.file_path}, doc_type: {self.doc_type}", extra={"span_id": span_id})
-            if repository is None:
-                logging.error("Application is missing repository.", extra={"span_id": span_id})
-                raise Exception("Application is missing repository.")
+            # ① Load API base URL from .env in project root
+            load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
+            api_base_url = os.getenv("JOBOPS_API_BASE_URL", "http://localhost:8000")
 
-            # Copy uploaded file to ~/.jobops/resumes/
-            resumes_dir = os.path.expanduser("~/.jobops/resumes")
-            os.makedirs(resumes_dir, exist_ok=True)
-            dest_path = os.path.join(resumes_dir, os.path.basename(self.file_path))
-            shutil.copy2(self.file_path, dest_path)
-            logging.info(f"Copied file to: {dest_path}", extra={"span_id": span_id})
-
-            # Use dest_path as the filename for the Document
-            filename_for_db = dest_path
-
-            # Determine file extension
-            _, ext = os.path.splitext(self.file_path)
-            ext = ext.lower()
-
-            if ext == ".md":
-                # If markdown, just read the content
-                with open(self.file_path, "r", encoding="utf-8") as f:
-                    structured_content = f.read()
-                raw_content = structured_content
-                logging.info(f"Markdown file detected, skipping MarkItDown conversion.", extra={"span_id": span_id})
-            else:
-                # Get the LLM backend and model
-                generator = getattr(self.app_instance, 'generator', None)
-                llm_backend = getattr(generator, 'llm_backend', None)
-                logging.info(f"Detected backend: {llm_backend}", extra={"span_id": span_id})
-                if not llm_backend:
-                    logging.error("No LLM backend available for MarkItDown.", extra={"span_id": span_id})
-                    raise Exception("No LLM backend available for MarkItDown.")
-                backend_name = getattr(llm_backend, 'name', '').lower()
-                llm_model = getattr(llm_backend, 'model', 'gpt-4o')
-                logging.info(f"Backend name: {backend_name}, model: {llm_model}", extra={"span_id": span_id})
-                if backend_name in ("openai", "groq"):
-                    llm_client = llm_backend.client
-                    logging.info(f"Using OpenAI/Groq client: {type(llm_client)}", extra={"span_id": span_id})
-                elif backend_name == "ollama":
-                    base_url = getattr(llm_backend, 'base_url', 'http://localhost:11434')
-                    logging.info(f"Using Ollama backend, base_url: {base_url}", extra={"span_id": span_id})
-                    llm_client = OpenAI(base_url=f"{base_url}/v1", api_key="ollama")
-                else:
-                    logging.error(f"MarkItDown integration is not yet supported for backend: {backend_name}", extra={"span_id": span_id})
-                    raise Exception(f"MarkItDown integration is not yet supported for backend: {backend_name}")
-                md = MarkItDown(llm_client=llm_client, llm_model=llm_model)
-                logging.info(f"Starting MarkItDown extraction for file: {self.file_path}", extra={"span_id": span_id})
-                try:
-                    result = md.convert(self.file_path)
-                except Exception as e:
-                    # Check for MissingDependencyException in the error message
-                    if "MissingDependencyException" in str(e) and ("docx" in ext or "docx" in str(e)):
-                        msg = (
-                            "File conversion failed: MarkItDown requires extra dependencies to read .docx files. "
-                            "Please install with: pip install markitdown[docx] or pip install markitdown[all]"
-                        )
-                        logging.error(msg, extra={"span_id": span_id})
-                        self.error.emit(msg)
-                        return
-                    else:
-                        raise
-                structured_content = result.text_content
-                raw_content = result.raw_text if hasattr(result, 'raw_text') else structured_content
-                logging.info(f"Extraction complete, structured length: {len(structured_content)}", extra={"span_id": span_id})
-
-            # Compute embedding for RAG similarity
-            embedding = embed_structured_data(structured_content)
-
-            doc_type_enum = DocumentType.RESUME if self.doc_type.upper() == "RESUME" else DocumentType.CERTIFICATION
-            doc = Document(
-                type=doc_type_enum,
-                raw_content=raw_content,
-                structured_content=structured_content,
-                uploaded_at=datetime.now(),
-                embedding=embedding,
-                group_id=str(uuid.uuid4())
-            )
-            repository.save(doc)
-            logging.info(f"Document saved to database: {filename_for_db}", extra={"span_id": span_id})
+            # ② POST /upload-document to upload the file and document type
+            with open(self.file_path, "rb") as f:
+                files = {"file": (os.path.basename(self.file_path), f)}
+                data = {"doc_type": self.doc_type}
+                resp = requests.post(f"{api_base_url}/upload-document", files=files, data=data, timeout=120)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to upload document: {resp.text}")
+            result = resp.json()
+            # ③ Optionally, notify success (or process returned data as needed)
             self.finished.emit(f"Document uploaded and parsed successfully: {os.path.basename(self.file_path)}")
         except Exception as e:
             import traceback
-            logging.error(f"Upload failed: {str(e)}\n{traceback.format_exc()}", extra={"span_id": span_id})
+            logging.error(f"Upload failed: {str(e)}\n{traceback.format_exc()}")
             self.error.emit(f"Upload failed: {str(e)}\n{traceback.format_exc()}")
 
 class GenerateWorker(QThread):
-    """Background worker for letter generation"""
+    """Background worker for letter generation (now via jobops_api)"""
     finished = Signal(str)
     error = Signal(str)
-    
+
     def __init__(self, app_instance, job_data: JobInput):
         super().__init__()
         self.app_instance = app_instance
         self.job_data = job_data
-    
+
     def run(self):
         try:
-            log_message = "GenerateWorker started."
-            logging.info(log_message)
-            repository = getattr(self.app_instance, 'repository', None)
-            generator = getattr(self.app_instance, 'generator', None)
-            if repository is None or generator is None:
-                log_message = "Application is missing repository or generator."
-                logging.error(log_message)
-                raise Exception("Application is missing repository or generator.")
-            resume_markdown = repository.get_latest_resume()
-            if resume_markdown is None:
-                log_message = "No resume found. Please upload your resume first."
-                logging.error(log_message)
-                raise Exception("No resume found. Please upload your resume first.")
-            logging.info(f"Resume markdown (first 100 chars): {resume_markdown[:100]}")
-            job_markdown = self.job_data.job_markdown
-            if not job_markdown:
-                raise Exception("Job description markdown is required.")
-            detected_language = self.job_data.detected_language
-            url = self.job_data.url or ''
-            # Get truncation config from app_instance if available
-            config = getattr(self.app_instance, '_config', None)
-            backend_type = config.get('backend', 'ollama') if config else None
-            backend_settings = config.get('backend_settings', {}) if config else {}
-            model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
-            trunc_config = model_conf if model_conf else {}
+            # ① Load API base URL from .env in project root
+            load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
+            api_base_url = os.getenv("JOBOPS_API_BASE_URL", "http://localhost:8000")
 
-            # ------------------------------------------------------------------
-            # 1) Generate Cover Letter
-            # ------------------------------------------------------------------
-            letter = generator.generate_from_markdown(
-                job_markdown,
-                resume_markdown,
-                detected_language,
-                url=url,
-                config=trunc_config,
-                company_name=self.job_data.company or '',
-                job_title=self.job_data.title or '',
-                location=self.job_data.location or ''
-            )
+            # ② POST /job-description to store job and get group_id
+            job_desc_payload = {
+                "job_markdown": self.job_data.job_markdown,
+                "url": self.job_data.url,
+                "title": self.job_data.title,
+                "company": self.job_data.company,
+                "location": self.job_data.location,
+                "requirements": self.job_data.requirements,
+            }
+            job_desc_payload = {k: v for k, v in job_desc_payload.items() if v is not None}
+            resp = requests.post(f"{api_base_url}/job-description", json=job_desc_payload, timeout=60)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to store job description: {resp.text}")
+            group_id = resp.json().get("group_id")
+            if not group_id:
+                raise Exception("No group_id returned from job description API.")
 
-            # ------------------------------------------------------------------
-            # 2) Generate Tailored Resume and Skills Report
-            # ------------------------------------------------------------------
-            tailored_resume = generator.generate_optimized_resume_from_markdown(
-                job_markdown,
-                resume_markdown,
-                detected_language,
-                requirements=self.job_data.requirements or '',
-                config=trunc_config,
-            )
+            # ③ POST /generate-letter with group_id to generate the letter
+            letter_payload = {
+                "group_id": group_id,
+                "detected_language": self.job_data.detected_language or "en"
+            }
+            resp = requests.post(f"{api_base_url}/generate-letter", json=letter_payload, timeout=180)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to generate letter: {resp.text}")
+            letter_data = resp.json()
 
-            # Extract skills
-            from jobops.utils import extract_skills, extract_skills_with_llm
-            llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
-            job_requirements = self.job_data.requirements or ''
-            skill_data = (
-                extract_skills_with_llm(llm_backend, resume_markdown, job_markdown + "\n" + job_requirements)
-                if llm_backend
-                else None
-            )
-            if skill_data:
-                matched = sorted(set(skill_data['matching_skills']))
-                missing = sorted(set(skill_data['missing_skills']))
-                extra = sorted(set(skill_data['extra_skills']))
-            else:
-                resume_skills = extract_skills(resume_markdown)
-                job_skills = extract_skills(job_markdown + "\n" + job_requirements)
-                matched = sorted(resume_skills & job_skills)
-                missing = sorted(job_skills - resume_skills)
-                extra = sorted(resume_skills - job_skills)
-
-            total_required = len(matched) + len(missing)
-            summary = f"You have matched {len(matched)} of {total_required} required skills."
-            report_lines = [
-                "# Skills Match Report",
-                "",
-                summary,
-                "",
-                "## Skill Details",
-                "",
-            ]
-            if matched:
-                report_lines.append("**Matched Skills:**")
-                report_lines.extend([f"- {s}" for s in matched])
-            if missing:
-                report_lines.append("")
-                report_lines.append("**Missing Skills:**")
-                report_lines.extend([f"- {s}" for s in missing])
-            if extra:
-                report_lines.append("")
-                report_lines.append("**Additional Skills:**")
-                report_lines.extend([f"- {s}" for s in extra])
-            report_md = "\n".join(report_lines)
-            # Assign group_id for this document set
-            group_id = str(uuid.uuid4())
-            # Store job description
-            doc_id_job = str(uuid.uuid4())
-            doc_job = Document(
-                id=doc_id_job,
-                type=DocumentType.JOB_DESCRIPTION,
-                raw_content=job_markdown,
-                structured_content=job_markdown,
-                group_id=group_id
-            )
-            repository.save(doc_job)
-            # Store tailored resume
-            doc_id_resume = str(uuid.uuid4())
-            doc_resume = Document(
-                id=doc_id_resume,
-                type=DocumentType.RESUME,
-                raw_content=tailored_resume,
-                structured_content=tailored_resume,
-                group_id=group_id
-            )
-            repository.save(doc_resume)
-            # Store cover letter
-            doc_id_letter = str(uuid.uuid4())
-            doc_letter = Document(
-                id=doc_id_letter,
-                type=DocumentType.COVER_LETTER,
-                raw_content=letter.content,
-                structured_content=letter.content,
-                group_id=group_id
-            )
-            repository.save(doc_letter)
-            # Store match report
-            doc_id_report = str(uuid.uuid4())
-            doc_report = Document(
-                id=doc_id_report,
-                type=DocumentType.OTHER,
-                raw_content=report_md,
-                structured_content=report_md,
-                group_id=group_id
-            )
-            repository.save(doc_report)
-            self.finished.emit("Motivation package generated and saved to database.")
+            # ④ Optionally, notify success (or process returned data as needed)
+            self.finished.emit("Motivation package generated via API and saved to server.")
         except Exception as e:
             self.error.emit(str(e))
 
@@ -1414,107 +1234,38 @@ class ReportWorker(QThread):
 
     def run(self):
         try:
-            repository = getattr(self.app_instance, 'repository', None)
-            generator = getattr(self.app_instance, 'generator', None)
-            if repository is None or generator is None:
-                raise Exception("Application is missing repository or generator.")
+            # ① Load API base URL from .env in project root
+            load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
+            api_base_url = os.getenv("JOBOPS_API_BASE_URL", "http://localhost:8000")
 
-            resume_markdown = repository.get_latest_resume()
-            if resume_markdown is None:
-                raise Exception("No resume found. Please upload your resume first.")
+            # ② POST /job-description to store job and get group_id
+            job_desc_payload = {
+                "job_markdown": self.job_data.job_markdown,
+                "url": self.job_data.url,
+                "title": self.job_data.title,
+                "company": self.job_data.company,
+                "location": self.job_data.location,
+                "requirements": self.job_data.requirements,
+            }
+            job_desc_payload = {k: v for k, v in job_desc_payload.items() if v is not None}
+            resp = requests.post(f"{api_base_url}/job-description", json=job_desc_payload, timeout=60)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to store job description: {resp.text}")
+            group_id = resp.json().get("group_id")
+            if not group_id:
+                raise Exception("No group_id returned from job description API.")
 
-            job_markdown = self.job_data.job_markdown
-            if not job_markdown:
-                raise Exception("Job description markdown is required.")
+            # ③ POST /generate-letter with group_id to generate the letter, tailored resume, and skills report
+            letter_payload = {
+                "group_id": group_id,
+                "detected_language": self.job_data.detected_language or "en"
+            }
+            resp = requests.post(f"{api_base_url}/generate-letter", json=letter_payload, timeout=180)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to generate letter: {resp.text}")
+            letter_data = resp.json()
 
-            detected_language = self.job_data.detected_language
-            url = self.job_data.url or ''
-
-            config = getattr(self.app_instance, '_config', None)
-            backend_type = config.get('backend', 'ollama') if config else None
-            backend_settings = config.get('backend_settings', {}) if config else {}
-            model_conf = backend_settings.get(backend_type, {}) if backend_settings else {}
-            trunc_config = model_conf if model_conf else {}
-
-            letter = generator.generate_from_markdown(
-                job_markdown,
-                resume_markdown,
-                detected_language,
-                url=url,
-                config=trunc_config,
-            )
-
-            tailored_resume = generator.generate_optimized_resume_from_markdown(
-                job_markdown,
-                resume_markdown,
-                detected_language,
-                requirements=self.job_data.requirements or '',
-                config=trunc_config,
-            )
-
-            from jobops.utils import extract_skills, extract_skills_with_llm
-
-            job_requirements = self.job_data.requirements or ''
-            llm_backend = getattr(self.app_instance.generator, 'llm_backend', None)
-            skill_data = (
-                extract_skills_with_llm(llm_backend, resume_markdown, job_markdown + "\n" + job_requirements)
-                if llm_backend else None
-            )
-
-            if skill_data:
-                matched = sorted(set(skill_data['matching_skills']))
-                missing = sorted(set(skill_data['missing_skills']))
-                extra = sorted(set(skill_data['extra_skills']))
-            else:
-                resume_skills = extract_skills(resume_markdown)
-                job_skills = extract_skills(job_markdown + "\n" + job_requirements)
-                matched = sorted(resume_skills & job_skills)
-                missing = sorted(job_skills - resume_skills)
-                extra = sorted(resume_skills - job_skills)
-
-            total_required = len(matched) + len(missing)
-            summary = f"You have matched {len(matched)} of {total_required} required skills."
-            report_lines = [
-                "# Skills Match Report",
-                "",
-                summary,
-                "",
-                "## Skill Details",
-                "",
-            ]
-            if matched:
-                report_lines.append("**Matched Skills:**")
-                report_lines.extend([f"- {s}" for s in matched])
-            if missing:
-                report_lines.append("")
-                report_lines.append("**Missing Skills:**")
-                report_lines.extend([f"- {s}" for s in missing])
-            if extra:
-                report_lines.append("")
-                report_lines.append("**Additional Skills:**")
-                report_lines.extend([f"- {s}" for s in extra])
-            report_md = "\n".join(report_lines)
-
-            group_id = str(uuid.uuid4())
-
-            from jobops.models import Document, DocumentType
-
-            for doc_type, content in [
-                (DocumentType.JOB_DESCRIPTION, job_markdown),
-                (DocumentType.RESUME, tailored_resume),
-                (DocumentType.COVER_LETTER, letter.content),
-                (DocumentType.OTHER, report_md),
-            ]:
-                repository.save(
-                    Document(
-                        id=str(uuid.uuid4()),
-                        type=doc_type,
-                        raw_content=content,
-                        structured_content=content,
-                        group_id=group_id,
-                    )
-                )
-
+            # ④ Optionally, notify success (or process returned data as needed)
             self.finished.emit("", "")
         except Exception as e:
             self.error.emit(str(e))
@@ -1533,17 +1284,25 @@ class ConsultantReplyWorker(QThread):
 
     def run(self):
         try:
-            generator = getattr(self.app_instance, 'generator', None)
-            if generator is None:
-                raise Exception("Application generator is missing.")
-            llm_backend = getattr(generator, 'llm_backend', None)
-            # Build prompt and generate reply
-            prompt = build_consultant_reply_prompt(self.email_message, self.resume_markdown, self.language)
-            if llm_backend:
-                reply_md = llm_backend.generate_response(prompt)
-            else:
-                reply_md = generator.backend.generate_response(prompt, "")
-            # Store consultant reply only in the database, remove file export
+            # ① Load API base URL from .env in project root
+            load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
+            api_base_url = os.getenv("JOBOPS_API_BASE_URL", "http://localhost:8000")
+
+            # ② POST /consultant-reply to generate consultant reply sheet (TODO: implement endpoint in backend)
+            payload = {
+                "email_message": self.email_message,
+                "resume_markdown": self.resume_markdown,
+                "language": self.language
+            }
+            # TODO: Implement /consultant-reply endpoint in jobops_api
+            resp = requests.post(f"{api_base_url}/consultant-reply", json=payload, timeout=120)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to generate consultant reply: {resp.text}")
+            reply_md = resp.json().get("reply_markdown")
+            if not reply_md:
+                raise Exception("No reply_markdown returned from consultant reply API.")
+
+            # ③ Optionally, notify success (or process returned data as needed)
             repository = getattr(self.app_instance, 'repository', None)
             if repository is None:
                 raise Exception("Application is missing repository.")

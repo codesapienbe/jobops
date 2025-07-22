@@ -95,53 +95,29 @@ try {
       if (tab.id !== undefined) {
         try {
           tryClipPage(tab.id).then(async (response) => {
-            // Step 1: Store job description
+            // ① POST /clip to send clipped content to backend
             try {
-              const jobDescRes = await fetch(`${BACKEND_API_BASE}/job-description`, {
+              const clipRes = await fetch(`${BACKEND_API_BASE}/clip`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  job_markdown: response.body,
+                  title: response.title,
                   url: response.url,
-                  title: response.title
+                  body: response.body
                 })
               });
-              if (!jobDescRes.ok) {
+              if (!clipRes.ok) {
                 let errMsg = "Unknown error";
                 try {
-                  const err = await jobDescRes.json();
+                  const err = await clipRes.json();
                   errMsg = err.error || errMsg;
                 } catch (err) {
                   log("Error parsing backend error response:", err);
                 }
-                showNotification(`Error storing job: ${errMsg}`, true);
+                showNotification(`Error saving clip: ${errMsg}`, true);
                 return;
               }
-              const jobDescData = await jobDescRes.json();
-              const groupId = jobDescData.group_id;
-              if (!groupId) {
-                showNotification("No group_id returned from backend.", true);
-                return;
-              }
-              showNotification("Job description stored. Generating letter...");
-              // Step 2: Generate letter
-              const genLetterRes = await fetch(`${BACKEND_API_BASE}/generate-letter`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ group_id: groupId })
-              });
-              if (!genLetterRes.ok) {
-                let errMsg = "Unknown error";
-                try {
-                  const err = await genLetterRes.json();
-                  errMsg = err.error || errMsg;
-                } catch (err) {
-                  log("Error parsing backend error response:", err);
-                }
-                showNotification(`Error generating letter: ${errMsg}`, true);
-                return;
-              }
-              showNotification("Motivation letter generated successfully!");
+              showNotification("Clip saved successfully!");
             } catch (e) {
               log("Fetch to backend failed:", e);
               showNotification("Failed to communicate with backend.", true);

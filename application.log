@@ -32,3 +32,17 @@
 {"timestamp": "2025-07-22T08:47:59.023654Z", "level": "INFO", "component": "jobops_api", "message": "Job description stored as group 48b57879-07f4-44fd-b9e0-8738d65ce804"}
 {"timestamp": "2025-07-22T08:47:59.024638Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /job-description"}
 {"timestamp": "2025-07-22T08:47:59.024998Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /job-description"}
+{"timestamp": "2025-07-22T08:51:57.192798Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /job-description"}
+{"timestamp": "2025-07-22T08:51:57.196515Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /job-description"}
+{"timestamp": "2025-07-22T08:51:59.187744Z", "level": "INFO", "component": "jobops_api", "message": "Job description stored as group 1df2f1a2-9072-4a30-a052-f4625452796d"}
+{"timestamp": "2025-07-22T08:51:59.188224Z", "level": "INFO", "component": "jobops_api", "message": "Job description stored as group 1df2f1a2-9072-4a30-a052-f4625452796d"}
+{"timestamp": "2025-07-22T08:51:59.189630Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /job-description"}
+{"timestamp": "2025-07-22T08:51:59.190099Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /job-description"}
+{"timestamp": "2025-07-22T08:51:59.198380Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /generate-letter"}
+{"timestamp": "2025-07-22T08:51:59.198794Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /generate-letter"}
+{"timestamp": "2025-07-22T08:51:59.199472Z", "level": "INFO", "component": "jobops_api", "message": "/generate-letter called with group_id: 1df2f1a2-9072-4a30-a052-f4625452796d"}
+{"timestamp": "2025-07-22T08:51:59.199806Z", "level": "INFO", "component": "jobops_api", "message": "/generate-letter called with group_id: 1df2f1a2-9072-4a30-a052-f4625452796d"}
+{"timestamp": "2025-07-22T08:51:59.200791Z", "level": "WARNING", "component": "jobops_api", "message": "No resume found. Please upload your resume first."}
+{"timestamp": "2025-07-22T08:51:59.201062Z", "level": "WARNING", "component": "jobops_api", "message": "No resume found. Please upload your resume first."}
+{"timestamp": "2025-07-22T08:51:59.201487Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /generate-letter"}
+{"timestamp": "2025-07-22T08:51:59.201769Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /generate-letter"}

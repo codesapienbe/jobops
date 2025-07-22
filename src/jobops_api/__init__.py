@@ -8,7 +8,7 @@ import re
 from fastapi import Body
 from pydantic import ValidationError
 from .models import MotivationLetter, Document, DocumentType
-from .utils import generate_from_markdown, generate_optimized_resume_from_markdown, extract_skills, extract_skills_with_llm
+from .utils import generate_from_markdown, generate_optimized_resume_from_markdown, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
 from .repositories import SQLiteDocumentRepository
 import uuid
 from typing import Optional
@@ -18,6 +18,7 @@ from pydantic import BaseModel as PydanticBaseModel, Field as PydanticField
 from datetime import datetime as dt
 from rich.logging import RichHandler
 from pydantic import Field
+from fastapi import UploadFile, File, Form
 
 from dotenv import load_dotenv
 load_dotenv(
@@ -357,6 +358,174 @@ async def generate_letter_endpoint(
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
         err = ErrorResponse(message="Internal server error", correlation_id=correlation_id, user_id=user_id, request_id=request_id)
+        return JSONResponse(status_code=500, content=err.dict())
+
+@app.post(
+    "/consultant-reply",
+    tags=["consultant"],
+    summary="Generate a consultant reply sheet",
+    description="Generate a professional consultant reply sheet in markdown format.",
+    response_model=dict,
+    responses={
+        200: {"description": "Consultant reply generated", "content": {"application/json": {"example": {"reply_markdown": "..."}}}},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def consultant_reply_endpoint(
+    email_message: str = Body(..., description="Consultant email message/request"),
+    resume_markdown: str = Body(..., description="Candidate's resume in markdown format"),
+    language: str = Body("en", description="Language for the reply (default: en)"),
+    request: Request = None
+):
+    try:
+        # ① Build the consultant reply prompt
+        prompt = build_consultant_reply_prompt(email_message, resume_markdown, language)
+        # ② Call the LLM backend to generate the reply
+        from .clients import OllamaBackend
+        backend = OllamaBackend()  # TODO: Use configured backend
+        reply_md = backend.generate_response(prompt)
+        # ③ Return the reply markdown
+        return {"reply_markdown": reply_md}
+    except Exception as e:
+        logger.error(f"Error in /consultant-reply: {str(e)}")
+        err = ErrorResponse(message="Internal server error")
+        return JSONResponse(status_code=500, content=err.dict())
+
+@app.post(
+    "/upload-document",
+    tags=["document"],
+    summary="Upload a document (resume, certification, etc.)",
+    description="Upload a document file and store it in the database after parsing and embedding.",
+    response_model=dict,
+    responses={
+        200: {"description": "Document uploaded and parsed", "content": {"application/json": {"example": {"status": "success", "doc_id": "uuid"}}}},
+        400: {"model": ErrorResponse, "description": "Invalid input"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def upload_document_endpoint(
+    file: UploadFile = File(..., description="Document file to upload (PDF, DOCX, MD, etc.)"),
+    doc_type: str = Form(..., description="Type of document: RESUME, CERTIFICATION, etc."),
+    request: Request = None
+):
+    try:
+        import os
+        import tempfile
+        from datetime import datetime
+        from .models import Document, DocumentType
+        # ① Save uploaded file to a temp location
+        suffix = os.path.splitext(file.filename)[-1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(await file.read())
+            tmp_path = tmp.name
+        # ② Parse the file (markdown direct, others via MarkItDown)
+        if suffix.lower() == ".md":
+            with open(tmp_path, "r", encoding="utf-8") as f:
+                structured_content = f.read()
+            raw_content = structured_content
+        else:
+            try:
+                from markitdown import MarkItDown
+                from openai import OpenAI
+                # TODO: Use configured backend for LLM
+                llm_client = OpenAI()
+                md = MarkItDown(llm_client=llm_client, llm_model="gpt-4o")
+                result = md.convert(tmp_path)
+                structured_content = result.text_content
+                raw_content = getattr(result, 'raw_text', structured_content)
+            except Exception as e:
+                return JSONResponse(status_code=400, content={"status": "error", "error": f"File parsing failed: {e}"})
+        # ③ Compute embedding
+        from .clients import embed_structured_data
+        embedding = embed_structured_data(structured_content)
+        # ④ Save to DB
+        doc_type_enum = DocumentType[doc_type.upper()] if doc_type.upper() in DocumentType.__members__ else DocumentType.OTHER
+        doc = Document(
+            type=doc_type_enum,
+            raw_content=raw_content,
+            structured_content=structured_content,
+            uploaded_at=datetime.now(),
+            embedding=embedding,
+            group_id=str(uuid.uuid4())
+        )
+        doc_id = repository.save(doc)
+        # ⑤ Return success
+        return {"status": "success", "doc_id": doc_id}
+    except Exception as e:
+        logger.error(f"Error in /upload-document: {str(e)}")
+        err = ErrorResponse(message="Internal server error")
+        return JSONResponse(status_code=500, content=err.dict())
+
+@app.post(
+    "/extract-skills",
+    tags=["skills"],
+    summary="Extract and compare skills from resume and job description",
+    description="Extracts matching, missing, and extra skills using LLM or regex fallback.",
+    response_model=dict,
+    responses={
+        200: {"description": "Skills extracted", "content": {"application/json": {"example": {"matching_skills": ["Python"], "missing_skills": ["Docker"], "extra_skills": ["Java"]}}}},
+        400: {"model": ErrorResponse, "description": "Invalid input"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def extract_skills_endpoint(
+    resume_text: str = Body(..., description="Resume text (markdown or plain)"),
+    job_text: str = Body(..., description="Job description and requirements (markdown or plain)"),
+    request: Request = None
+):
+    try:
+        # ① Try LLM-based extraction
+        from .utils import extract_skills_with_llm, extract_skills
+        llm_backend = None  # TODO: Use configured backend if available
+        skill_data = extract_skills_with_llm(llm_backend, resume_text, job_text) if llm_backend else None
+        # ② Fallback to regex extraction
+        if skill_data:
+            matched = sorted(set(skill_data["matching_skills"]))
+            missing = sorted(set(skill_data["missing_skills"]))
+            extra = sorted(set(skill_data["extra_skills"]))
+        else:
+            resume_skills = extract_skills(resume_text)
+            job_skills = extract_skills(job_text)
+            matched = sorted(resume_skills & job_skills)
+            missing = sorted(job_skills - resume_skills)
+            extra = sorted(resume_skills - job_skills)
+        # ③ Return result
+        return {"matching_skills": matched, "missing_skills": missing, "extra_skills": extra}
+    except Exception as e:
+        logger.error(f"Error in /extract-skills: {str(e)}")
+        err = ErrorResponse(message="Internal server error")
+        return JSONResponse(status_code=500, content=err.dict())
+
+@app.post(
+    "/extract-document",
+    tags=["document"],
+    summary="Extract structured data from a document",
+    description="Extracts structured data from a raw document using LLM or fallback logic.",
+    response_model=dict,
+    responses={
+        200: {"description": "Document extracted", "content": {"application/json": {"example": {"title": "...", "sections": {}}}}},
+        400: {"model": ErrorResponse, "description": "Invalid input"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def extract_document_endpoint(
+    raw_content: str = Body(..., description="Raw document content (text)"),
+    doc_type: str = Body(..., description="Type of document (e.g., RESUME, CERTIFICATION, etc.)"),
+    request: Request = None
+):
+    try:
+        from .models import DocumentType
+        from .utils import DocumentExtractor
+        # ① Use DocumentExtractor to parse the document
+        extractor = DocumentExtractor(llm_backend=None)  # TODO: Use configured backend if available
+        doc_type_enum = DocumentType[doc_type.upper()] if doc_type.upper() in DocumentType.__members__ else DocumentType.OTHER
+        result = extractor.extract_generic_document(raw_content, doc_type_enum)
+        # ② Return structured document data
+        return result.dict()
+    except Exception as e:
+        logger.error(f"Error in /extract-document: {str(e)}")
+        err = ErrorResponse(message="Internal server error")
         return JSONResponse(status_code=500, content=err.dict())
 
 # --- main entrypoint for uvicorn/uv run ---

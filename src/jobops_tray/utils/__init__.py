@@ -735,7 +735,7 @@ def clean_job_data_dict(d: dict) -> dict:
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
-iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
+iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3Njape.org5vuPBoAAAOxSURBVHic7ZtNaBNBFMefJFqrtVZbW6u01lq1Wq21aq3VWmut1lqrtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa63VWqu1VmuttVprtdZqrdVaq7VWa60AAAD//2Q=="""
 
 class ResourceManager:
     
@@ -999,27 +999,28 @@ Return only the JSON object, no extra text or formatting.
 
 def compute_match_score_and_chart(resume_text: str, job_description: str, job_requirements: str, llm_backend=None, output_dir: str = None) -> dict:
     """
-    Use LLM to extract skills if possible, else fallback to regex. Only generate chart if valid data is available.
+    Use the /extract-skills API endpoint for skills extraction. Only generate chart if valid data is available.
     """
+    import os
+    import requests
     job_text = job_description + "\n" + job_requirements
-    skill_data = None
-    if llm_backend:
-        skill_data = extract_skills_with_llm(llm_backend, resume_text, job_text)
-    if skill_data:
-        matched_skills = sorted(set(skill_data["matching_skills"]))
-        missing_skills = sorted(set(skill_data["missing_skills"]))
-        extra_skills = sorted(set(skill_data["extra_skills"]))
-    else:
-        # Fallback to regex extraction
-        resume_skills = extract_skills(resume_text)
-        job_skills = extract_skills(job_text)
-        matched_skills = sorted(resume_skills & job_skills)
-        missing_skills = sorted(job_skills - resume_skills)
-        extra_skills = sorted(resume_skills - job_skills)
+    # ① Load API base URL from .env in project root
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
+    api_base_url = os.getenv("JOBOPS_API_BASE_URL", "http://localhost:8000")
+    # ② POST /extract-skills to get skills data
+    payload = {"resume_text": resume_text, "job_text": job_text}
+    resp = requests.post(f"{api_base_url}/extract-skills", json=payload, timeout=60)
+    if resp.status_code != 200:
+        return None
+    skill_data = resp.json()
+    matched_skills = sorted(set(skill_data.get("matching_skills", [])))
+    missing_skills = sorted(set(skill_data.get("missing_skills", [])))
+    extra_skills = sorted(set(skill_data.get("extra_skills", [])))
     # If no skills detected, return None for UI warning
     if not (matched_skills or missing_skills):
         return None
-    # Prepare chart data
+    # Prepare chart data (unchanged)
     all_skills = matched_skills + missing_skills
     skill_labels = all_skills if all_skills else ["No skills detected"]
     present = [1]*len(matched_skills) + [0]*len(missing_skills)

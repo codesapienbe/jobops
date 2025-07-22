@@ -4,12 +4,12 @@
   "version": "0.1.0",
   "description": "Clip web pages and send to JobOps app.",
   "permissions": ["scripting", "activeTab", "notifications"],
-  "host_permissions": ["http://localhost:5000/*"],
+  "host_permissions": ["http://localhost:8877/*"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Clip this page"
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
