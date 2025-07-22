@@ -80,15 +80,16 @@ class OllamaBackend(BaseLLMBackend):
     
     def health_check(self) -> bool:
         try:
-            resp = requests.get(f"{self.base_url}/health")
-            return resp.status_code == 200 and resp.json().get("status") == "ok"
+            resp = requests.get(self.base_url)
+            return resp.status_code == 200 and "Ollama is running" in resp.text
         except Exception as e:
             self._logger.error(f"Proxy health check failed: {e}")
             return False
 
     def embed_structured_data(self, job_data):
         try:
-            return embed_structured_data(job_data.description, self._logger)
+            desc = job_data.description if hasattr(job_data, "description") else job_data
+            return embed_structured_data(desc, self._logger)
         except Exception as e:
             self._logger.error(f"Ollama embedding error: {e}")
             raise
@@ -107,7 +108,8 @@ class _StructuredDataMixin:
 
     def embed_structured_data(self, job_data):  # type: ignore[override]
         """Return sentence-transformer embeddings of *job_data.description*."""
-        return embed_structured_data(job_data.description, self._logger)
+        desc = job_data.description if hasattr(job_data, "description") else job_data
+        return embed_structured_data(desc, self._logger)
 
 
 class _ChatCompletionMixin(_StructuredDataMixin):
@@ -211,7 +213,8 @@ class GoogleGeminiBackend(BaseLLMBackend):
 
     def embed_structured_data(self, job_data):
         try:
-            return embed_structured_data(job_data.description, self._logger)
+            desc = job_data.description if hasattr(job_data, "description") else job_data
+            return embed_structured_data(desc, self._logger)
         except Exception as e:
             self._logger.error(f"Gemini embedding error: {e}")
             raise
@@ -255,7 +258,7 @@ class PerplexityBackend(_ChatCompletionMixin, BaseLLMBackend):
 class LLMBackendFactory:
     @staticmethod
     def create(backend_type: str, settings: Dict[str, Any], tokens: Dict[str, str]) -> BaseLLMBackend:
-        ollama_model = settings.get('model', 'qwen3:1.7b')
+        ollama_model = settings.get('model', 'qwen3:0.6b')
         groq_model = settings.get('model', 'llama-3.3-70b-versatile')
         openai_model = settings.get('model', 'gpt-4o-mini')
         gemini_model = settings.get('model', 'gemini-1.5-pro')
@@ -294,3 +297,44 @@ class LLMBackendFactory:
             )
         else:
             raise ValueError(f"Unsupported backend type: {backend_type}")
+
+class OllamaOpenAIAdapter:
+    def __init__(self, ollama_backend):
+        self.ollama_backend = ollama_backend
+
+    class Chat:
+        def __init__(self, parent):
+            self.parent = parent
+
+        class Completions:
+            def __init__(self, parent):
+                self.parent = parent
+
+            def create(self, model, messages, temperature=0.7, max_tokens=3000, **kwargs):
+                prompt = ""
+                system_prompt = None
+                for msg in messages:
+                    if msg["role"] == "system":
+                        system_prompt = msg["content"]
+                    elif msg["role"] == "user":
+                        prompt += msg["content"] + "\n"
+                content = self.parent.parent.ollama_backend.generate_response(prompt, system_prompt)
+                # Mimic OpenAI response structure
+                class Message:
+                    def __init__(self, content):
+                        self.content = content
+                class Choice:
+                    def __init__(self, message):
+                        self.message = message
+                class Response:
+                    def __init__(self, choices):
+                        self.choices = choices
+                return Response([Choice(Message(content))])
+
+        @property
+        def completions(self):
+            return OllamaOpenAIAdapter.Chat.Completions(self)
+
+    @property
+    def chat(self):
+        return OllamaOpenAIAdapter.Chat(self)

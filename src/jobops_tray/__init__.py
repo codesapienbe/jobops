@@ -1,7 +1,7 @@
 """JobOps package root stub.
 
 Provides lightweight imports and delegates GUI functionality to
-`jobops.views.app` to keep top-level package clean.
+`jobops_tray.views.app` to keep top-level package clean.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _gui_module: ModuleType | None = None
 def _gui() -> ModuleType:  # Lazy loader for heavy Qt code
     global _gui_module
     if _gui_module is None:
-        _gui_module = import_module("jobops.views.app")
+        _gui_module = import_module("jobops_tray.views.app")
     return _gui_module
 
 
@@ -30,7 +30,7 @@ def main(*args: Any, **kwargs: Any) -> None:  # pragma: no cover
 
 
 if TYPE_CHECKING:
-    from jobops.views.app import JobOpsQtApplication  # noqa: F401
+    from jobops_tray.views.app import JobOpsQtApplication  # noqa: F401
 
 
 class _LazyAttr:

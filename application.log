@@ -46,3 +46,37 @@
 {"timestamp": "2025-07-22T08:51:59.201062Z", "level": "WARNING", "component": "jobops_api", "message": "No resume found. Please upload your resume first."}
 {"timestamp": "2025-07-22T08:51:59.201487Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /generate-letter"}
 {"timestamp": "2025-07-22T08:51:59.201769Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /generate-letter"}
+{"timestamp": "2025-07-22T09:40:29.034954Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T09:40:29.038266Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T09:40:31.638617Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /upload-document"}
+{"timestamp": "2025-07-22T09:40:31.639145Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /upload-document"}
+{"timestamp": "2025-07-22T09:52:48.371703Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T09:52:48.373694Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T09:52:48.378101Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /upload-document"}
+{"timestamp": "2025-07-22T09:52:48.378573Z", "level": "INFO", "component": "jobops_api", "message": "Response: 400 /upload-document"}
+{"timestamp": "2025-07-22T10:17:37.304381Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-22T10:17:37.305223Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-22T10:17:37.306340Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-22T10:17:37.306988Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-22T10:17:37.381473Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-22T10:17:37.382327Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-22T10:17:37.391701Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /openapi.json"}
+{"timestamp": "2025-07-22T10:17:37.392286Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /openapi.json"}
+{"timestamp": "2025-07-22T10:18:02.227852Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:18:02.228527Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:18:03.090698Z", "level": "ERROR", "component": "jobops_api", "message": "Error in /upload-document: 'str' object has no attribute 'description'"}
+{"timestamp": "2025-07-22T10:18:03.091225Z", "level": "ERROR", "component": "jobops_api", "message": "Error in /upload-document: 'str' object has no attribute 'description'"}
+{"timestamp": "2025-07-22T10:18:03.091959Z", "level": "INFO", "component": "jobops_api", "message": "Response: 500 /upload-document"}
+{"timestamp": "2025-07-22T10:18:03.092388Z", "level": "INFO", "component": "jobops_api", "message": "Response: 500 /upload-document"}
+{"timestamp": "2025-07-22T10:21:27.596359Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:21:27.597301Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:21:34.567219Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}
+{"timestamp": "2025-07-22T10:21:34.567734Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}
+{"timestamp": "2025-07-22T10:24:32.812519Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:24:32.815170Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:24:35.218775Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}
+{"timestamp": "2025-07-22T10:24:35.219191Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}
+{"timestamp": "2025-07-22T10:27:26.716444Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:27:26.717488Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
+{"timestamp": "2025-07-22T10:27:33.660457Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}
+{"timestamp": "2025-07-22T10:27:33.660897Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}

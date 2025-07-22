@@ -58,9 +58,13 @@ logger.propagate = False
 # Ensure clips directory exists
 os.makedirs('clips', exist_ok=True)
 
-# Dependency: get repository instance
-DB_PATH = os.getenv("JOBOPS_DB_PATH", "jobopsdb.sqlite3")
-repository = SQLiteDocumentRepository(DB_PATH)
+# Ensure ~/.jobops directory exists
+os.makedirs(os.path.expanduser('~/.jobops'), exist_ok=True)
+
+from .config import JSONConfigManager, CONSTANTS
+
+# Set DB_PATH to ~/.jobops/jobops.db by default
+DB_PATH = os.getenv("JOBOPS_DB_PATH", os.path.join(CONSTANTS.USER_HOME_DIR, CONSTANTS.DB_NAME))
 
 
 def sanitize_filename(filename: str) -> str:
@@ -68,6 +72,18 @@ def sanitize_filename(filename: str) -> str:
     return filename[:64]
 
 app = FastAPI(title="JobOps API", version="1.0.0")
+
+# Set the default backend for utils (backend-agnostic LLM usage everywhere)
+from .config import JSONConfigManager, CONSTANTS
+from .clients import LLMBackendFactory
+from .utils import set_default_backend
+config_path = os.path.join(CONSTANTS.USER_HOME_DIR, CONSTANTS.CONFIG_NAME)
+config = JSONConfigManager(config_path).load()
+backend_type = getattr(config, 'backend', 'ollama')
+backend_settings = getattr(config, 'backend_settings', {})
+backend_conf = backend_settings.get(backend_type, {})
+llm_client = LLMBackendFactory.create(backend_type, backend_conf, tokens={})
+set_default_backend(llm_client)
 
 # Add CORS and security headers middleware
 app.add_middleware(
@@ -207,6 +223,15 @@ async def store_job_description(
             structured_content=job_markdown,
             group_id=group_id
         )
+        from .config import JSONConfigManager, CONSTANTS
+        from .clients import LLMBackendFactory
+        config_path = os.path.join(CONSTANTS.USER_HOME_DIR, CONSTANTS.CONFIG_NAME)
+        config = JSONConfigManager(config_path).load()
+        backend_type = getattr(config, 'backend', 'ollama')
+        backend_settings = getattr(config, 'backend_settings', {})
+        backend_conf = backend_settings.get(backend_type, {})
+        llm_client = LLMBackendFactory.create(backend_type, backend_conf, tokens={})
+        repository = SQLiteDocumentRepository(DB_PATH, llm_client=llm_client)
         repository.save(doc_job)
         logger.info(
             f"Job description stored as group {group_id}",
@@ -248,6 +273,15 @@ async def generate_letter_endpoint(
             extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
         )
         # Fetch job description document
+        from .config import JSONConfigManager, CONSTANTS
+        from .clients import LLMBackendFactory
+        config_path = os.path.join(CONSTANTS.USER_HOME_DIR, CONSTANTS.CONFIG_NAME)
+        config = JSONConfigManager(config_path).load()
+        backend_type = getattr(config, 'backend', 'ollama')
+        backend_settings = getattr(config, 'backend_settings', {})
+        backend_conf = backend_settings.get(backend_type, {})
+        llm_client = LLMBackendFactory.create(backend_type, backend_conf, tokens={})
+        repository = SQLiteDocumentRepository(DB_PATH, llm_client=llm_client)
         docs = repository.get_by_group(group_id)
         job_doc = next((d for d in docs if d.type == DocumentType.JOB_DESCRIPTION), None)
         if not job_doc:
@@ -382,9 +416,16 @@ async def consultant_reply_endpoint(
         # ① Build the consultant reply prompt
         prompt = build_consultant_reply_prompt(email_message, resume_markdown, language)
         # ② Call the LLM backend to generate the reply
-        from .clients import OllamaBackend
-        backend = OllamaBackend()  # TODO: Use configured backend
-        reply_md = backend.generate_response(prompt)
+        from .config import JSONConfigManager, CONSTANTS
+        from .clients import LLMBackendFactory
+        config_path = os.path.join(CONSTANTS.USER_HOME_DIR, CONSTANTS.CONFIG_NAME)
+        config = JSONConfigManager(config_path).load()
+        backend_type = getattr(config, 'backend', 'ollama')
+        backend_settings = getattr(config, 'backend_settings', {})
+        backend_conf = backend_settings.get(backend_type, {})
+        llm_client = LLMBackendFactory.create(backend_type, backend_conf, tokens={})
+        repository = SQLiteDocumentRepository(DB_PATH, llm_client=llm_client)
+        reply_md = llm_client.generate_response(prompt)
         # ③ Return the reply markdown
         return {"reply_markdown": reply_md}
     except Exception as e:
@@ -419,7 +460,16 @@ async def upload_document_endpoint(
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
-        # ② Parse the file (markdown direct, others via MarkItDown)
+        # ② Load config and backend
+        from .config import JSONConfigManager, CONSTANTS
+        from .clients import LLMBackendFactory
+        config_path = os.path.join(CONSTANTS.USER_HOME_DIR, CONSTANTS.CONFIG_NAME)
+        config = JSONConfigManager(config_path).load()
+        backend_type = getattr(config, 'backend', 'ollama')
+        backend_settings = getattr(config, 'backend_settings', {})
+        backend_conf = backend_settings.get(backend_type, {})
+        llm_client = LLMBackendFactory.create(backend_type, backend_conf, tokens={})
+        # ③ Parse the file (markdown direct, others via MarkItDown)
         if suffix.lower() == ".md":
             with open(tmp_path, "r", encoding="utf-8") as f:
                 structured_content = f.read()
@@ -427,19 +477,21 @@ async def upload_document_endpoint(
         else:
             try:
                 from markitdown import MarkItDown
-                from openai import OpenAI
-                # TODO: Use configured backend for LLM
-                llm_client = OpenAI()
-                md = MarkItDown(llm_client=llm_client, llm_model="gpt-4o")
+                from .clients import OllamaOpenAIAdapter
+                # Use OllamaOpenAIAdapter if backend is ollama
+                if backend_type == "ollama":
+                    llm_client_for_markitdown = OllamaOpenAIAdapter(llm_client)
+                else:
+                    llm_client_for_markitdown = llm_client
+                md = MarkItDown(llm_client=llm_client_for_markitdown, llm_model=backend_conf.get('model', 'gpt-4o'))
                 result = md.convert(tmp_path)
                 structured_content = result.text_content
                 raw_content = getattr(result, 'raw_text', structured_content)
             except Exception as e:
                 return JSONResponse(status_code=400, content={"status": "error", "error": f"File parsing failed: {e}"})
-        # ③ Compute embedding
-        from .clients import embed_structured_data
-        embedding = embed_structured_data(structured_content)
-        # ④ Save to DB
+        # ④ Compute embedding
+        embedding = llm_client.embed_structured_data(structured_content)
+        # ⑤ Save to DB
         doc_type_enum = DocumentType[doc_type.upper()] if doc_type.upper() in DocumentType.__members__ else DocumentType.OTHER
         doc = Document(
             type=doc_type_enum,
@@ -449,8 +501,9 @@ async def upload_document_endpoint(
             embedding=embedding,
             group_id=str(uuid.uuid4())
         )
+        repository = SQLiteDocumentRepository(DB_PATH, llm_client=llm_client)
         doc_id = repository.save(doc)
-        # ⑤ Return success
+        # ⑥ Return success
         return {"status": "success", "doc_id": doc_id}
     except Exception as e:
         logger.error(f"Error in /upload-document: {str(e)}")
@@ -518,7 +571,15 @@ async def extract_document_endpoint(
         from .models import DocumentType
         from .utils import DocumentExtractor
         # ① Use DocumentExtractor to parse the document
-        extractor = DocumentExtractor(llm_backend=None)  # TODO: Use configured backend if available
+        from .config import JSONConfigManager, CONSTANTS
+        from .clients import LLMBackendFactory
+        config_path = os.path.join(CONSTANTS.USER_HOME_DIR, CONSTANTS.CONFIG_NAME)
+        config = JSONConfigManager(config_path).load()
+        backend_type = getattr(config, 'backend', 'ollama')
+        backend_settings = getattr(config, 'backend_settings', {})
+        backend_conf = backend_settings.get(backend_type, {})
+        llm_client = LLMBackendFactory.create(backend_type, backend_conf, tokens={})
+        extractor = DocumentExtractor(llm_backend=llm_client)  # TODO: Use configured backend if available
         doc_type_enum = DocumentType[doc_type.upper()] if doc_type.upper() in DocumentType.__members__ else DocumentType.OTHER
         result = extractor.extract_generic_document(raw_content, doc_type_enum)
         # ② Return structured document data

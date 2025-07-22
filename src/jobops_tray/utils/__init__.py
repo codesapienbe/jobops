@@ -1,7 +1,7 @@
-from jobops.models import MotivationLetter, GenericDocument, DocumentType, JobData
+from ..models import MotivationLetter, GenericDocument, DocumentType, JobData
 import logging
 import json as _json
-from jobops.clients import BaseLLMBackend
+from ..clients import BaseLLMBackend
 import re
 import os
 import base64
@@ -228,9 +228,9 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
 """
         # Generate the core letter content
         content_body = self.backend.generate_response(prompt, "")
-        from jobops.models import MotivationLetter, JobData
+        from ..models import MotivationLetter, JobData
         import datetime
-        from jobops.utils import get_personal_info_footer
+        from ..utils import get_personal_info_footer
 
         # Build a minimal JobData object for compatibility using provided company, title, location
         job_data = JobData(
@@ -895,8 +895,8 @@ TRUSTED_JOB_DOMAINS = [
 ]
 
 
-class ClipboardJobUrlWatchdog(QObject):
-    url_detected = Signal(str)  # Signal to emit when a trusted job URL is found
+class ClipboardJobopsTriggerWatchdog(QObject):
+    jobops_clip_detected = Signal(str)  # Signal to emit when a jobops:// clipboard is found
 
     def __init__(self, parent=None, poll_interval=1.0):
         super().__init__(parent)
@@ -922,23 +922,11 @@ class ClipboardJobUrlWatchdog(QObject):
                 clipboard_content = pyperclip.paste()
                 if clipboard_content != self._last_clipboard:
                     self._last_clipboard = clipboard_content
-                    url = self._extract_trusted_job_url(clipboard_content)
-                    if url:
-                        self.url_detected.emit(url)
+                    if clipboard_content.startswith("jobops://"):
+                        self.jobops_clip_detected.emit(clipboard_content)
             except Exception as e:
-                logging.warning(f'Clipboard watchdog error: {e}')
+                logging.warning(f'Clipboard jobops trigger error: {e}')
             time.sleep(self.poll_interval)
-
-    def _extract_trusted_job_url(self, text):
-        try:
-            parsed = urlparse(text.strip())
-            if parsed.scheme in ('http', 'https') and parsed.netloc:
-                for domain in TRUSTED_JOB_DOMAINS:
-                    if domain in parsed.netloc:
-                        return text.strip()
-        except Exception:
-            pass
-        return None
 
 def extract_skills(text):
     # Simple skill extraction: look for capitalized words, common skill patterns, and comma-separated lists

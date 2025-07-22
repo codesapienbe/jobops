@@ -10,15 +10,16 @@ from PIL import Image
 from io import BytesIO
 from PySide6.QtCore import Signal, QFileSystemWatcher
 import json
-from ..utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
+from jobops_tray.utils import ResourceManager, NotificationService, check_platform_compatibility, create_desktop_entry, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
 import uuid
 import subprocess
-from ..models import Document, DocumentType, JobInput
-from ..models import Solicitation
+from jobops_tray.models import Document, DocumentType, JobInput
+from jobops_tray.models import Solicitation
 from markdownify import markdownify
-from ..clients import embed_structured_data
+from jobops_tray.clients import embed_structured_data
 import requests
 from dotenv import load_dotenv
+from jobops_tray.utils import ClipboardJobopsTriggerWatchdog
 
 
 # Qt imports
@@ -33,7 +34,7 @@ except ImportError:
     sys.exit(1)
 
 
-from ..models import DocumentType
+from jobops_tray.models import DocumentType
 
 # Embedded base64 icon data (64x64 PNG icon)
 EMBEDDED_ICON_DATA = """
@@ -231,7 +232,7 @@ class JobInputDialog(QDialog):
             return
         try:
             from bs4 import BeautifulSoup
-            from ..scrapers import WebJobScraper
+            from jobops_tray.scrapers import WebJobScraper
             llm = getattr(self.app_instance.generator, 'llm_backend', None)
             if not llm:
                 return
@@ -1161,6 +1162,8 @@ class UploadWorker(QThread):
             if resp.status_code != 200:
                 raise Exception(f"Failed to upload document: {resp.text}")
             result = resp.json()
+            if result.get("status") != "success":
+                raise Exception(f"Failed to upload document: {result.get('message')}")
             # ③ Optionally, notify success (or process returned data as needed)
             self.finished.emit(f"Document uploaded and parsed successfully: {os.path.basename(self.file_path)}")
         except Exception as e:
@@ -1335,7 +1338,7 @@ class JobOpsQtApplication(QApplication):
         self.base_dir.mkdir(exist_ok=True)
 
         # --- Load config and initialize repository and generator ---
-        from jobops.repositories import SQLiteDocumentRepository
+        from ..repositories import SQLiteDocumentRepository
         db_path = str(self.base_dir / "jobops.db")
         self.repository = SQLiteDocumentRepository(db_path)
 
@@ -1358,7 +1361,11 @@ class JobOpsQtApplication(QApplication):
         # Add config.json watcher
         self.config_watcher = QFileSystemWatcher([str(self.config_path)])
         self.config_watcher.fileChanged.connect(self.on_config_changed)
-    
+        # --- Clipboard jobops:// trigger ---
+        self.clipboard_jobops_watchdog = ClipboardJobopsTriggerWatchdog()
+        self.clipboard_jobops_watchdog.jobops_clip_detected.connect(self.on_jobops_clip_detected)
+        self.clipboard_jobops_watchdog.start()
+
     def _init_config_and_generator(self):
         """Load config and initialize generator and settings."""
         if self.config_path.exists():
@@ -1372,8 +1379,8 @@ class JobOpsQtApplication(QApplication):
         app_settings = config.get("app_settings", {})
         tokens = app_settings.get("tokens", {})
         backend_conf = backend_settings.get(backend_type, {})
-        from jobops.utils import ConcreteLetterGenerator
-        from jobops.clients import LLMBackendFactory
+        from ..utils import ConcreteLetterGenerator
+        from ..clients import LLMBackendFactory
         backend = LLMBackendFactory.create(backend_type, backend_conf, tokens)
         self.generator = ConcreteLetterGenerator(backend)
         # Output format and debug level from config
@@ -1472,6 +1479,24 @@ class JobOpsQtApplication(QApplication):
             QSystemTrayIcon.MessageIcon.Information,
             3000
         )
+
+    def on_jobops_clip_detected(self, clipboard_content):
+        # Parse the content: first line is jobops://<job-title>, rest is markdown
+        lines = clipboard_content.split('\n', 2)
+        job_title = lines[0][len("jobops://"):]
+        job_markdown = lines[2] if len(lines) > 2 else ""
+        # Show notification
+        if hasattr(self, 'system_tray') and self.system_tray:
+            self.system_tray.showMessage(
+                "JobOps",
+                f"Clipboard trigger detected for job: {job_title}\nOpening generate window...",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000
+            )
+        dialog = JobInputDialog(self)
+        dialog.title_input.setText(job_title)
+        dialog.markdown_edit.setPlainText(job_markdown)
+        dialog.exec()
 
 def main():
     """Main application entry point"""

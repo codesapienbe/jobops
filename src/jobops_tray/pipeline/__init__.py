@@ -4,11 +4,11 @@ from pathlib import Path
 import os
 import re
 
-from jobops.models import Document, DocumentType
-from jobops.repositories import SQLiteDocumentRepository
-from jobops.config import CONSTANTS
+from ..models import Document, DocumentType
+from ..repositories import SQLiteDocumentRepository
+from ..config import CONSTANTS
 
-from jobops.clients import embed_structured_data
+from ..clients import embed_structured_data
 import numpy as np
 import joblib
 

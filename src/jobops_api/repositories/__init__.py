@@ -16,10 +16,11 @@ if not any(isinstance(h, RichHandler) for h in root_logger.handlers):
     root_logger.addHandler(rich_handler)
 
 class SQLiteDocumentRepository:
-    def __init__(self, db_path: str, timeout: float = 30.0):
+    def __init__(self, db_path: str, llm_client=None, timeout: float = 30.0):
         self.db_path = Path(db_path)
         self._logger = logging.getLogger(self.__class__.__name__)
         self.timeout = timeout
+        self.llm_client = llm_client
         self._init_db()
     
     def _init_db(self):
@@ -95,9 +96,13 @@ class SQLiteDocumentRepository:
         # Ensure each document has an embedding; compute lazily if absent.
         # ------------------------------------------------------------------
         if document.embedding is None and document.structured_content:
-            document.embedding = embed_structured_data(
-                document.structured_content, self._logger
-            )
+            if self.llm_client is not None:
+                document.embedding = self.llm_client.embed_structured_data(document.structured_content)
+            else:
+                from ..clients import embed_structured_data
+                document.embedding = embed_structured_data(
+                    document.structured_content, self._logger
+                )
 
         with sqlite3.connect(self.db_path, timeout=self.timeout) as conn:
             c = conn.cursor()

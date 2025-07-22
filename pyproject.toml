@@ -30,6 +30,7 @@ dependencies = [
     "opentelemetry-instrumentation",
     "opentelemetry-exporter-otlp",
     "reportlab",
+    "python-multipart",
     "pyperclip",
     "markitdown[all]",
     "python-json-logger",

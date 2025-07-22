@@ -35,12 +35,12 @@ def clean(documents: List[Document]) -> List[Document]:
     return cleaned_docs
 
 
-def ingest(documents: List[Document]) -> Tuple[np.ndarray, List[Document]]:
+def ingest(documents: List[Document], llm_client) -> Tuple[np.ndarray, List[Document]]:
     """Convert documents into embedding vectors and keep document references."""
     embeddings_list: List[List[float]] = []
     for doc in documents:
         content = doc.structured_content or doc.raw_content
-        emb = embed_structured_data(content)
+        emb = llm_client.embed_structured_data(content)
         embeddings_list.append(emb)
     embeddings = np.array(embeddings_list)
     return embeddings, documents
@@ -51,10 +51,10 @@ def train(embeddings: np.ndarray) -> np.ndarray:
     return embeddings
 
 
-def predict(job_description: str, embeddings: np.ndarray, documents: List[Document], top_k: int = 1) -> List[Document]:
+def predict(job_description: str, embeddings: np.ndarray, documents: List[Document], llm_client, top_k: int = 1) -> List[Document]:
     """Given a new job description, find the top_k most similar resumes via cosine similarity on embeddings."""
     # Compute job embedding
-    q_emb = np.array(embed_structured_data(job_description))
+    q_emb = np.array(llm_client.embed_structured_data(job_description))
     # Normalize embeddings for cosine similarity
     emb_norms = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
     q_norm = q_emb / np.linalg.norm(q_emb)
@@ -99,13 +99,13 @@ def run_pipeline(job_description: str, db_path: Optional[str] = None, model_outp
     cleaned_docs = clean(documents)
 
     # Stage 2: Ingest
-    embeddings, docs = ingest(cleaned_docs)
+    embeddings, docs = ingest(cleaned_docs, llm_client)
 
     # Stage 3: No-op train (pass embeddings through)
     model = train(embeddings)
 
     # Stage 4: Predict using embedding similarity
-    recommended = predict(job_description, model, docs, top_k)
+    recommended = predict(job_description, model, docs, llm_client, top_k)
     logger.info(f"Top {top_k} recommended resumes: {[doc.id for doc in recommended]}")
 
     # Save retrieval model and documents metadata

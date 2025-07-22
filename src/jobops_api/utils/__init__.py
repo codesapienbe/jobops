@@ -249,7 +249,7 @@ Write a tailored, authentic motivation letter limited to exactly two paragraphs.
         content_body = self.backend.generate_response(prompt, "")
         from ..models import MotivationLetter, JobData
         import datetime
-        from jobops.utils import get_personal_info_footer
+        from . import get_personal_info_footer
 
         # Build a minimal JobData object for compatibility using provided company, title, location
         job_data = JobData(

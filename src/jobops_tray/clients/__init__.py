@@ -72,8 +72,8 @@ class OllamaBackend(BaseLLMBackend):
     
     def health_check(self) -> bool:
         try:
-            resp = requests.get(f"{self.base_url}/health")
-            return resp.status_code == 200 and resp.json().get("status") == "ok"
+            resp = requests.get(self.base_url)
+            return resp.status_code == 200 and "Ollama is running" in resp.text
         except Exception as e:
             self._logger.error(f"Proxy health check failed: {e}")
             return False
