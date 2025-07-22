@@ -1,36 +1,34 @@
-{"timestamp": "2025-07-21T23:33:03.380309Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /"}
-{"timestamp": "2025-07-21T23:33:03.381633Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /"}
-{"timestamp": "2025-07-21T23:33:03.669680Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /favicon.ico"}
-{"timestamp": "2025-07-21T23:33:03.670295Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /favicon.ico"}
-{"timestamp": "2025-07-21T23:33:08.981940Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /dpcs"}
-{"timestamp": "2025-07-21T23:33:08.982248Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /dpcs"}
-{"timestamp": "2025-07-21T23:33:12.376649Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
-{"timestamp": "2025-07-21T23:33:12.377039Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
-{"timestamp": "2025-07-21T23:33:12.725402Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
-{"timestamp": "2025-07-21T23:33:12.818524Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
-{"timestamp": "2025-07-21T23:33:19.825250Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /"}
-{"timestamp": "2025-07-21T23:33:19.825557Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /"}
-{"timestamp": "2025-07-21T23:33:26.630727Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
-{"timestamp": "2025-07-21T23:33:26.631016Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
-{"timestamp": "2025-07-21T23:33:26.719818Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
-{"timestamp": "2025-07-21T23:33:26.721039Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
-{"timestamp": "2025-07-21T23:36:49.060802Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
-{"timestamp": "2025-07-21T23:36:49.061580Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
-{"timestamp": "2025-07-21T23:36:49.192637Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
-{"timestamp": "2025-07-21T23:36:49.206443Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
-{"timestamp": "2025-07-21T23:39:47.114694Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
-{"timestamp": "2025-07-21T23:39:47.115498Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
-{"timestamp": "2025-07-21T23:39:47.273571Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
-{"timestamp": "2025-07-21T23:39:47.284519Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
-{"timestamp": "2025-07-21T23:39:48.907731Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
-{"timestamp": "2025-07-21T23:39:48.908036Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
-{"timestamp": "2025-07-21T23:39:48.998130Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
-{"timestamp": "2025-07-21T23:39:49.000273Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
-{"timestamp": "2025-07-21T23:39:49.752892Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
-{"timestamp": "2025-07-21T23:39:49.753591Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
-{"timestamp": "2025-07-21T23:39:49.840921Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
-{"timestamp": "2025-07-21T23:39:49.843492Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
-{"timestamp": "2025-07-21T23:43:37.974357Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
-{"timestamp": "2025-07-21T23:43:37.976180Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
-{"timestamp": "2025-07-21T23:43:38.147072Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
-{"timestamp": "2025-07-21T23:43:38.158221Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
+{"timestamp": "2025-07-22T08:31:35.631027Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /"}
+{"timestamp": "2025-07-22T08:31:35.631586Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /"}
+{"timestamp": "2025-07-22T08:31:35.632450Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /"}
+{"timestamp": "2025-07-22T08:31:35.632782Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /"}
+{"timestamp": "2025-07-22T08:31:35.727850Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /favicon.ico"}
+{"timestamp": "2025-07-22T08:31:35.728329Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /favicon.ico"}
+{"timestamp": "2025-07-22T08:31:35.729189Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /favicon.ico"}
+{"timestamp": "2025-07-22T08:31:35.729536Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /favicon.ico"}
+{"timestamp": "2025-07-22T08:31:39.248064Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-22T08:31:39.249489Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-22T08:31:39.251239Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-22T08:31:39.252041Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-22T08:31:39.493247Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-22T08:31:39.494972Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-22T08:31:39.505011Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
+{"timestamp": "2025-07-22T08:31:39.507086Z", "level": "ERROR", "component": "jobops_api", "message": "Unhandled exception: Cannot generate a JsonSchema for core_schema.PlainValidatorFunctionSchema ({'type': 'with-info', 'function': <bound method BaseModel.validate of <class 'jobops_api.models.MotivationLetter'>>})\n\nFor further information visit https://errors.pydantic.dev/2.11/u/invalid-for-json-schema"}
+{"timestamp": "2025-07-22T08:34:11.745068Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-22T08:34:11.746566Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-22T08:34:11.747810Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-22T08:34:11.748388Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-22T08:34:11.803435Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-22T08:34:11.804881Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-22T08:34:11.820329Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /openapi.json"}
+{"timestamp": "2025-07-22T08:34:11.820814Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /openapi.json"}
+{"timestamp": "2025-07-22T08:34:15.961706Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /health"}
+{"timestamp": "2025-07-22T08:34:15.963110Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /health"}
+{"timestamp": "2025-07-22T08:34:15.965457Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /health"}
+{"timestamp": "2025-07-22T08:34:15.966286Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /health"}
+{"timestamp": "2025-07-22T08:47:28.399641Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /job-description"}
+{"timestamp": "2025-07-22T08:47:28.404365Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /job-description"}
+{"timestamp": "2025-07-22T08:47:59.023128Z", "level": "INFO", "component": "jobops_api", "message": "Job description stored as group 48b57879-07f4-44fd-b9e0-8738d65ce804"}
+{"timestamp": "2025-07-22T08:47:59.023654Z", "level": "INFO", "component": "jobops_api", "message": "Job description stored as group 48b57879-07f4-44fd-b9e0-8738d65ce804"}
+{"timestamp": "2025-07-22T08:47:59.024638Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /job-description"}
+{"timestamp": "2025-07-22T08:47:59.024998Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /job-description"}

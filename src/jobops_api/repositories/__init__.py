@@ -6,6 +6,14 @@ from ..models import Document, DocumentType
 import sqlite3
 import json
 from ..clients import embed_structured_data  # Automatic embedding helper
+from rich.logging import RichHandler
+
+# Ensure all loggers in this module use RichHandler for colored console output
+root_logger = logging.getLogger()
+if not any(isinstance(h, RichHandler) for h in root_logger.handlers):
+    rich_handler = RichHandler(rich_tracebacks=True, show_time=True, show_level=True, show_path=False)
+    rich_handler.setLevel(logging.INFO)
+    root_logger.addHandler(rich_handler)
 
 class SQLiteDocumentRepository:
     def __init__(self, db_path: str, timeout: float = 30.0):

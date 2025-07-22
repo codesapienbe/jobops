@@ -16,8 +16,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
 from pydantic import BaseModel as PydanticBaseModel, Field as PydanticField
 from datetime import datetime as dt
+from rich.logging import RichHandler
+from pydantic import Field
 
-# Configure structured JSON logging
+from dotenv import load_dotenv
+load_dotenv(
+    # Load .env file from the parent directory (../../.env)
+    dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
+)
+
+# Configure structured JSON logging (file) and rich colored console logging
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log_record = {
@@ -32,10 +40,18 @@ class JsonFormatter(logging.Formatter):
         return json.dumps({k: v for k, v in log_record.items() if v is not None})
 
 logger = logging.getLogger("jobops_api")
+logger.setLevel(logging.INFO)
+
+# File handler for JSON logs
 handler = logging.FileHandler("application.log")
 handler.setFormatter(JsonFormatter())
-logger.setLevel(logging.INFO)
 logger.addHandler(handler)
+
+# RichHandler for colored console output
+console_handler = RichHandler(rich_tracebacks=True, show_time=True, show_level=True, show_path=False)
+console_handler.setLevel(logging.INFO)
+logger.addHandler(console_handler)
+
 logger.propagate = False
 
 # Ensure clips directory exists
@@ -346,7 +362,15 @@ async def generate_letter_endpoint(
 # --- main entrypoint for uvicorn/uv run ---
 def main():
     import uvicorn
-    uvicorn.run("jobops_api.__init__:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), log_config=None, log_level="info")
+    import os
+    port_str = os.environ.get("JOBOPS_API_PORT")
+    if not port_str:
+        raise RuntimeError("Environment variable JOBOPS_API_PORT must be set (no default port allowed).")
+    try:
+        port = int(port_str)
+    except ValueError:
+        raise RuntimeError(f"JOBOPS_API_PORT must be an integer, got: {port_str}")
+    uvicorn.run("jobops_api.__init__:app", host="0.0.0.0", port=port, log_config=None, log_level="info")
 
 if __name__ == "__main__":
     main() 

@@ -73,12 +73,14 @@ dev = [
 ] 
 
 [project.scripts]
-jobops = "jobops_cli:main"
+jobops_api = "jobops_api:main"
+jobops_tray = "jobops_tray:main"
+jobops_clipper = "jobops_clipper:main"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "src/jobops_cli",
     "src/jobops_api",
-    "src/jobops_tray"
+    "src/jobops_tray",
+    "src/jobops_clipper"
 ]
 

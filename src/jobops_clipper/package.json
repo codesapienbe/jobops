@@ -3,9 +3,8 @@
   "version": "0.1.0",
   "description": "Chrome extension to clip web pages and send to JobOps app.",
   "scripts": {
-    "set-port": "node set_port.js",
-    "build": "npm run set-port && node build.js",
-    "clean": "rm -rf ../../../dist/jobops_clipper"
+    "build": "node build.js",
+    "clean": "rm -rf ../../../dist/extension"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

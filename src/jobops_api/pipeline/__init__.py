@@ -3,12 +3,20 @@ import logging
 from pathlib import Path
 import os
 import re
+from rich.logging import RichHandler
 
-from jobops.models import Document, DocumentType
-from jobops.repositories import SQLiteDocumentRepository
-from jobops.config import CONSTANTS
+# Ensure all loggers in this module use RichHandler for colored console output
+root_logger = logging.getLogger()
+if not any(isinstance(h, RichHandler) for h in root_logger.handlers):
+    rich_handler = RichHandler(rich_tracebacks=True, show_time=True, show_level=True, show_path=False)
+    rich_handler.setLevel(logging.INFO)
+    root_logger.addHandler(rich_handler)
 
-from jobops.clients import embed_structured_data
+from ..models import Document, DocumentType
+from ..repositories import SQLiteDocumentRepository
+from ..config import CONSTANTS
+
+from ..clients import embed_structured_data
 import numpy as np
 import joblib
 

@@ -1,8 +1,5 @@
 from typing import Optional, List, Dict, Any
-# Use the v1-compatible Field helper to avoid mixing v2 FieldInfo objects with v1 BaseModel,
-# which caused SQLite binding errors (FieldInfo was being stored instead of actual values).
-from pydantic.v1 import BaseModel, Field, root_validator
-from pydantic import field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from uuid import uuid4
 from datetime import datetime
 from enum import Enum
@@ -27,8 +24,8 @@ class WorkExperience(BaseModel):
     period: Optional[str] = Field(None, description="Duration period")
     description: Optional[str] = Field(None, description="Job description")
     responsibilities: Optional[List[str]] = Field(None, description="Key responsibilities and achievements")
-    
-    @validator('responsibilities', pre=True)
+
+    @field_validator('responsibilities', mode='before')
     def validate_responsibilities(cls, v):
         if isinstance(v, str):
             return [v] if v and v.lower() not in ['n/a', 'none', ''] else []
@@ -44,8 +41,8 @@ class Education(BaseModel):
     gpa: Optional[str] = Field(None, description="GPA or grade")
     description: Optional[str] = Field(None, description="Additional details")
     coursework: Optional[List[str]] = Field(None, description="Relevant coursework")
-    
-    @validator('coursework', pre=True)
+
+    @field_validator('coursework', mode='before')
     def validate_coursework(cls, v):
         if isinstance(v, str):
             return [v] if v and v.lower() not in ['n/a', 'none', ''] else []
@@ -76,8 +73,8 @@ class GenericDocument(BaseModel):
     key_points: List[str] = Field(default_factory=list, description="Main points or highlights")
     sections: Dict[str, Any] = Field(default_factory=dict, description="Document sections")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
-    
-    @root_validator(pre=True)
+
+    @model_validator(mode='before')
     def handle_invalid_values(cls, values):
         for key, value in values.items():
             if isinstance(value, str) and value.lower() in {'n/a', 'none', '', 'null'}:
@@ -86,7 +83,6 @@ class GenericDocument(BaseModel):
 
 class JobData(BaseModel):
     """Structured job posting data for motivation letter generation."""
-    model_config = {'arbitrary_types_allowed': True}
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
     url: str
     title: str
@@ -135,7 +131,6 @@ class Document(BaseModel):
 
 class MotivationLetter(BaseModel):
     """Motivation letter generated for a specific job application."""
-    model_config = {'arbitrary_types_allowed': True}
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
     job_data: JobData
     resume: str  # Now just a markdown string
@@ -144,18 +139,21 @@ class MotivationLetter(BaseModel):
 
 class AppConfig(BaseModel):
     backend: str = "ollama"
-    backend_settings: Dict[str, Dict[str, Any]] = {
-        'ollama': {'model': 'qwen3:8b', 'base_url': 'http://localhost:11434'},
-        'openai': {'model': 'gpt-4o-mini', 'base_url': 'https://api.openai.com/v1'},
-        'groq': {'model': 'llama-3.3-70b-versatile', 'base_url': 'https://api.groq.com/openai/v1'}
-    }
-    app_settings: Dict[str, Any] = {
-        'language': 'en',
-        'output_format': 'markdown'
-    }
+    backend_settings: Dict[str, Dict[str, Any]] = Field(
+        default_factory=lambda: {
+            'ollama': {'model': 'qwen3:8b', 'base_url': 'http://localhost:11434'},
+            'openai': {'model': 'gpt-4o-mini', 'base_url': 'https://api.openai.com/v1'},
+            'groq': {'model': 'llama-3.3-70b-versatile', 'base_url': 'https://api.groq.com/openai/v1'}
+        }
+    )
+    app_settings: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            'language': 'en',
+            'output_format': 'markdown'
+        }
+    )
     sqlite_timeout: float = 30.0
 
-# Add models for solicitation reporting
 class Solicitation(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()), description="Unique ID for the solicitation record")
     report_id: Optional[str] = Field(None, description="ID of the solicitation report")

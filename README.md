@@ -172,6 +172,28 @@ Configure AI backends, templates, and repository paths in:
 
 ---
 
+## Required API Port Configuration
+
+The JobOps API **requires** the environment variable `JOBOPS_API_PORT` to be set before starting the API server or using the CLI to launch the API. There is **no default port**; you must specify the port explicitly via the environment variable.
+
+### Example Usage
+
+```bash
+export JOBOPS_API_PORT=8081
+jobops  # or python -m jobops_api
+```
+
+If `JOBOPS_API_PORT` is not set or is not a valid integer, the API and CLI will raise an error and refuse to start.
+
+- **Error if not set:**
+  - `RuntimeError: Environment variable JOBOPS_API_PORT must be set (no default port allowed).`
+- **Error if not integer:**
+  - `RuntimeError: JOBOPS_API_PORT must be an integer, got: <value>`
+
+Set this variable in your shell or environment before running JobOps services.
+
+---
+
 ## Roadmap
 
 - 📱 Mobile applications (iOS & Android)

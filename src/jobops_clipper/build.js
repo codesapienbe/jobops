@@ -5,7 +5,7 @@ const fs = require('fs');
 
 // Parse --outdir argument or use default
 const outDirArg = process.argv.find(arg => arg.startsWith('--outdir='));
-const outDir = outDirArg ? path.resolve(process.cwd(), outDirArg.split('=')[1]) : path.resolve(__dirname, '../../dist/jobops_clipper/');
+const outDir = outDirArg ? path.resolve(process.cwd(), outDirArg.split('=')[1]) : path.resolve(__dirname, '../../dist/extension/');
 
 // Ensure output directory exists
 fs.mkdirSync(outDir, { recursive: true });

@@ -1,7 +1,5 @@
 from typing import Optional, List, Dict, Any
-# Use the v1-compatible Field helper to avoid mixing v2 FieldInfo objects with v1 BaseModel,
-# which caused SQLite binding errors (FieldInfo was being stored instead of actual values).
-from pydantic.v1 import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from uuid import uuid4
 from datetime import datetime
 from enum import Enum
@@ -27,7 +25,7 @@ class WorkExperience(BaseModel):
     description: Optional[str] = Field(None, description="Job description")
     responsibilities: Optional[List[str]] = Field(None, description="Key responsibilities and achievements")
     
-    @validator('responsibilities', pre=True)
+    @field_validator('responsibilities', mode='before')
     def validate_responsibilities(cls, v):
         if isinstance(v, str):
             return [v] if v and v.lower() not in ['n/a', 'none', ''] else []
@@ -44,7 +42,7 @@ class Education(BaseModel):
     description: Optional[str] = Field(None, description="Additional details")
     coursework: Optional[List[str]] = Field(None, description="Relevant coursework")
     
-    @validator('coursework', pre=True)
+    @field_validator('coursework', mode='before')
     def validate_coursework(cls, v):
         if isinstance(v, str):
             return [v] if v and v.lower() not in ['n/a', 'none', ''] else []
@@ -76,7 +74,7 @@ class GenericDocument(BaseModel):
     sections: Dict[str, Any] = Field(default_factory=dict, description="Document sections")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     
-    @root_validator(pre=True)
+    @model_validator(mode='before')
     def handle_invalid_values(cls, values):
         for key, value in values.items():
             if isinstance(value, str) and value.lower() in {'n/a', 'none', '', 'null'}:
@@ -107,7 +105,7 @@ class JobData(BaseModel):
     job_responsibilities: Optional[str] = None
     candidate_profile: Optional[str] = None
     
-    @validator('url')
+    @field_validator('url', mode='before')
     def validate_url(cls, v):
         if not v.startswith(('http://', 'https://')):
             raise ValueError('URL must start with http:// or https://')

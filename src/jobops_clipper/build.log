@@ -1,0 +1,17 @@
+
+> jobops_clipper@0.1.0 build
+> node build.js
+
+
+
+  ../../dist/extension/background.js  6.7kb
+
+⚡ Done in 5ms
+
+  ../../dist/extension/content.js  1.0kb
+
+⚡ Done in 1ms
+
+  ../../dist/extension/config.js  128b 
+
+⚡ Done in 1ms
