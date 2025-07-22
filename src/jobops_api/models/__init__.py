@@ -111,9 +111,8 @@ class JobData(BaseModel):
     candidate_profile: Optional[str] = None
 
     @field_validator('url')
-    @classmethod
     def validate_url(cls, v):
-        if not v.startswith(('http://', 'https://')):
+        if v is not None and not v.startswith(('http://', 'https://')):
             raise ValueError('URL must start with http:// or https://')
         return v
 
