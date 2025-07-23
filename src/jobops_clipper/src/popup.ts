@@ -8,6 +8,8 @@ declare const JOBOPS_BACKEND_URL: string | undefined;
 document.addEventListener("DOMContentLoaded", async () => {
   let jobData: Record<string, any> = {};
   const generateBtn = document.getElementById("generate") as HTMLButtonElement;
+  const refreshBtn = document.getElementById("refresh-ollama") as HTMLButtonElement;
+  const status = document.getElementById("clip-status") as HTMLElement;
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
   chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
@@ -18,6 +20,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     requestJobData();
   });
+
+  if (refreshBtn) {
+    refreshBtn.onclick = async () => {
+      refreshBtn.disabled = true;
+      status.textContent = 'Checking Ollama status...';
+      const ollamaAvailable = await isOllamaAvailable();
+      if (generateBtn) generateBtn.style.display = ollamaAvailable ? '' : 'none';
+      status.textContent = ollamaAvailable ? 'Ollama is available.' : 'Ollama is NOT available.';
+      setTimeout(() => { status.textContent = ''; }, 2000);
+      refreshBtn.disabled = false;
+    };
+  }
 
   // Listen for preview data from content script
   chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
@@ -110,47 +124,59 @@ document.addEventListener("DOMContentLoaded", async () => {
   (document.getElementById("cancel") as HTMLButtonElement).onclick = () => window.close();
 });
 
+function renderMarkdown(md: string): string {
+  // Very basic: headings, bold, italics, images, links, code, lists
+  return md
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/gim, '<b>$1</b>')
+    .replace(/\*(.*?)\*/gim, '<i>$1</i>')
+    .replace(/!\[(.*?)\]\((.*?)\)/gim, '<img alt="$1" src="$2" style="max-width:100px;max-height:100px;border-radius:8px;margin:2px 8px 2px 0;vertical-align:middle;" />')
+    .replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2" target="_blank">$1</a>')
+    .replace(/`([^`]+)`/gim, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+}
+
 function renderPreview(jobData: Record<string, any>) {
   const container = document.getElementById("preview-container") || document.createElement("div");
   container.id = "preview-container";
-  let html = '<div class="jobops-preview-table">';
+  let md = '';
+  if (jobData.title) md += `# ${jobData.title}\n`;
+  if (jobData.body) md += `\n${jobData.body}\n`;
+  if (jobData.metaKeywords && Array.isArray(jobData.metaKeywords) && jobData.metaKeywords.length > 0) {
+    md += `\n## Tags\n`;
+    md += jobData.metaKeywords.map((kw: string) => ` [32m [1m${kw} [0m`).join(' ');
+    md += '\n';
+  }
+  if (jobData.headings && Array.isArray(jobData.headings) && jobData.headings.length > 0) {
+    md += `\n## Headings\n`;
+    for (const h of jobData.headings) {
+      md += `- <b>${escapeHtml(h.text)}</b> <span style='opacity:0.7;'>(${escapeHtml(h.tag)})</span>\n`;
+    }
+    md += '\n';
+  }
+  if (jobData.images && Array.isArray(jobData.images) && jobData.images.length > 0) {
+    md += `\n## Images\n`;
+    for (const img of jobData.images) {
+      md += `![${img.alt || ''}](${img.src}) `;
+    }
+    md += '\n';
+  }
+  // Other fields as sections
+  const skipKeys = new Set(['title', 'body', 'metaKeywords', 'headings', 'images']);
   for (const [key, value] of Object.entries(jobData)) {
-    if (key === 'headings' && Array.isArray(value)) {
-      html += `<div class="preview-row"><span class="preview-key">${escapeHtml(key)}</span><span class="preview-value">`;
-      if (value.length === 0) {
-        html += '<span class="tag-empty">(none)</span>';
-      } else {
-        for (const heading of value) {
-          html += `<span class="heading-tag">${escapeHtml(heading.text)} <span class="heading-tag-type">${escapeHtml(heading.tag)}</span></span> `;
-        }
-      }
-      html += '</span></div>';
-    } else if (key === 'images' && Array.isArray(value)) {
-      html += `<div class="preview-row"><span class="preview-key">${escapeHtml(key)}</span><span class="preview-value images-row">`;
-      if (value.length === 0) {
-        html += '<span class="tag-empty">(none)</span>';
-      } else {
-        for (const img of value) {
-          html += `<img class="preview-img-thumb" src="${escapeHtml(img.src)}" alt="${escapeHtml(img.alt || '')}" title="${escapeHtml(img.alt || img.src)}" loading="lazy" />`;
-        }
-      }
-      html += '</span></div>';
-    } else if (key === 'metaKeywords' && Array.isArray(value)) {
-      html += `<div class="preview-row"><span class="preview-key">${escapeHtml(key)}</span><span class="preview-value">`;
-      if (value.length === 0) {
-        html += '<span class="tag-empty">(none)</span>';
-      } else {
-        for (const kw of value) {
-          html += `<span class="meta-keyword-tag">${escapeHtml(kw)}</span> `;
-        }
-      }
-      html += '</span></div>';
-    } else {
-      html += `<div class="preview-row"><span class="preview-key">${escapeHtml(key)}</span><span class="preview-value">${escapeHtml(Array.isArray(value) || typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value))}</span></div>`;
+    if (skipKeys.has(key)) continue;
+    if (typeof value === 'string' && value.trim() !== '') {
+      md += `\n## ${key.charAt(0).toUpperCase() + key.slice(1)}\n${escapeHtml(value)}\n`;
+    } else if (Array.isArray(value) && value.length > 0) {
+      md += `\n## ${key.charAt(0).toUpperCase() + key.slice(1)}\n`;
+      md += value.map(v => `- ${escapeHtml(typeof v === 'string' ? v : JSON.stringify(v))}`).join('\n');
+      md += '\n';
     }
   }
-  html += '</div>';
-  container.innerHTML = html;
+  if (jobData.url) md += `\n[Source](${jobData.url})\n`;
+  container.innerHTML = `<div class="jobops-markdown-preview">${renderMarkdown(md)}</div>`;
   // Replace or append preview
   const parent = document.querySelector(".glassmorphic-popup") || document.body;
   let old = document.getElementById("preview-container");
@@ -167,29 +193,75 @@ function escapeHtml(str: string): string {
 // Ollama enhancement helper
 const OLLAMA_URL = 'http://localhost:11434';
 const OLLAMA_MODEL = 'qwen3:1.7b';
+// Define the job schema for structured output
+const jobSchema = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    url: { type: "string" },
+    body: { type: "string" },
+    metaDescription: { type: "string" },
+    metaKeywords: { type: "array", items: { type: "string" } },
+    ogType: { type: "string" },
+    ogSiteName: { type: "string" },
+    canonical: { type: "string" },
+    headings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          tag: { type: "string" },
+          text: { type: "string" }
+        },
+        required: ["tag", "text"]
+      }
+    },
+    images: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          src: { type: "string" },
+          alt: { type: "string" }
+        },
+        required: ["src"]
+      }
+    },
+    selectedText: { type: "string" },
+    created_at: { type: "string" },
+    jobops_action: { type: "string" }
+  },
+  required: ["title", "url", "body", "created_at", "jobops_action"]
+};
 async function enhanceWithOllama(jobData: Record<string, any>): Promise<Record<string, any>> {
-  const prompt = `Given the following job data as JSON, extract as much structured information as possible, filling in missing fields (e.g., description, tags, summary, company, skills, etc.) and returning a completed JSON.\n\n${JSON.stringify(jobData, null, 2)}`;
-  console.info('[JobOps Clipper] Sending prompt to Ollama:', prompt);
+  const prompt = `Extract and complete the following job data as JSON.`;
+  console.info('[JobOps Clipper] Sending prompt to Ollama:', prompt, jobData);
   const response = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: OLLAMA_MODEL,
       prompt,
-      stream: false
+      format: jobSchema,
+      stream: false,
+      data: jobData // Optionally send jobData as context
     })
   });
   if (!response.ok) {
     let errorMsg = 'Ollama API error';
     try {
       const err = await response.json();
-      if (err.error) errorMsg = err.error;
-      else if (err.message) errorMsg = err.message;
-      else errorMsg = JSON.stringify(err);
+      errorMsg += `\nStatus: ${response.status} ${response.statusText}`;
+      errorMsg += `\nHeaders: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`;
+      errorMsg += `\nBody: ${JSON.stringify(err)}`;
+      console.error('[JobOps Clipper] Ollama API error:', errorMsg);
     } catch (e) {
       try {
         const text = await response.text();
-        if (text) errorMsg = text;
+        errorMsg += `\nStatus: ${response.status} ${response.statusText}`;
+        errorMsg += `\nHeaders: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`;
+        errorMsg += `\nBody: ${text}`;
+        console.error('[JobOps Clipper] Ollama API error:', errorMsg);
       } catch {}
     }
     throw new Error(errorMsg);
@@ -224,3 +296,4 @@ async function isOllamaAvailable(): Promise<boolean> {
     return false;
   }
 }
+
