@@ -80,3 +80,19 @@
 {"timestamp": "2025-07-22T10:27:26.717488Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: POST /upload-document"}
 {"timestamp": "2025-07-22T10:27:33.660457Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}
 {"timestamp": "2025-07-22T10:27:33.660897Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /upload-document"}
+{"timestamp": "2025-07-23T12:50:36.596295Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /"}
+{"timestamp": "2025-07-23T12:50:36.598249Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /"}
+{"timestamp": "2025-07-23T12:50:36.601429Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /"}
+{"timestamp": "2025-07-23T12:50:36.603693Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /"}
+{"timestamp": "2025-07-23T12:50:37.068081Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /favicon.ico"}
+{"timestamp": "2025-07-23T12:50:37.070770Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /favicon.ico"}
+{"timestamp": "2025-07-23T12:50:37.074726Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /favicon.ico"}
+{"timestamp": "2025-07-23T12:50:37.078957Z", "level": "INFO", "component": "jobops_api", "message": "Response: 404 /favicon.ico"}
+{"timestamp": "2025-07-23T12:50:43.959814Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-23T12:50:43.961697Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /docs"}
+{"timestamp": "2025-07-23T12:50:43.964703Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-23T12:50:43.967070Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /docs"}
+{"timestamp": "2025-07-23T12:50:44.133016Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-23T12:50:44.134494Z", "level": "INFO", "component": "jobops_api", "message": "Incoming request: GET /openapi.json"}
+{"timestamp": "2025-07-23T12:50:44.217469Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /openapi.json"}
+{"timestamp": "2025-07-23T12:50:44.219554Z", "level": "INFO", "component": "jobops_api", "message": "Response: 200 /openapi.json"}

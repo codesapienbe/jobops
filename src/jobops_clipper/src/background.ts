@@ -1,5 +1,4 @@
 /// <reference types="chrome" />
-import { BACKEND_API_BASE } from "./config";
 
 function log(...args: any[]) {
   console.log("[JobOps Clipper]", ...args);
@@ -63,6 +62,16 @@ async function tryClipPage(tabId: number, attempt = 1, maxAttempts = 3): Promise
   });
 }
 
+// Remove direct BACKEND_API_BASE assignment
+// Add helper to get backend URL from chrome.storage
+function getBackendApiBase(): Promise<string | null> {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get(["jobops_backend_url"], (result) => {
+      resolve(result["jobops_backend_url"] || null);
+    });
+  });
+}
+
 // Compatibility and environment checks for Manifest V3 background service worker
 try {
   // Check for service worker context
@@ -97,7 +106,12 @@ try {
           tryClipPage(tab.id).then(async (response) => {
             // ① POST /clip to send clipped content to backend
             try {
-              const clipRes = await fetch(`${BACKEND_API_BASE}/clip`, {
+              const backendApiBase = await getBackendApiBase();
+              if (!backendApiBase) {
+                showNotification("Backend URL not set.", true);
+                return;
+              }
+              const clipRes = await fetch(`${backendApiBase}/clip`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

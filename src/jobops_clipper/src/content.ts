@@ -55,9 +55,6 @@ chrome.runtime.onMessage.addListener((msg: { action: string }, sender: chrome.ru
         body,
         metaDescription,
         metaKeywords,
-        ogTitle,
-        ogDescription,
-        ogImage,
         ogType,
         ogSiteName,
         canonical,
@@ -75,6 +72,7 @@ chrome.runtime.onMessage.addListener((msg: { action: string }, sender: chrome.ru
       );
       // Only send jobData to popup for preview, do NOT copy to clipboard here
       chrome.runtime.sendMessage({ action: "show_preview", jobData });
+      sendResponse({ jobData }); // <-- Add this line to respond directly to popup
       // Clipboard write removed from content script
     } catch (e) {
       console.error("[JobOps Clipper] Error extracting content:", e);

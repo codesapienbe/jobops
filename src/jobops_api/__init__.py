@@ -1,11 +1,10 @@
 import logging
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, Body
+from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 from datetime import datetime
 import json
 import os
 import re
-from fastapi import Body
 from pydantic import ValidationError
 from .models import MotivationLetter, Document, DocumentType
 from .utils import generate_from_markdown, generate_optimized_resume_from_markdown, extract_skills, extract_skills_with_llm, build_consultant_reply_prompt
@@ -14,10 +13,9 @@ import uuid
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import status
-from pydantic import BaseModel as PydanticBaseModel, Field as PydanticField
+from pydantic import BaseModel as PydanticBaseModel, Field
 from datetime import datetime as dt
 from rich.logging import RichHandler
-from pydantic import Field
 from fastapi import UploadFile, File, Form
 
 from dotenv import load_dotenv
@@ -105,13 +103,26 @@ async def security_headers_middleware(request: Request, call_next):
 
 # Structured error response model
 class ErrorResponse(PydanticBaseModel):
-    timestamp: str = Field(default_factory=lambda: dt.utcnow().isoformat() + "Z", example="2025-07-21T23:33:03.380309Z")
-    level: str = Field(default="ERROR", example="ERROR")
-    component: str = Field(default="jobops_api", example="jobops_api")
-    message: str = Field(..., example="Validation error: ...")
-    correlation_id: str | None = Field(default=None, example="abc-123")
-    user_id: str | None = Field(default=None, example="user-42")
-    request_id: str | None = Field(default=None, example="req-99")
+    timestamp: str = Field(default_factory=lambda: dt.utcnow().isoformat() + "Z")
+    level: str = Field(default="ERROR")
+    component: str = Field(default="jobops_api")
+    message: str = Field(...)
+    correlation_id: Optional[str] = Field(default=None)
+    user_id: Optional[str] = Field(default=None)
+    request_id: Optional[str] = Field(default=None)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "timestamp": "2025-07-21T23:33:03.380309Z",
+                "level": "ERROR",
+                "component": "jobops_api",
+                "message": "Validation error: ...",
+                "correlation_id": "abc-123",
+                "user_id": "user-42",
+                "request_id": "req-99"
+            }
+        }
 
 # Update error handling in middleware
 @app.middleware("http")
@@ -215,13 +226,16 @@ async def store_job_description(
     request_id = request.headers.get("X-Request-ID") if request else None
     user_id = request.headers.get("X-User-ID") if request else None
     correlation_id = request.headers.get("X-Correlation-ID") if request else None
+    if not request:
+        return JSONResponse(status_code=400, content={"status": "error", "error": "Request is required"})
     try:
         group_id = str(uuid.uuid4())
         doc_job = Document(
             type=DocumentType.JOB_DESCRIPTION,
             raw_content=job_markdown,
             structured_content=job_markdown,
-            group_id=group_id
+            group_id=group_id,
+            embedding=None
         )
         from .config import JSONConfigManager, CONSTANTS
         from .clients import LLMBackendFactory
@@ -267,6 +281,8 @@ async def generate_letter_endpoint(
     request_id = request.headers.get("X-Request-ID") if request else None
     user_id = request.headers.get("X-User-ID") if request else None
     correlation_id = request.headers.get("X-Correlation-ID") if request else None
+    if not request:
+        return JSONResponse(status_code=400, content={"status": "error", "error": "Request is required"})
     try:
         logger.info(
             f"/generate-letter called with group_id: {group_id}",
@@ -335,14 +351,16 @@ async def generate_letter_endpoint(
             type=DocumentType.RESUME,
             raw_content=tailored_resume,
             structured_content=tailored_resume,
-            group_id=group_id
+            group_id=group_id,
+            embedding=None
         )
         repository.save(doc_resume)
         doc_letter = Document(
             type=DocumentType.COVER_LETTER,
             raw_content=letter.content,
             structured_content=letter.content,
-            group_id=group_id
+            group_id=group_id,
+            embedding=None
         )
         repository.save(doc_letter)
         # Skills report as markdown
@@ -371,7 +389,8 @@ async def generate_letter_endpoint(
             type=DocumentType.OTHER,
             raw_content=report_md,
             structured_content=report_md,
-            group_id=group_id
+            group_id=group_id,
+            embedding=None
         )
         repository.save(doc_report)
         logger.info(
@@ -412,8 +431,15 @@ async def consultant_reply_endpoint(
     language: str = Body("en", description="Language for the reply (default: en)"),
     request: Request = None
 ):
+    request_id = request.headers.get("X-Request-ID") if request else None
+    user_id = request.headers.get("X-User-ID") if request else None
+    correlation_id = request.headers.get("X-Correlation-ID") if request else None
     try:
         # ① Build the consultant reply prompt
+        logger.info(
+            f"/consultant-reply called with email_message: {email_message}, resume_markdown: {resume_markdown}, language: {language}",
+            extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
+        )
         prompt = build_consultant_reply_prompt(email_message, resume_markdown, language)
         # ② Call the LLM backend to generate the reply
         from .config import JSONConfigManager, CONSTANTS
@@ -455,8 +481,23 @@ async def upload_document_endpoint(
         import tempfile
         from datetime import datetime
         from .models import Document, DocumentType
+        request_id = request.headers.get("X-Request-ID") if request else None
+        user_id = request.headers.get("X-User-ID") if request else None
+        correlation_id = request.headers.get("X-Correlation-ID") if request else None
         # ① Save uploaded file to a temp location
-        suffix = os.path.splitext(file.filename)[-1]
+        if not file.filename:
+            logger.warning(
+                "No file name provided in /upload-document request",
+                extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
+            )
+            return JSONResponse(status_code=400, content={"status": "error", "error": "File name is required"})
+        if not doc_type:
+            logger.warning(
+                "No document type provided in /upload-document request",
+                extra={"request_id": request_id, "user_id": user_id, "correlation_id": correlation_id}
+            )
+            return JSONResponse(status_code=400, content={"status": "error", "error": "Document type is required"})
+        suffix = os.path.splitext(file.filename)[-1].lower()
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
