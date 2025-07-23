@@ -135,6 +135,16 @@ function renderPreview(jobData: Record<string, any>) {
         }
       }
       html += '</span></div>';
+    } else if (key === 'metaKeywords' && Array.isArray(value)) {
+      html += `<div class="preview-row"><span class="preview-key">${escapeHtml(key)}</span><span class="preview-value">`;
+      if (value.length === 0) {
+        html += '<span class="tag-empty">(none)</span>';
+      } else {
+        for (const kw of value) {
+          html += `<span class="meta-keyword-tag">${escapeHtml(kw)}</span> `;
+        }
+      }
+      html += '</span></div>';
     } else {
       html += `<div class="preview-row"><span class="preview-key">${escapeHtml(key)}</span><span class="preview-value">${escapeHtml(Array.isArray(value) || typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value))}</span></div>`;
     }
