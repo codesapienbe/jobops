@@ -284,3 +284,68 @@ button:hover {
   border: 1px solid rgba(168,255,120,0.18);
   vertical-align: middle;
 }
+
+.properties-section {
+  background: rgba(32,32,40,0.92);
+  border-radius: 12px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.10);
+  padding: 14px 14px 8px 14px;
+  margin-bottom: 12px;
+  border: 1.5px solid rgba(168,255,120,0.10);
+}
+.properties-header {
+  font-size: 1.08em;
+  font-weight: 700;
+  color: #a8ff78;
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
+}
+.property-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 7px;
+}
+.property-icon {
+  font-size: 1.1em;
+  margin-right: 8px;
+  color: #a8ff78;
+  min-width: 1.5em;
+  text-align: center;
+}
+.property-input {
+  flex: 1;
+  background: rgba(24,24,32,0.85);
+  border: 1.2px solid rgba(168,255,120,0.13);
+  border-radius: 7px;
+  color: #fff;
+  font-size: 1em;
+  font-family: inherit;
+  padding: 6px 10px;
+  margin-left: 2px;
+  outline: none;
+  transition: border 0.2s;
+}
+.property-input:focus {
+  border: 1.2px solid #a8ff78;
+}
+.markdown-editor {
+  width: 100%;
+  height: 220px;
+  min-height: 80px;
+  max-height: 260px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1.5px solid rgba(168,255,120,0.18);
+  background: rgba(24,24,32,0.85);
+  color: #fff;
+  font-size: 1.08em;
+  font-family: 'Fira Mono', 'Consolas', monospace;
+  padding: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+  outline: none;
+  transition: border 0.2s;
+}
+.markdown-editor:focus {
+  border: 1.5px solid #a8ff78;
+}

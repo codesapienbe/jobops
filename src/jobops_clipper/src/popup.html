@@ -8,13 +8,42 @@
   </head>
   <body>
     <div class="glassmorphic-popup">
-      <div id="preview-container"></div>
-      <div id="progress-bar" style="display:none; width:100%; height:6px; background: linear-gradient(90deg, #78ffd6 0%, #a8ff78 100%); border-radius: 4px; margin-bottom: 10px; animation: progressBarAnim 1.2s linear infinite alternate;"></div>
+      <form id="properties-form" autocomplete="off">
+        <div class="properties-section">
+          <div class="properties-header">Properties ▼</div>
+          <div class="property-row">
+            <span class="property-icon">📝</span>
+            <input id="prop-title" class="property-input" type="text" placeholder="Title" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">🔗</span>
+            <input id="prop-url" class="property-input" type="text" placeholder="Source URL" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">👤</span>
+            <input id="prop-author" class="property-input" type="text" placeholder="Author" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">📅</span>
+            <input id="prop-published" class="property-input" type="text" placeholder="Published" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">⏰</span>
+            <input id="prop-created" class="property-input" type="text" placeholder="Created" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">📝</span>
+            <input id="prop-description" class="property-input" type="text" placeholder="Description" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">🏷️</span>
+            <input id="prop-tags" class="property-input" type="text" placeholder="Tags (comma separated)" />
+          </div>
+        </div>
+      </form>
+      <textarea id="markdown-editor" class="markdown-editor" placeholder="Edit your markdown here..."></textarea>
       <div class="buttons">
-        <button id="generate" aria-label="Generate">🪄</button>
-        <button id="refresh-ollama" aria-label="Refresh Ollama status">🔄</button>
-        <button id="approve" aria-label="Clip">📋</button>
-        <button id="cancel" aria-label="Cancel">❌</button>
+        <button id="copy-markdown" aria-label="Copy to Clipboard">📋 Copy to Clipboard</button>
       </div>
       <div id="clip-status"></div>
     </div>

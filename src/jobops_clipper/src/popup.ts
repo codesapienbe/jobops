@@ -7,46 +7,61 @@ declare const JOBOPS_BACKEND_URL: string | undefined;
 
 document.addEventListener("DOMContentLoaded", async () => {
   let jobData: Record<string, any> = {};
-  const generateBtn = document.getElementById("generate") as HTMLButtonElement;
-  const refreshBtn = document.getElementById("refresh-ollama") as HTMLButtonElement;
+  const markdownEditor = document.getElementById("markdown-editor") as HTMLTextAreaElement;
+  const copyBtn = document.getElementById("copy-markdown") as HTMLButtonElement;
   const status = document.getElementById("clip-status") as HTMLElement;
+  // Property fields
+  const propTitle = document.getElementById("prop-title") as HTMLInputElement;
+  const propUrl = document.getElementById("prop-url") as HTMLInputElement;
+  const propAuthor = document.getElementById("prop-author") as HTMLInputElement;
+  const propPublished = document.getElementById("prop-published") as HTMLInputElement;
+  const propCreated = document.getElementById("prop-created") as HTMLInputElement;
+  const propDescription = document.getElementById("prop-description") as HTMLInputElement;
+  const propTags = document.getElementById("prop-tags") as HTMLInputElement;
+
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
   chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
-    // Check Ollama availability and show/hide Generate button
-    if (generateBtn) {
-      const ollamaAvailable = await isOllamaAvailable();
-      generateBtn.style.display = ollamaAvailable ? '' : 'none';
-    }
     requestJobData();
   });
-
-  if (refreshBtn) {
-    refreshBtn.onclick = async () => {
-      refreshBtn.disabled = true;
-      status.textContent = 'Checking Ollama status...';
-      const ollamaAvailable = await isOllamaAvailable();
-      if (generateBtn) generateBtn.style.display = ollamaAvailable ? '' : 'none';
-      status.textContent = ollamaAvailable ? 'Ollama is available.' : 'Ollama is NOT available.';
-      setTimeout(() => { status.textContent = ''; }, 2000);
-      refreshBtn.disabled = false;
-    };
-  }
 
   // Listen for preview data from content script
   chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
     if (msg.action === "show_preview" && msg.jobData) {
       jobData = msg.jobData;
-      renderPreview(jobData);
+      populatePropertyFields(jobData);
+      markdownEditor.value = generateMarkdown(jobData);
     }
   });
 
-  // Request job data from the content script on popup open
+  function populatePropertyFields(data: Record<string, any>) {
+    propTitle.value = data.title || '';
+    propUrl.value = data.url || '';
+    propAuthor.value = data.author || '';
+    propPublished.value = data.published || '';
+    propCreated.value = data.created_at || '';
+    propDescription.value = data.description || '';
+    propTags.value = Array.isArray(data.metaKeywords) ? data.metaKeywords.join(', ') : (data.metaKeywords || '');
+  }
+
+  function updateJobDataFromFields() {
+    jobData.title = propTitle.value;
+    jobData.url = propUrl.value;
+    jobData.author = propAuthor.value;
+    jobData.published = propPublished.value;
+    jobData.created_at = propCreated.value;
+    jobData.description = propDescription.value;
+    jobData.metaKeywords = propTags.value.split(',').map(t => t.trim()).filter(Boolean);
+    markdownEditor.value = generateMarkdown(jobData);
+  }
+
+  [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags].forEach(input => {
+    input.addEventListener('input', updateJobDataFromFields);
+  });
+
   function requestJobData() {
-    console.info('[JobOps Clipper] Requesting job data from content script...');
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) return;
-      // First, check if the content script is injected
       chrome.scripting.executeScript(
         {
           target: { tabId: tabs[0].id },
@@ -54,23 +69,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         },
         (results) => {
           if (chrome.runtime.lastError || !results || !results[0].result) {
-            (document.getElementById("clip-status") as HTMLElement).textContent =
-              "Content script not loaded. Please refresh the page and try again.";
+            status.textContent = "Content script not loaded. Please refresh the page and try again.";
             return;
           }
-          // Now send the message
           chrome.tabs.sendMessage(
             tabs[0].id!,
             { action: "clip_page" },
             (response) => {
               if (chrome.runtime.lastError) {
-                (document.getElementById("clip-status") as HTMLElement).textContent =
-                  "Could not connect to content script. Try refreshing the page.";
+                status.textContent = "Could not connect to content script. Try refreshing the page.";
                 return;
               }
               if (response && response.jobData) {
                 jobData = response.jobData;
-                renderPreview(jobData);
+                populatePropertyFields(jobData);
+                markdownEditor.value = generateMarkdown(jobData);
               }
             }
           );
@@ -79,80 +92,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  (document.getElementById("approve") as HTMLButtonElement).onclick = async () => {
-    if (!jobData || Object.keys(jobData).length === 0) return;
-    const jsonString = JSON.stringify(jobData, null, 2);
+  copyBtn.onclick = async () => {
     try {
-      await navigator.clipboard.writeText(jsonString);
-      (document.getElementById("clip-status") as HTMLElement).textContent = "Copied to clipboard!";
-      setTimeout(() => window.close(), 1200);
+      await navigator.clipboard.writeText(markdownEditor.value);
+      status.textContent = "Copied to clipboard!";
+      setTimeout(() => status.textContent = '', 1200);
     } catch (e) {
-      (document.getElementById("clip-status") as HTMLElement).textContent = "Failed to copy to clipboard.";
-    }
-    // Removed: enhanceWithOllama call from here
-  };
-
-  (document.getElementById("generate") as HTMLButtonElement).onclick = async () => {
-    const generateBtn = document.getElementById("generate") as HTMLButtonElement;
-    const status = document.getElementById("clip-status") as HTMLElement;
-    const progressBar = document.getElementById("progress-bar") as HTMLElement;
-    if (!jobData || Object.keys(jobData).length === 0) return;
-    generateBtn.disabled = true;
-    status.textContent = "Checking Ollama model...";
-    progressBar.style.display = "block";
-    try {
-      const modelAvailable = await isOllamaModelAvailable(OLLAMA_MODEL);
-      if (!modelAvailable) {
-        status.textContent = `Ollama model '${OLLAMA_MODEL}' is not available. Please pull it with 'ollama pull ${OLLAMA_MODEL}' and try again.`;
-        progressBar.style.display = "none";
-        generateBtn.disabled = false;
-        return;
-      }
-      status.textContent = "Generating structured data...";
-      const enhanced = await enhanceWithOllama(jobData);
-      jobData = enhanced;
-      renderPreview(jobData);
-      status.textContent = "Structured data generated.";
-    } catch (e: any) {
-      status.textContent = "Failed to generate structured data: " + (e?.message || e);
-    } finally {
-      progressBar.style.display = "none";
-      generateBtn.disabled = false;
+      status.textContent = "Failed to copy to clipboard.";
     }
   };
-
-  (document.getElementById("cancel") as HTMLButtonElement).onclick = () => window.close();
 });
 
-function renderMarkdown(md: string): string {
-  // Very basic: headings, bold, italics, images, links, code, lists
-  return md
-    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-    .replace(/\*\*(.*?)\*\*/gim, '<b>$1</b>')
-    .replace(/\*(.*?)\*/gim, '<i>$1</i>')
-    .replace(/!\[(.*?)\]\((.*?)\)/gim, '<img alt="$1" src="$2" style="max-width:100px;max-height:100px;border-radius:8px;margin:2px 8px 2px 0;vertical-align:middle;" />')
-    .replace(/\[(.*?)\]\((.*?)\)/gim, '<a href="$2" target="_blank">$1</a>')
-    .replace(/`([^`]+)`/gim, '<code>$1</code>')
-    .replace(/\n/g, '<br>');
-}
-
-function renderPreview(jobData: Record<string, any>) {
-  const container = document.getElementById("preview-container") || document.createElement("div");
-  container.id = "preview-container";
+function generateMarkdown(jobData: Record<string, any>): string {
   let md = '';
   if (jobData.title) md += `# ${jobData.title}\n`;
   if (jobData.body) md += `\n${jobData.body}\n`;
   if (jobData.metaKeywords && Array.isArray(jobData.metaKeywords) && jobData.metaKeywords.length > 0) {
     md += `\n## Tags\n`;
-    md += jobData.metaKeywords.map((kw: string) => ` [32m [1m${kw} [0m`).join(' ');
+    md += jobData.metaKeywords.map((kw: string) => `**${kw}**`).join(' ');
     md += '\n';
   }
   if (jobData.headings && Array.isArray(jobData.headings) && jobData.headings.length > 0) {
     md += `\n## Headings\n`;
     for (const h of jobData.headings) {
-      md += `- <b>${escapeHtml(h.text)}</b> <span style='opacity:0.7;'>(${escapeHtml(h.tag)})</span>\n`;
+      md += `- ${h.text} (${h.tag})\n`;
     }
     md += '\n';
   }
@@ -168,19 +131,15 @@ function renderPreview(jobData: Record<string, any>) {
   for (const [key, value] of Object.entries(jobData)) {
     if (skipKeys.has(key)) continue;
     if (typeof value === 'string' && value.trim() !== '') {
-      md += `\n## ${key.charAt(0).toUpperCase() + key.slice(1)}\n${escapeHtml(value)}\n`;
+      md += `\n## ${key.charAt(0).toUpperCase() + key.slice(1)}\n${value}\n`;
     } else if (Array.isArray(value) && value.length > 0) {
       md += `\n## ${key.charAt(0).toUpperCase() + key.slice(1)}\n`;
-      md += value.map(v => `- ${escapeHtml(typeof v === 'string' ? v : JSON.stringify(v))}`).join('\n');
+      md += value.map(v => `- ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n');
       md += '\n';
     }
   }
   if (jobData.url) md += `\n[Source](${jobData.url})\n`;
-  container.innerHTML = `<div class="jobops-markdown-preview">${renderMarkdown(md)}</div>`;
-  // Replace or append preview
-  const parent = document.querySelector(".glassmorphic-popup") || document.body;
-  let old = document.getElementById("preview-container");
-  if (old) old.replaceWith(container); else parent.insertBefore(container, parent.firstChild);
+  return md;
 }
 
 // Escape HTML for safe pre display
