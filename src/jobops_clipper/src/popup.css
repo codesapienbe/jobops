@@ -60,15 +60,19 @@ textarea {
 
 .buttons {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 0;
   flex: 0 0 auto;
-  justify-content: flex-end;
-  align-items: center;
+  align-items: stretch;
   margin-top: 18px;
   margin-bottom: 0;
   position: static;
   background: transparent;
   z-index: 2;
+}
+.buttons button {
+  width: 100%;
+  margin-bottom: 10px;
 }
 
 button {
@@ -399,7 +403,7 @@ button:hover {
 .markdown-editor:focus {
   border: 1.5px solid #a8ff78;
 }
-#copy-markdown {
+#copy-markdown, #auto-map-ollama {
   width: 100%;
   padding: 14px 0;
   background: linear-gradient(90deg, #a259ff 0%, #a8ff78 100%);
@@ -411,9 +415,9 @@ button:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.10);
   cursor: pointer;
   transition: background 0.2s, color 0.2s, transform 0.2s;
-  margin-top: 8px;
+  margin-top: 0;
 }
-#copy-markdown:hover {
+#copy-markdown:hover, #auto-map-ollama:hover {
   background: linear-gradient(90deg, #a8ff78 0%, #a259ff 100%);
   color: #111;
   transform: scale(1.03);
