@@ -21,6 +21,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const propHeadings = document.getElementById("prop-headings") as HTMLDivElement;
   const propImages = document.getElementById("prop-images") as HTMLDivElement;
   const propLocation = document.getElementById("prop-location") as HTMLInputElement;
+  const autoMapBtn = document.getElementById("auto-map-ollama") as HTMLButtonElement;
+  copyBtn.disabled = true;
 
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
@@ -126,6 +128,25 @@ document.addEventListener("DOMContentLoaded", async () => {
       setTimeout(() => status.textContent = '', 1200);
     } catch (e) {
       status.textContent = "Failed to copy to clipboard.";
+    }
+  };
+
+  autoMapBtn.onclick = async () => {
+    autoMapBtn.disabled = true;
+    status.textContent = "Auto-mapping with Ollama...";
+    try {
+      const enhanced = await enhanceWithOllama(jobData);
+      jobData = enhanced;
+      populatePropertyFields(jobData);
+      markdownEditor.value = generateMarkdown(jobData);
+      status.textContent = "Fields auto-mapped!";
+      copyBtn.disabled = false;
+    } catch (e: any) {
+      status.textContent = "Ollama mapping failed: " + (e?.message || e);
+      copyBtn.disabled = true;
+    } finally {
+      autoMapBtn.disabled = false;
+      setTimeout(() => status.textContent = '', 2000);
     }
   };
 });

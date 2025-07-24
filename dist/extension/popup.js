@@ -16,6 +16,8 @@
     const propHeadings = document.getElementById("prop-headings");
     const propImages = document.getElementById("prop-images");
     const propLocation = document.getElementById("prop-location");
+    const autoMapBtn = document.getElementById("auto-map-ollama");
+    copyBtn.disabled = true;
     const backendUrl = typeof JOBOPS_BACKEND_URL !== "undefined" ? JOBOPS_BACKEND_URL : "http://localhost:8877";
     chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
       requestJobData();
@@ -113,6 +115,24 @@
         status.textContent = "Failed to copy to clipboard.";
       }
     };
+    autoMapBtn.onclick = async () => {
+      autoMapBtn.disabled = true;
+      status.textContent = "Auto-mapping with Ollama...";
+      try {
+        const enhanced = await enhanceWithOllama(jobData);
+        jobData = enhanced;
+        populatePropertyFields(jobData);
+        markdownEditor.value = generateMarkdown(jobData);
+        status.textContent = "Fields auto-mapped!";
+        copyBtn.disabled = false;
+      } catch (e) {
+        status.textContent = "Ollama mapping failed: " + (e?.message || e);
+        copyBtn.disabled = true;
+      } finally {
+        autoMapBtn.disabled = false;
+        setTimeout(() => status.textContent = "", 2e3);
+      }
+    };
   });
   function generateMarkdown(jobData) {
     let md = "";
@@ -156,5 +176,96 @@ ${value}
 [Source](${jobData.url})
 `;
     return md;
+  }
+  var OLLAMA_URL = "http://localhost:11434";
+  var OLLAMA_MODEL = "qwen3:1.7b";
+  var jobSchema = {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      url: { type: "string" },
+      body: { type: "string" },
+      metaDescription: { type: "string" },
+      metaKeywords: { type: "array", items: { type: "string" } },
+      ogType: { type: "string" },
+      ogSiteName: { type: "string" },
+      canonical: { type: "string" },
+      headings: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            tag: { type: "string" },
+            text: { type: "string" }
+          },
+          required: ["tag", "text"]
+        }
+      },
+      images: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            src: { type: "string" },
+            alt: { type: "string" }
+          },
+          required: ["src"]
+        }
+      },
+      selectedText: { type: "string" },
+      created_at: { type: "string" },
+      jobops_action: { type: "string" }
+    },
+    required: ["title", "url", "body", "created_at", "jobops_action"]
+  };
+  async function enhanceWithOllama(jobData) {
+    const prompt = `Extract and complete the following job data as JSON.`;
+    console.info("[JobOps Clipper] Sending prompt to Ollama:", prompt, jobData);
+    const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt,
+        format: jobSchema,
+        stream: false,
+        data: jobData
+        // Optionally send jobData as context
+      })
+    });
+    if (!response.ok) {
+      let errorMsg = "Ollama API error";
+      try {
+        const err = await response.json();
+        errorMsg += `
+Status: ${response.status} ${response.statusText}`;
+        errorMsg += `
+Headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`;
+        errorMsg += `
+Body: ${JSON.stringify(err)}`;
+        console.error("[JobOps Clipper] Ollama API error:", errorMsg);
+      } catch (e) {
+        try {
+          const text = await response.text();
+          errorMsg += `
+Status: ${response.status} ${response.statusText}`;
+          errorMsg += `
+Headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`;
+          errorMsg += `
+Body: ${text}`;
+          console.error("[JobOps Clipper] Ollama API error:", errorMsg);
+        } catch {
+        }
+      }
+      throw new Error(errorMsg);
+    }
+    const data = await response.json();
+    let completed;
+    try {
+      completed = JSON.parse(data.response);
+    } catch {
+      completed = jobData;
+    }
+    return { ...jobData, ...completed };
   }
 })();

@@ -21,7 +21,7 @@ body {
   font-weight: 500;
   text-shadow: 0 1px 4px rgba(0,0,0,0.7);
   transition: background 0.3s, box-shadow 0.3s;
-  overflow-y: auto;
+  overflow: auto;
   min-height: 0;
 }
 
@@ -61,14 +61,14 @@ textarea {
 .buttons {
   display: flex;
   gap: 10px;
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 18px;
-  padding: 0 18px;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 18px;
+  margin-bottom: 0;
+  position: static;
   background: transparent;
   z-index: 2;
-  margin-top: 18px;
 }
 
 button {
@@ -293,6 +293,7 @@ button:hover {
   padding: 14px 14px 8px 14px;
   margin-bottom: 12px;
   border: 1.5px solid rgba(168,255,120,0.10);
+  overflow: auto;
 }
 .properties-header {
   font-size: 1.08em;
@@ -322,6 +323,8 @@ button:hover {
   gap: 6px;
   align-items: center;
   min-height: 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .property-tag {
   display: inline-block;
@@ -341,6 +344,8 @@ button:hover {
   gap: 8px;
   align-items: center;
   min-height: 32px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .property-image-thumb {
   width: 38px;
@@ -370,8 +375,11 @@ button:hover {
 .markdown-editor {
   flex: 1 1 auto;
   width: 100%;
-  min-height: 80px;
-  max-height: 260px;
+  max-width: 100%;
+  min-width: 0;
+  height: 880px;
+  min-height: 320px;
+  max-height: 1040px;
   resize: vertical;
   border: 1.5px solid rgba(168,255,120,0.18);
   background: rgba(24,24,32,0.85);
@@ -383,7 +391,42 @@ button:hover {
   box-shadow: 0 1px 6px rgba(0,0,0,0.08);
   outline: none;
   transition: border 0.2s;
+  overflow: auto;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .markdown-editor:focus {
   border: 1.5px solid #a8ff78;
+}
+#copy-markdown {
+  width: 100%;
+  padding: 14px 0;
+  background: linear-gradient(90deg, #a259ff 0%, #a8ff78 100%);
+  color: #222;
+  font-weight: 700;
+  font-size: 1.1em;
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.2s;
+  margin-top: 8px;
+}
+#copy-markdown:hover {
+  background: linear-gradient(90deg, #a8ff78 0%, #a259ff 100%);
+  color: #111;
+  transform: scale(1.03);
+}
+/* Hide all scrollbars */
+.glassmorphic-popup, .markdown-editor, .properties-section, .property-tags, .property-images {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.glassmorphic-popup::-webkit-scrollbar,
+.markdown-editor::-webkit-scrollbar,
+.properties-section::-webkit-scrollbar,
+.property-tags::-webkit-scrollbar,
+.property-images::-webkit-scrollbar {
+  display: none;
 }
