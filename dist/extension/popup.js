@@ -13,6 +13,9 @@
     const propCreated = document.getElementById("prop-created");
     const propDescription = document.getElementById("prop-description");
     const propTags = document.getElementById("prop-tags");
+    const propHeadings = document.getElementById("prop-headings");
+    const propImages = document.getElementById("prop-images");
+    const propLocation = document.getElementById("prop-location");
     const backendUrl = typeof JOBOPS_BACKEND_URL !== "undefined" ? JOBOPS_BACKEND_URL : "http://localhost:8877";
     chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
       requestJobData();
@@ -32,6 +35,27 @@
       propCreated.value = data.created_at || "";
       propDescription.value = data.description || "";
       propTags.value = Array.isArray(data.metaKeywords) ? data.metaKeywords.join(", ") : data.metaKeywords || "";
+      propLocation.value = data.location || "";
+      propHeadings.innerHTML = "";
+      if (Array.isArray(data.headings) && data.headings.length > 0) {
+        for (const h of data.headings) {
+          const tag = document.createElement("span");
+          tag.className = "property-tag";
+          tag.textContent = h.text + (h.tag ? ` (${h.tag})` : "");
+          propHeadings.appendChild(tag);
+        }
+      }
+      propImages.innerHTML = "";
+      if (Array.isArray(data.images) && data.images.length > 0) {
+        for (const img of data.images) {
+          const thumb = document.createElement("img");
+          thumb.className = "property-image-thumb";
+          thumb.src = img.src;
+          thumb.alt = img.alt || "";
+          thumb.title = img.alt || img.src;
+          propImages.appendChild(thumb);
+        }
+      }
     }
     function updateJobDataFromFields() {
       jobData.title = propTitle.value;
@@ -41,9 +65,10 @@
       jobData.created_at = propCreated.value;
       jobData.description = propDescription.value;
       jobData.metaKeywords = propTags.value.split(",").map((t) => t.trim()).filter(Boolean);
+      jobData.location = propLocation.value;
       markdownEditor.value = generateMarkdown(jobData);
     }
-    [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags].forEach((input) => {
+    [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation].forEach((input) => {
       input.addEventListener("input", updateJobDataFromFields);
     });
     function requestJobData() {
@@ -98,30 +123,15 @@
       md += `
 ${jobData.body}
 `;
+    if (jobData.location)
+      md += `
+**Location:** ${jobData.location}
+`;
     if (jobData.metaKeywords && Array.isArray(jobData.metaKeywords) && jobData.metaKeywords.length > 0) {
       md += `
 ## Tags
 `;
       md += jobData.metaKeywords.map((kw) => `**${kw}**`).join(" ");
-      md += "\n";
-    }
-    if (jobData.headings && Array.isArray(jobData.headings) && jobData.headings.length > 0) {
-      md += `
-## Headings
-`;
-      for (const h of jobData.headings) {
-        md += `- ${h.text} (${h.tag})
-`;
-      }
-      md += "\n";
-    }
-    if (jobData.images && Array.isArray(jobData.images) && jobData.images.length > 0) {
-      md += `
-## Images
-`;
-      for (const img of jobData.images) {
-        md += `![${img.alt || ""}](${img.src}) `;
-      }
       md += "\n";
     }
     const skipKeys = /* @__PURE__ */ new Set(["title", "body", "metaKeywords", "headings", "images"]);

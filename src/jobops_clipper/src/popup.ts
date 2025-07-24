@@ -18,6 +18,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const propCreated = document.getElementById("prop-created") as HTMLInputElement;
   const propDescription = document.getElementById("prop-description") as HTMLInputElement;
   const propTags = document.getElementById("prop-tags") as HTMLInputElement;
+  const propHeadings = document.getElementById("prop-headings") as HTMLDivElement;
+  const propImages = document.getElementById("prop-images") as HTMLDivElement;
+  const propLocation = document.getElementById("prop-location") as HTMLInputElement;
 
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
@@ -42,6 +45,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     propCreated.value = data.created_at || '';
     propDescription.value = data.description || '';
     propTags.value = Array.isArray(data.metaKeywords) ? data.metaKeywords.join(', ') : (data.metaKeywords || '');
+    propLocation.value = data.location || '';
+    // Headings as tags
+    propHeadings.innerHTML = '';
+    if (Array.isArray(data.headings) && data.headings.length > 0) {
+      for (const h of data.headings) {
+        const tag = document.createElement('span');
+        tag.className = 'property-tag';
+        tag.textContent = h.text + (h.tag ? ` (${h.tag})` : '');
+        propHeadings.appendChild(tag);
+      }
+    }
+    // Images as thumbnails
+    propImages.innerHTML = '';
+    if (Array.isArray(data.images) && data.images.length > 0) {
+      for (const img of data.images) {
+        const thumb = document.createElement('img');
+        thumb.className = 'property-image-thumb';
+        thumb.src = img.src;
+        thumb.alt = img.alt || '';
+        thumb.title = img.alt || img.src;
+        propImages.appendChild(thumb);
+      }
+    }
   }
 
   function updateJobDataFromFields() {
@@ -52,10 +78,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     jobData.created_at = propCreated.value;
     jobData.description = propDescription.value;
     jobData.metaKeywords = propTags.value.split(',').map(t => t.trim()).filter(Boolean);
+    jobData.location = propLocation.value;
     markdownEditor.value = generateMarkdown(jobData);
   }
 
-  [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags].forEach(input => {
+  [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation].forEach(input => {
     input.addEventListener('input', updateJobDataFromFields);
   });
 
@@ -107,25 +134,13 @@ function generateMarkdown(jobData: Record<string, any>): string {
   let md = '';
   if (jobData.title) md += `# ${jobData.title}\n`;
   if (jobData.body) md += `\n${jobData.body}\n`;
+  if (jobData.location) md += `\n**Location:** ${jobData.location}\n`;
   if (jobData.metaKeywords && Array.isArray(jobData.metaKeywords) && jobData.metaKeywords.length > 0) {
     md += `\n## Tags\n`;
     md += jobData.metaKeywords.map((kw: string) => `**${kw}**`).join(' ');
     md += '\n';
   }
-  if (jobData.headings && Array.isArray(jobData.headings) && jobData.headings.length > 0) {
-    md += `\n## Headings\n`;
-    for (const h of jobData.headings) {
-      md += `- ${h.text} (${h.tag})\n`;
-    }
-    md += '\n';
-  }
-  if (jobData.images && Array.isArray(jobData.images) && jobData.images.length > 0) {
-    md += `\n## Images\n`;
-    for (const img of jobData.images) {
-      md += `![${img.alt || ''}](${img.src}) `;
-    }
-    md += '\n';
-  }
+  // Remove headings and images from markdown
   // Other fields as sections
   const skipKeys = new Set(['title', 'body', 'metaKeywords', 'headings', 'images']);
   for (const [key, value] of Object.entries(jobData)) {
