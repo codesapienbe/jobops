@@ -1859,7 +1859,7 @@ ${sectionContent}
 
   // src/popup.ts
   var GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-  var GROQ_MODEL = "qwen2.5-32b-instant";
+  var GROQ_MODEL = "llama-3.1-8b-instant";
   var OLLAMA_URL = "http://localhost:11434";
   var OLLAMA_MODEL = "qwen3:1.7b";
   var consoleOutput = null;

@@ -13,7 +13,7 @@ import { i18n, SupportedLanguage } from './i18n';
 
 // LLM Configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'qwen2.5-32b-instant'; // Free tier model with high usage limits
+const GROQ_MODEL = 'llama-3.1-8b-instant'; // Free tier model with high usage limits
 const OLLAMA_URL = 'http://localhost:11434';
 const OLLAMA_MODEL = 'qwen3:1.7b';
 
