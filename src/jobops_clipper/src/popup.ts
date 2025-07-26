@@ -14,6 +14,10 @@ const OLLAMA_MODEL = 'qwen3:1.7b';
 // Global console logging functions
 let consoleOutput: HTMLElement | null = null;
 
+// Global variables for streaming
+let isGenerating = false;
+let abortController: AbortController | null = null;
+
 function logToConsole(message: string, level: 'info' | 'success' | 'warning' | 'error' | 'debug' | 'progress' = 'info') {
   if (!consoleOutput) return;
   
@@ -43,6 +47,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const copyBtn = document.getElementById("copy-markdown") as HTMLButtonElement;
   const generateReportBtn = document.getElementById("generate-report") as HTMLButtonElement;
   const settingsBtn = document.getElementById("settings") as HTMLButtonElement;
+  
+  // Real-time response elements
+  const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
+  const stopGenerationBtn = document.getElementById("stop-generation") as HTMLButtonElement;
+  const copyRealtimeBtn = document.getElementById("copy-realtime") as HTMLButtonElement;
   const status = document.getElementById("clip-status") as HTMLElement;
   if (!status) {
     console.error("Status element not found!");
@@ -118,13 +127,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearConsoleBtn.addEventListener('click', clearConsole);
   }
 
+  // Set up real-time response handlers
+  if (stopGenerationBtn) {
+    stopGenerationBtn.addEventListener('click', handleStopGeneration);
+  }
+  if (copyRealtimeBtn) {
+    copyRealtimeBtn.addEventListener('click', handleCopyRealtime);
+  }
+
   // Initialize console
   logToConsole("🚀 JobOps Clipper initialized", "info");
   logToConsole("📋 Ready to process job postings and resumes", "success");
 
   function setupToggleHandlers() {
     // Add click event listeners to all toggle headers
-    const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header');
+    const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header, .realtime-header');
     toggleHeaders.forEach(header => {
       header.addEventListener('click', () => {
         const toggleTarget = header.getAttribute('data-toggle');
@@ -137,7 +154,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function toggleSection(sectionId: string) {
     const content = document.getElementById(sectionId);
-    const header = content?.parentElement?.querySelector('.properties-header, .markdown-header');
+    const header = content?.parentElement?.querySelector('.properties-header, .markdown-header, .realtime-header');
     const toggleIcon = header?.querySelector('.toggle-icon');
     
     if (content && header && toggleIcon) {
@@ -395,13 +412,33 @@ document.addEventListener("DOMContentLoaded", async () => {
       status.className = "loading";
       showNotification("📊 Preparing data for analysis...");
 
-      // Step 3: Generate report with progress updates
-      logToConsole("🤖 Sending data to Groq API for analysis...", "progress");
-      status.textContent = "🤖 Sending data to Groq API for analysis...";
+      // Step 3: Generate report with streaming
+      logToConsole("🤖 Starting streaming report generation...", "progress");
+      status.textContent = "🤖 Starting streaming report generation...";
       status.className = "loading";
-      showNotification("🤖 Analyzing with Groq API...");
+      showNotification("🤖 Starting streaming analysis...");
       
-      const report = await generateJobReport(jobData, resumeContent);
+      // Initialize real-time response
+      if (realtimeResponse) {
+        realtimeResponse.innerHTML = '';
+        realtimeResponse.classList.add('typing');
+      }
+      if (stopGenerationBtn) {
+        stopGenerationBtn.style.display = 'inline-block';
+      }
+      
+      isGenerating = true;
+      abortController = new AbortController();
+      
+      const report = await generateJobReportStreaming(jobData, resumeContent, (chunk: string) => {
+        if (realtimeResponse) {
+          const span = document.createElement('span');
+          span.className = 'typing-text';
+          span.textContent = chunk;
+          realtimeResponse.appendChild(span);
+          realtimeResponse.scrollTop = realtimeResponse.scrollHeight;
+        }
+      });
       
       // Step 4: Success
       logToConsole("✅ Report generated successfully!", "success");
@@ -420,6 +457,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logToConsole(`❌ Report generation failed: ${errorMessage}`, "error");
+      
+      // Clean up streaming state
+      isGenerating = false;
+      abortController = null;
+      if (realtimeResponse) {
+        realtimeResponse.classList.remove('typing');
+      }
+      if (stopGenerationBtn) {
+        stopGenerationBtn.style.display = 'none';
+      }
       
       if (errorMessage.includes('API key')) {
         logToConsole("🔧 API key required - please configure in settings", "warning");
@@ -456,6 +503,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } finally {
       generateReportBtn.disabled = false;
+      // Clean up streaming state
+      isGenerating = false;
+      abortController = null;
+      if (realtimeResponse) {
+        realtimeResponse.classList.remove('typing');
+      }
+      if (stopGenerationBtn) {
+        stopGenerationBtn.style.display = 'none';
+      }
     }
   }
 
@@ -628,8 +684,8 @@ async function extractPdfWithLibrary(typedarray: Uint8Array, resolve: (text: str
   }
 }
 
-// Generate comprehensive job report using LLM
-async function generateJobReport(jobData: Record<string, any>, resumeContent: string): Promise<string> {
+// Generate comprehensive job report using LLM with streaming
+async function generateJobReportStreaming(jobData: Record<string, any>, resumeContent: string, onChunk?: (chunk: string) => void): Promise<string> {
   const prompt = `You are an expert job application analyst. Based on the provided job posting data and resume content, generate a comprehensive job application tracking report.
 
 Job Posting Data:
@@ -649,8 +705,8 @@ Please analyze this information and fill out the job application tracking report
 Fill in all template placeholders with concrete, actionable information based on the provided data.`;
 
   try {
-    // Try Groq first
-    const groqResponse = await callGroqAPI(prompt);
+    // Try Groq first with streaming
+    const groqResponse = await callGroqAPI(prompt, onChunk);
     if (groqResponse) {
       return groqResponse;
     }
@@ -660,6 +716,11 @@ Fill in all template placeholders with concrete, actionable information based on
   }
 
   throw new Error('Both Groq and Ollama APIs failed');
+}
+
+// Generate comprehensive job report using LLM (non-streaming version for backward compatibility)
+async function generateJobReport(jobData: Record<string, any>, resumeContent: string): Promise<string> {
+  return generateJobReportStreaming(jobData, resumeContent);
 }
 
 // Generate report using only Ollama (for fallback)
@@ -690,8 +751,8 @@ Fill in all template placeholders with concrete, actionable information based on
   throw new Error('Ollama API failed');
 }
 
-// Call Groq API
-async function callGroqAPI(prompt: string): Promise<string | null> {
+// Call Groq API with streaming support
+async function callGroqAPI(prompt: string, onChunk?: (chunk: string) => void): Promise<string | null> {
   try {
     logToConsole("🔑 Retrieving Groq API key from storage...", "debug");
     
@@ -721,11 +782,12 @@ async function callGroqAPI(prompt: string): Promise<string | null> {
       ],
       temperature: 0.3,
       max_tokens: 4000,
-      stream: false
+      stream: onChunk ? true : false
     };
     
     logToConsole("📤 Sending request to Groq API...", "debug");
     logToConsole(`📊 Request payload size: ${JSON.stringify(requestBody).length} characters`, "debug");
+    logToConsole(`🔄 Streaming mode: ${onChunk ? 'enabled' : 'disabled'}`, "debug");
     
     const startTime = Date.now();
     const response = await fetch(GROQ_API_URL, {
@@ -734,7 +796,8 @@ async function callGroqAPI(prompt: string): Promise<string | null> {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: abortController?.signal
     });
     
     const endTime = Date.now();
@@ -750,27 +813,77 @@ async function callGroqAPI(prompt: string): Promise<string | null> {
       throw new Error(`Groq API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    logToConsole("📥 Parsing JSON response...", "debug");
-    const data = await response.json();
-    
-    logToConsole(`📊 Response data keys: ${Object.keys(data).join(', ')}`, "debug");
-    logToConsole(`🎯 Choices count: ${data.choices?.length || 0}`, "debug");
-    
-    if (data.choices && data.choices.length > 0) {
-      const content = data.choices[0]?.message?.content;
-      if (content) {
-        logToConsole(`✅ Successfully extracted response content (${content.length} characters)`, "success");
-        logToConsole(`📝 Response preview: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}`, "debug");
-        return content;
+    // Handle streaming response
+    if (onChunk && requestBody.stream) {
+      logToConsole("🔄 Processing streaming response...", "debug");
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+      
+      if (!reader) {
+        throw new Error('Response body reader not available');
+      }
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                logToConsole("✅ Streaming completed", "success");
+                return fullResponse;
+              }
+              
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.choices && parsed.choices[0]?.delta?.content) {
+                  const content = parsed.choices[0].delta.content;
+                  fullResponse += content;
+                  onChunk(content);
+                  logToConsole(`📝 Streamed chunk: ${content.length} characters`, "debug");
+                }
+              } catch (e) {
+                // Ignore parsing errors for incomplete chunks
+              }
+            }
+          }
+        }
+        
+        logToConsole(`✅ Streaming completed, total: ${fullResponse.length} characters`, "success");
+        return fullResponse;
+      } finally {
+        reader.releaseLock();
+      }
+    } else {
+      // Handle non-streaming response
+      logToConsole("📥 Parsing JSON response...", "debug");
+      const data = await response.json();
+      
+      logToConsole(`📊 Response data keys: ${Object.keys(data).join(', ')}`, "debug");
+      logToConsole(`🎯 Choices count: ${data.choices?.length || 0}`, "debug");
+      
+      if (data.choices && data.choices.length > 0) {
+        const content = data.choices[0]?.message?.content;
+        if (content) {
+          logToConsole(`✅ Successfully extracted response content (${content.length} characters)`, "success");
+          logToConsole(`📝 Response preview: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}`, "debug");
+          return content;
+        } else {
+          logToConsole("⚠️ Response content is empty or undefined", "warning");
+          logToConsole(`🔍 Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
+          return null;
+        }
       } else {
-        logToConsole("⚠️ Response content is empty or undefined", "warning");
+        logToConsole("⚠️ No choices found in response", "warning");
         logToConsole(`🔍 Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
         return null;
       }
-    } else {
-      logToConsole("⚠️ No choices found in response", "warning");
-      logToConsole(`🔍 Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
-      return null;
     }
     
   } catch (error) {
@@ -868,5 +981,45 @@ async function getGroqApiKey(): Promise<string | null> {
   });
 }
 
+// Handle stop generation
+function handleStopGeneration() {
+  if (abortController) {
+    logToConsole("⏹️ Stopping generation...", "warning");
+    abortController.abort();
+    isGenerating = false;
+    abortController = null;
+    
+    const stopGenerationBtn = document.getElementById("stop-generation") as HTMLButtonElement;
+    const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
+    
+    if (stopGenerationBtn) {
+      stopGenerationBtn.style.display = 'none';
+    }
+    if (realtimeResponse) {
+      realtimeResponse.classList.remove('typing');
+    }
+    
+    logToConsole("✅ Generation stopped", "info");
+    showNotification("Generation stopped");
+  }
+}
 
+// Handle copy real-time response
+async function handleCopyRealtime() {
+  const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
+  
+  if (!realtimeResponse || !realtimeResponse.textContent) {
+    logToConsole("❌ No real-time content to copy", "error");
+    showNotification("No content to copy!", true);
+    return;
+  }
 
+  try {
+    await navigator.clipboard.writeText(realtimeResponse.textContent);
+    logToConsole("✅ Real-time response copied to clipboard", "success");
+    showNotification("Real-time response copied!");
+  } catch (error) {
+    logToConsole(`❌ Failed to copy real-time response: ${error}`, "error");
+    showNotification("Failed to copy real-time response", true);
+  }
+}

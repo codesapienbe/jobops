@@ -66,6 +66,18 @@
           <textarea id="markdown-editor" class="markdown-editor" placeholder="Edit your markdown here..."></textarea>
         </div>
       </div>
+      <div class="realtime-section">
+        <div class="realtime-header" data-toggle="realtime-content">
+          🤖 Real-time Response <span class="toggle-icon">▶</span>
+        </div>
+        <div id="realtime-content" class="realtime-content collapsed">
+          <div id="realtime-response" class="realtime-response" placeholder="AI response will appear here in real-time..."></div>
+          <div class="realtime-controls">
+            <button id="stop-generation" class="control-button" style="display: none;">⏹️ Stop</button>
+            <button id="copy-realtime" class="control-button">📋 Copy</button>
+          </div>
+        </div>
+      </div>
       <div class="action-buttons">
         <button id="copy-markdown" class="action-button" aria-label="Copy to Clipboard">📋</button>
         <button id="generate-report" class="action-button" aria-label="Generate Report">📊</button>

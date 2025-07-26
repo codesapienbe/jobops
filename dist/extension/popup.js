@@ -6,6 +6,8 @@
   var OLLAMA_URL = "http://localhost:11434";
   var OLLAMA_MODEL = "qwen3:1.7b";
   var consoleOutput = null;
+  var isGenerating = false;
+  var abortController = null;
   function logToConsole(message, level = "info") {
     if (!consoleOutput)
       return;
@@ -30,6 +32,9 @@
     const copyBtn = document.getElementById("copy-markdown");
     const generateReportBtn = document.getElementById("generate-report");
     const settingsBtn = document.getElementById("settings");
+    const realtimeResponse = document.getElementById("realtime-response");
+    const stopGenerationBtn = document.getElementById("stop-generation");
+    const copyRealtimeBtn = document.getElementById("copy-realtime");
     const status = document.getElementById("clip-status");
     if (!status) {
       console.error("Status element not found!");
@@ -82,10 +87,16 @@
     if (clearConsoleBtn) {
       clearConsoleBtn.addEventListener("click", clearConsole);
     }
+    if (stopGenerationBtn) {
+      stopGenerationBtn.addEventListener("click", handleStopGeneration);
+    }
+    if (copyRealtimeBtn) {
+      copyRealtimeBtn.addEventListener("click", handleCopyRealtime);
+    }
     logToConsole("\u{1F680} JobOps Clipper initialized", "info");
     logToConsole("\u{1F4CB} Ready to process job postings and resumes", "success");
     function setupToggleHandlers() {
-      const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header");
+      const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header, .realtime-header");
       toggleHeaders.forEach((header) => {
         header.addEventListener("click", () => {
           const toggleTarget = header.getAttribute("data-toggle");
@@ -97,7 +108,7 @@
     }
     function toggleSection(sectionId) {
       const content = document.getElementById(sectionId);
-      const header = content?.parentElement?.querySelector(".properties-header, .markdown-header");
+      const header = content?.parentElement?.querySelector(".properties-header, .markdown-header, .realtime-header");
       const toggleIcon = header?.querySelector(".toggle-icon");
       if (content && header && toggleIcon) {
         const isCollapsed = content.classList.contains("collapsed");
@@ -207,22 +218,22 @@
         const contentToCopy = markdownEditor.value || generateMarkdown(jobData);
         if (!contentToCopy.trim()) {
           logToConsole("\u274C No content to copy", "error");
-          showNotification("No content to copy!", true);
+          showNotification2("No content to copy!", true);
           return;
         }
         logToConsole(`\u{1F4CB} Copying content (${contentToCopy.length} characters) to clipboard...`, "progress");
         await navigator.clipboard.writeText(contentToCopy);
         logToConsole("\u2705 Content copied to clipboard successfully!", "success");
-        showNotification("\u2705 Content copied to clipboard!");
+        showNotification2("\u2705 Content copied to clipboard!");
         status.textContent = "Copied to clipboard!";
         setTimeout(() => status.textContent = "", 2e3);
       } catch (e) {
         logToConsole(`\u274C Copy failed: ${e}`, "error");
-        showNotification("\u274C Failed to copy to clipboard", true);
+        showNotification2("\u274C Failed to copy to clipboard", true);
         status.textContent = "Failed to copy to clipboard.";
       }
     };
-    function showNotification(message, isError = false) {
+    function showNotification2(message, isError = false) {
       if (chrome.notifications) {
         chrome.notifications.create({
           type: "basic",
@@ -242,29 +253,29 @@
       const file = target.files?.[0];
       if (!file) {
         logToConsole("\u274C No file selected", "error");
-        showNotification("No file selected", true);
+        showNotification2("No file selected", true);
         return;
       }
       if (file.type !== "application/pdf") {
         logToConsole("\u274C Invalid file type - PDF required", "error");
-        showNotification("Please select a PDF file", true);
+        showNotification2("Please select a PDF file", true);
         return;
       }
       logToConsole(`\u{1F4C4} Starting PDF extraction: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, "progress");
       try {
         status.textContent = "\u{1F4C4} Loading PDF file...";
         status.className = "loading";
-        showNotification("\u{1F4C4} Loading PDF file...");
+        showNotification2("\u{1F4C4} Loading PDF file...");
         logToConsole("\u{1F4C4} Loading PDF file into memory...", "progress");
         status.textContent = "\u{1F50D} Extracting text content from PDF...";
         status.className = "loading";
-        showNotification("\u{1F50D} Extracting PDF content...");
+        showNotification2("\u{1F50D} Extracting PDF content...");
         logToConsole("\u{1F50D} Extracting text content from PDF...", "progress");
         resumeContent = await extractPdfContent(file);
         logToConsole(`\u2705 PDF extraction completed! Content length: ${resumeContent.length} characters`, "success");
         status.textContent = "\u2705 Resume content extracted successfully!";
         status.className = "success";
-        showNotification("\u2705 Resume content extracted successfully!");
+        showNotification2("\u2705 Resume content extracted successfully!");
         setTimeout(() => {
           status.textContent = "\u{1F4CB} Resume ready - click \u{1F4CA} Generate Report to continue";
           status.className = "success";
@@ -275,7 +286,7 @@
         logToConsole(`\u274C PDF extraction failed: ${errorMessage}`, "error");
         status.textContent = `\u274C PDF extraction failed: ${errorMessage}`;
         status.className = "error";
-        showNotification(`\u274C Failed to extract PDF content: ${errorMessage}`, true);
+        showNotification2(`\u274C Failed to extract PDF content: ${errorMessage}`, true);
       }
     }
     async function handleGenerateReport() {
@@ -288,7 +299,7 @@
       generateReportBtn.disabled = true;
       status.textContent = "\u{1F504} Starting report generation...";
       status.className = "loading";
-      showNotification("\u{1F504} Starting report generation...");
+      showNotification2("\u{1F504} Starting report generation...");
       try {
         logToConsole("\u{1F511} Checking API configuration...", "progress");
         status.textContent = "\u{1F511} Checking API configuration...";
@@ -298,20 +309,37 @@
           throw new Error("Groq API key not configured");
         }
         logToConsole("\u2705 API key found, proceeding with report generation", "success");
-        showNotification("\u2705 API key found, proceeding...");
+        showNotification2("\u2705 API key found, proceeding...");
         logToConsole("\u{1F4CA} Preparing job data and resume content...", "progress");
         status.textContent = "\u{1F4CA} Preparing job data and resume content...";
         status.className = "loading";
-        showNotification("\u{1F4CA} Preparing data for analysis...");
-        logToConsole("\u{1F916} Sending data to Groq API for analysis...", "progress");
-        status.textContent = "\u{1F916} Sending data to Groq API for analysis...";
+        showNotification2("\u{1F4CA} Preparing data for analysis...");
+        logToConsole("\u{1F916} Starting streaming report generation...", "progress");
+        status.textContent = "\u{1F916} Starting streaming report generation...";
         status.className = "loading";
-        showNotification("\u{1F916} Analyzing with Groq API...");
-        const report = await generateJobReport(jobData, resumeContent);
+        showNotification2("\u{1F916} Starting streaming analysis...");
+        if (realtimeResponse) {
+          realtimeResponse.innerHTML = "";
+          realtimeResponse.classList.add("typing");
+        }
+        if (stopGenerationBtn) {
+          stopGenerationBtn.style.display = "inline-block";
+        }
+        isGenerating = true;
+        abortController = new AbortController();
+        const report = await generateJobReportStreaming(jobData, resumeContent, (chunk) => {
+          if (realtimeResponse) {
+            const span = document.createElement("span");
+            span.className = "typing-text";
+            span.textContent = chunk;
+            realtimeResponse.appendChild(span);
+            realtimeResponse.scrollTop = realtimeResponse.scrollHeight;
+          }
+        });
         logToConsole("\u2705 Report generated successfully!", "success");
         status.textContent = "\u2705 Report generated successfully!";
         status.className = "success";
-        showNotification("\u2705 Report generated successfully!");
+        showNotification2("\u2705 Report generated successfully!");
         markdownEditor.value = report;
         setTimeout(() => {
           status.textContent = "\u{1F4CB} Report ready - use Copy button to copy content";
@@ -321,16 +349,24 @@
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logToConsole(`\u274C Report generation failed: ${errorMessage}`, "error");
+        isGenerating = false;
+        abortController = null;
+        if (realtimeResponse) {
+          realtimeResponse.classList.remove("typing");
+        }
+        if (stopGenerationBtn) {
+          stopGenerationBtn.style.display = "none";
+        }
         if (errorMessage.includes("API key")) {
           logToConsole("\u{1F527} API key required - please configure in settings", "warning");
           status.textContent = "\u274C API key required - click \u2699\uFE0F to configure";
           status.className = "error";
-          showNotification("\u274C Groq API key not configured. Click \u2699\uFE0F to set it up.", true);
+          showNotification2("\u274C Groq API key not configured. Click \u2699\uFE0F to set it up.", true);
         } else if (errorMessage.includes("Groq API")) {
           logToConsole("\u26A0\uFE0F Groq API failed, trying Ollama fallback...", "warning");
           status.textContent = "\u26A0\uFE0F Groq API failed, trying Ollama fallback...";
           status.className = "loading";
-          showNotification("\u26A0\uFE0F Groq API failed, trying Ollama...");
+          showNotification2("\u26A0\uFE0F Groq API failed, trying Ollama...");
           try {
             logToConsole("\u{1F504} Attempting Ollama fallback...", "progress");
             status.textContent = "\u{1F504} Attempting Ollama fallback...";
@@ -340,21 +376,29 @@
             logToConsole("\u2705 Report generated with Ollama fallback!", "success");
             status.textContent = "\u2705 Report generated with Ollama!";
             status.className = "success";
-            showNotification("\u2705 Report generated with Ollama fallback!");
+            showNotification2("\u2705 Report generated with Ollama fallback!");
           } catch (ollamaError) {
             logToConsole("\u274C Both Groq and Ollama failed", "error");
             status.textContent = "\u274C Both Groq and Ollama failed";
             status.className = "error";
-            showNotification("\u274C Report generation failed on all services", true);
+            showNotification2("\u274C Report generation failed on all services", true);
           }
         } else {
           logToConsole("\u274C Report generation failed with unknown error", "error");
           status.textContent = "\u274C Report generation failed";
           status.className = "error";
-          showNotification("\u274C Report generation failed", true);
+          showNotification2("\u274C Report generation failed", true);
         }
       } finally {
         generateReportBtn.disabled = false;
+        isGenerating = false;
+        abortController = null;
+        if (realtimeResponse) {
+          realtimeResponse.classList.remove("typing");
+        }
+        if (stopGenerationBtn) {
+          stopGenerationBtn.style.display = "none";
+        }
       }
     }
     async function handleSettings() {
@@ -367,7 +411,7 @@
           await new Promise((resolve) => {
             chrome.storage.sync.set({ groq_api_key: newApiKey.trim() }, () => {
               logToConsole("\u2705 Groq API key saved successfully!", "success");
-              showNotification("\u2705 Groq API key saved!");
+              showNotification2("\u2705 Groq API key saved!");
               resolve();
             });
           });
@@ -376,7 +420,7 @@
           await new Promise((resolve) => {
             chrome.storage.sync.remove(["groq_api_key"], () => {
               logToConsole("\u2705 Groq API key removed successfully!", "success");
-              showNotification("\u2705 Groq API key removed!");
+              showNotification2("\u2705 Groq API key removed!");
               resolve();
             });
           });
@@ -512,7 +556,7 @@ ${value}
       reject(new Error(`PDF extraction failed: ${error}`));
     }
   }
-  async function generateJobReport(jobData, resumeContent) {
+  async function generateJobReportStreaming(jobData, resumeContent, onChunk) {
     const prompt2 = `You are an expert job application analyst. Based on the provided job posting data and resume content, generate a comprehensive job application tracking report.
 
 Job Posting Data:
@@ -531,7 +575,7 @@ Please analyze this information and fill out the job application tracking report
 
 Fill in all template placeholders with concrete, actionable information based on the provided data.`;
     try {
-      const groqResponse = await callGroqAPI(prompt2);
+      const groqResponse = await callGroqAPI(prompt2, onChunk);
       if (groqResponse) {
         return groqResponse;
       }
@@ -565,7 +609,7 @@ Fill in all template placeholders with concrete, actionable information based on
     }
     throw new Error("Ollama API failed");
   }
-  async function callGroqAPI(prompt2) {
+  async function callGroqAPI(prompt2, onChunk) {
     try {
       logToConsole("\u{1F511} Retrieving Groq API key from storage...", "debug");
       const apiKey = await getGroqApiKey();
@@ -591,10 +635,11 @@ Fill in all template placeholders with concrete, actionable information based on
         ],
         temperature: 0.3,
         max_tokens: 4e3,
-        stream: false
+        stream: onChunk ? true : false
       };
       logToConsole("\u{1F4E4} Sending request to Groq API...", "debug");
       logToConsole(`\u{1F4CA} Request payload size: ${JSON.stringify(requestBody).length} characters`, "debug");
+      logToConsole(`\u{1F504} Streaming mode: ${onChunk ? "enabled" : "disabled"}`, "debug");
       const startTime = Date.now();
       const response = await fetch(GROQ_API_URL, {
         method: "POST",
@@ -602,7 +647,8 @@ Fill in all template placeholders with concrete, actionable information based on
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: abortController?.signal
       });
       const endTime = Date.now();
       const responseTime = endTime - startTime;
@@ -614,25 +660,67 @@ Fill in all template placeholders with concrete, actionable information based on
         logToConsole(`\u274C Groq API error response: ${errorText}`, "error");
         throw new Error(`Groq API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
-      logToConsole("\u{1F4E5} Parsing JSON response...", "debug");
-      const data = await response.json();
-      logToConsole(`\u{1F4CA} Response data keys: ${Object.keys(data).join(", ")}`, "debug");
-      logToConsole(`\u{1F3AF} Choices count: ${data.choices?.length || 0}`, "debug");
-      if (data.choices && data.choices.length > 0) {
-        const content = data.choices[0]?.message?.content;
-        if (content) {
-          logToConsole(`\u2705 Successfully extracted response content (${content.length} characters)`, "success");
-          logToConsole(`\u{1F4DD} Response preview: ${content.substring(0, 200)}${content.length > 200 ? "..." : ""}`, "debug");
-          return content;
+      if (onChunk && requestBody.stream) {
+        logToConsole("\u{1F504} Processing streaming response...", "debug");
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = "";
+        if (!reader) {
+          throw new Error("Response body reader not available");
+        }
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done)
+              break;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6);
+                if (data === "[DONE]") {
+                  logToConsole("\u2705 Streaming completed", "success");
+                  return fullResponse;
+                }
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.choices && parsed.choices[0]?.delta?.content) {
+                    const content = parsed.choices[0].delta.content;
+                    fullResponse += content;
+                    onChunk(content);
+                    logToConsole(`\u{1F4DD} Streamed chunk: ${content.length} characters`, "debug");
+                  }
+                } catch (e) {
+                }
+              }
+            }
+          }
+          logToConsole(`\u2705 Streaming completed, total: ${fullResponse.length} characters`, "success");
+          return fullResponse;
+        } finally {
+          reader.releaseLock();
+        }
+      } else {
+        logToConsole("\u{1F4E5} Parsing JSON response...", "debug");
+        const data = await response.json();
+        logToConsole(`\u{1F4CA} Response data keys: ${Object.keys(data).join(", ")}`, "debug");
+        logToConsole(`\u{1F3AF} Choices count: ${data.choices?.length || 0}`, "debug");
+        if (data.choices && data.choices.length > 0) {
+          const content = data.choices[0]?.message?.content;
+          if (content) {
+            logToConsole(`\u2705 Successfully extracted response content (${content.length} characters)`, "success");
+            logToConsole(`\u{1F4DD} Response preview: ${content.substring(0, 200)}${content.length > 200 ? "..." : ""}`, "debug");
+            return content;
+          } else {
+            logToConsole("\u26A0\uFE0F Response content is empty or undefined", "warning");
+            logToConsole(`\u{1F50D} Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
+            return null;
+          }
         } else {
-          logToConsole("\u26A0\uFE0F Response content is empty or undefined", "warning");
+          logToConsole("\u26A0\uFE0F No choices found in response", "warning");
           logToConsole(`\u{1F50D} Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
           return null;
         }
-      } else {
-        logToConsole("\u26A0\uFE0F No choices found in response", "warning");
-        logToConsole(`\u{1F50D} Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
-        return null;
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -707,5 +795,39 @@ Fill in all template placeholders with concrete, actionable information based on
         resolve(result.groq_api_key || null);
       });
     });
+  }
+  function handleStopGeneration() {
+    if (abortController) {
+      logToConsole("\u23F9\uFE0F Stopping generation...", "warning");
+      abortController.abort();
+      isGenerating = false;
+      abortController = null;
+      const stopGenerationBtn = document.getElementById("stop-generation");
+      const realtimeResponse = document.getElementById("realtime-response");
+      if (stopGenerationBtn) {
+        stopGenerationBtn.style.display = "none";
+      }
+      if (realtimeResponse) {
+        realtimeResponse.classList.remove("typing");
+      }
+      logToConsole("\u2705 Generation stopped", "info");
+      showNotification("Generation stopped");
+    }
+  }
+  async function handleCopyRealtime() {
+    const realtimeResponse = document.getElementById("realtime-response");
+    if (!realtimeResponse || !realtimeResponse.textContent) {
+      logToConsole("\u274C No real-time content to copy", "error");
+      showNotification("No content to copy!", true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(realtimeResponse.textContent);
+      logToConsole("\u2705 Real-time response copied to clipboard", "success");
+      showNotification("Real-time response copied!");
+    } catch (error) {
+      logToConsole(`\u274C Failed to copy real-time response: ${error}`, "error");
+      showNotification("Failed to copy real-time response", true);
+    }
   }
 })();
