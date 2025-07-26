@@ -200,7 +200,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   logToConsole("📋 Ready to process job postings and resumes", "success");
   
   // Initialize button position for collapsed console
-  document.documentElement.style.setProperty('--button-bottom', '40px');
+  document.documentElement.style.setProperty('--button-bottom', '48px');
 
   // Log to application.log as required by rules
   const logToApplicationLog = (level: string, message: string, data?: any) => {
@@ -818,7 +818,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (consoleMonitor) {
             consoleMonitor.setAttribute('data-collapsed', 'false');
             // Update button position
-            document.documentElement.style.setProperty('--button-bottom', '200px');
+            document.documentElement.style.setProperty('--button-bottom', '208px');
           }
           logToApplicationLog('INFO', 'Debug console expanded', { section: sectionId });
         } else {
@@ -835,7 +835,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (consoleMonitor) {
             consoleMonitor.setAttribute('data-collapsed', 'true');
             // Update button position
-            document.documentElement.style.setProperty('--button-bottom', '40px');
+            document.documentElement.style.setProperty('--button-bottom', '48px');
           }
           logToApplicationLog('INFO', 'Debug console collapsed', { section: sectionId });
         } else {

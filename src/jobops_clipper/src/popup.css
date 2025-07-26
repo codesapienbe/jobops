@@ -12,7 +12,7 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  padding: 24px 18px 80px 18px; /* Added bottom padding for console and buttons */
+  padding: 24px 18px 88px 18px; /* Added bottom padding for console and buttons with spacing */
   background: linear-gradient(135deg, rgba(24,24,32,0.85) 0%, rgba(24,24,32,0.85) 100%);
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.08);
   backdrop-filter: blur(18px) saturate(1.2);
@@ -80,7 +80,7 @@ textarea {
   justify-content: center;
   height: 36px;
   position: absolute;
-  bottom: var(--button-bottom, 40px); /* Dynamic positioning */
+  bottom: var(--button-bottom, 48px); /* Dynamic positioning with spacing */
   left: 18px; /* Account for popup padding */
   right: 18px; /* Account for popup padding */
   z-index: 95;
@@ -90,6 +90,8 @@ textarea {
   border-top: 1px solid rgba(255, 255, 255, 0.2);
   margin: 0;
   transition: bottom 0.3s ease;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow for elegance */
+  border-radius: 8px 8px 0 0; /* Rounded top corners for elegance */
 }
 
 .action-button {
@@ -202,7 +204,7 @@ button:hover {
 /* Console Monitor Styles - Fixed to bottom of popup */
 .console-monitor {
   position: absolute;
-  bottom: 0;
+  bottom: 8px; /* Standard spacing from bottom for elegance */
   left: 18px; /* Account for popup padding */
   right: 18px; /* Account for popup padding */
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
@@ -218,6 +220,7 @@ button:hover {
   display: flex;
   flex-direction: column;
   transition: max-height 0.3s ease;
+  border-radius: 8px 8px 0 0; /* Rounded top corners for elegance */
 }
 
 /* Console collapsed state */
@@ -856,6 +859,8 @@ button:hover {
   background: rgba(255, 255, 255, 0.1);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+  margin-bottom: 16px; /* Standard spacing to prevent overlap */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 4px 16px rgba(0, 0, 0, 0.05); /* Enhanced shadow for elegance */
 }
 
 .markdown-section, .realtime-section {
