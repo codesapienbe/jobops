@@ -22,7 +22,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const propImages = document.getElementById("prop-images") as HTMLDivElement;
   const propLocation = document.getElementById("prop-location") as HTMLInputElement;
   const autoMapBtn = document.getElementById("auto-map-ollama") as HTMLButtonElement;
-  copyBtn.disabled = true;
+  
+  // Enable copy button by default
+  copyBtn.disabled = false;
 
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
@@ -36,6 +38,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       jobData = msg.jobData;
       populatePropertyFields(jobData);
       markdownEditor.value = generateMarkdown(jobData);
+      // Enable copy button when we have data
+      copyBtn.disabled = false;
     }
   });
 
@@ -113,6 +117,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                 jobData = response.jobData;
                 populatePropertyFields(jobData);
                 markdownEditor.value = generateMarkdown(jobData);
+                // Enable copy button when we have data
+                copyBtn.disabled = false;
               }
             }
           );
@@ -140,10 +146,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       populatePropertyFields(jobData);
       markdownEditor.value = generateMarkdown(jobData);
       status.textContent = "Fields auto-mapped!";
+      // Keep copy button enabled
       copyBtn.disabled = false;
     } catch (e: any) {
       status.textContent = "Ollama mapping failed: " + (e?.message || e);
-      copyBtn.disabled = true;
+      // Keep copy button enabled even if Ollama fails
+      copyBtn.disabled = false;
     } finally {
       autoMapBtn.disabled = false;
       setTimeout(() => status.textContent = '', 2000);

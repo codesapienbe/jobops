@@ -70,6 +70,44 @@ textarea {
   background: transparent;
   z-index: 2;
 }
+
+.corner-button {
+  position: fixed;
+  bottom: 20px;
+  width: 50px;
+  height: 50px;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(168,255,120,0.9) 0%, rgba(120,255,214,0.9) 100%);
+  color: #222;
+  font-size: 1.5em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.corner-button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+  background: linear-gradient(135deg, rgba(168,255,120,1) 0%, rgba(120,255,214,1) 100%);
+}
+
+.corner-button:active {
+  transform: scale(0.95);
+}
+
+.left-corner {
+  left: 20px;
+}
+
+.right-corner {
+  right: 20px;
+}
+
 .buttons button {
   width: 100%;
   margin-bottom: 10px;
@@ -403,25 +441,7 @@ button:hover {
 .markdown-editor:focus {
   border: 1.5px solid #a8ff78;
 }
-#copy-markdown, #auto-map-ollama {
-  width: 100%;
-  padding: 14px 0;
-  background: linear-gradient(90deg, #a259ff 0%, #a8ff78 100%);
-  color: #222;
-  font-weight: 700;
-  font-size: 1.1em;
-  border: none;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s, transform 0.2s;
-  margin-top: 0;
-}
-#copy-markdown:hover, #auto-map-ollama:hover {
-  background: linear-gradient(90deg, #a8ff78 0%, #a259ff 100%);
-  color: #111;
-  transform: scale(1.03);
-}
+/* Corner buttons are styled separately above */
 /* Hide all scrollbars */
 .glassmorphic-popup, .markdown-editor, .properties-section, .property-tags, .property-images {
   scrollbar-width: none;
