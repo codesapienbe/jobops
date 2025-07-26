@@ -147,7 +147,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   
   // Set up button event listeners
   if (copyBtn) {
-    copyBtn.addEventListener('click', async () => {
+    copyBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
       try {
         await navigator.clipboard.writeText(markdownEditor.value);
         logToConsole(i18n.getConsoleMessage('markdownCopied'), "success");
@@ -160,29 +161,47 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   
   if (generateReportBtn) {
-    generateReportBtn.addEventListener('click', handleGenerateReport);
+    generateReportBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      handleGenerateReport();
+    });
   }
   
   if (settingsBtn) {
-    settingsBtn.addEventListener('click', handleSettings);
+    settingsBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      handleSettings();
+    });
   }
   
   if (stopGenerationBtn) {
-    stopGenerationBtn.addEventListener('click', handleStopGeneration);
+    stopGenerationBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      handleStopGeneration();
+    });
   }
   
   if (copyRealtimeBtn) {
-    copyRealtimeBtn.addEventListener('click', handleCopyRealtime);
+    copyRealtimeBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      handleCopyRealtime();
+    });
   }
   
   if (clearConsoleBtn) {
-    clearConsoleBtn.addEventListener('click', clearConsole);
+    clearConsoleBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      clearConsole();
+    });
   }
   
   // Add Linear export button event listener
   const exportLinearBtn = document.getElementById("export-linear");
   if (exportLinearBtn) {
-    exportLinearBtn.addEventListener('click', handleExportToLinear);
+    exportLinearBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      handleExportToLinear();
+    });
     logToConsole("📤 Linear export button event listener added", "debug");
   }
   
@@ -1349,16 +1368,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         logToConsole("❌ " + message, "error");
         showNotification(message, true);
         
-        // Show native notification
-        if (chrome.notifications) {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'icon.png',
-            title: 'JobOps Clipper - Groq API Configuration',
-            message: message,
-            priority: 2
-          });
-        }
+        // Show native notification with shorter duration
+        showNativeNotification('JobOps Clipper - Groq API Configuration', message, 2);
         return;
       }
       logToConsole("✅ API key found, proceeding with report generation", "success");
@@ -1547,7 +1558,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     // Handle save button
     const saveBtn = modal.querySelector('#save-settings');
-    saveBtn?.addEventListener('click', async () => {
+    saveBtn?.addEventListener('click', async (event) => {
+      event.preventDefault();
       const groqKey = (modal.querySelector('#groq-api-key') as HTMLInputElement)?.value.trim();
       const linearKey = (modal.querySelector('#linear-api-key') as HTMLInputElement)?.value.trim();
       const linearTeamId = (modal.querySelector('#linear-team-id') as HTMLInputElement)?.value.trim();
@@ -1577,7 +1589,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     // Handle cancel button
     const cancelBtn = modal.querySelector('#cancel-settings');
-    cancelBtn?.addEventListener('click', () => {
+    cancelBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
       document.body.removeChild(modal);
       logToConsole("❌ Settings dialog cancelled", "info");
     });
@@ -2252,6 +2265,25 @@ async function handleCopyRealtime() {
   }
 }
 
+// Helper function for shorter native notifications
+function showNativeNotification(title: string, message: string, priority: number = 1) {
+  if (chrome.notifications) {
+    const notificationId = `jobops_${Date.now()}`;
+    chrome.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: 'icon.png',
+      title: title,
+      message: message,
+      priority: priority
+    });
+    
+    // Auto-dismiss after 2 seconds (3x shorter than default)
+    setTimeout(() => {
+      chrome.notifications.clear(notificationId);
+    }, 2000);
+  }
+}
+
 // Scan for missing API keys and show notifications
 async function scanForMissingApiKeys() {
   logToConsole("🔍 Scanning for missing API keys...", "info");
@@ -2275,16 +2307,8 @@ async function scanForMissingApiKeys() {
     const message = `Missing API keys: ${missingKeys.join(', ')}. Click ⚙️ to configure.`;
     logToConsole(message, "warning");
     
-    // Show native notification
-    if (chrome.notifications) {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icon.png',
-        title: 'JobOps Clipper - API Configuration',
-        message: message,
-        priority: 1
-      });
-    }
+    // Show native notification with shorter duration
+    showNativeNotification('JobOps Clipper - API Configuration', message, 1);
     
     // Also show in-app notification
     showNotification(message, true);
@@ -2326,16 +2350,8 @@ async function handleExportToLinear() {
       const message = "No active job application found. Please clip a job posting first.";
       showNotification(message, true);
       
-      // Show native notification
-      if (chrome.notifications) {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icon.png',
-          title: 'JobOps Clipper - No Job Application',
-          message: message,
-          priority: 2
-        });
-      }
+      // Show native notification with shorter duration
+      showNativeNotification('JobOps Clipper - No Job Application', message, 2);
       return;
     }
 
@@ -2346,16 +2362,8 @@ async function handleExportToLinear() {
       const message = "Linear configuration not found. Please configure Linear settings first.";
       showNotification(message, true);
       
-      // Show native notification
-      if (chrome.notifications) {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icon.png',
-          title: 'JobOps Clipper - Linear Configuration',
-          message: message,
-          priority: 2
-        });
-      }
+      // Show native notification with shorter duration
+      showNativeNotification('JobOps Clipper - Linear Configuration', message, 2);
       return;
     }
 
@@ -2374,16 +2382,8 @@ async function handleExportToLinear() {
       const message = "Failed to connect to Linear. Please check your API key and try again.";
       showNotification(message, true);
       
-      // Show native notification
-      if (chrome.notifications) {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icon.png',
-          title: 'JobOps Clipper - Linear Connection Failed',
-          message: message,
-          priority: 2
-        });
-      }
+      // Show native notification with shorter duration
+      showNativeNotification('JobOps Clipper - Linear Connection Failed', message, 2);
       return;
     }
     logToConsole("✅ Linear connection successful", "success");
