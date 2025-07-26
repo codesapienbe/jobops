@@ -769,14 +769,17 @@ button:hover {
 }
 
 .toggle-icon {
-  margin-left: 8px;
+  margin-left: auto;
   font-size: 0.8em;
   transition: transform 0.3s ease;
   opacity: 0.9;
+  flex-shrink: 0;
 }
 
 .section-save-btn {
-  margin-left: 4px;
+  margin-left: auto;
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 
 /* Remove the old specific header background colors since we're using the job-section style */
@@ -1210,6 +1213,7 @@ button:hover {
   transition: opacity 0.2s;
   padding: 4px;
   border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .section-save-btn:hover {

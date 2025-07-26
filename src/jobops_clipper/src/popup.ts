@@ -141,7 +141,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                     }).join(', ');
                     
                     logToConsole(`⚠️ Insufficient content for database creation. Missing: ${missingSections.join(', ')}`, "warning");
-                    showNotification(`⚠️ Need minimum content in: ${minRequirements}`, true);
                   }
                 }
       
@@ -577,24 +576,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Setup save buttons for each section (when UI is implemented)
   function setupSectionSaveButtons() {
-    const sections = [
-      'position-details',
-      'job-requirements', 
-      'company-information',
-      'skills-matrix',
-      'application-materials',
-      'interview-schedule',
-      'interview-preparation',
-      'communication-log',
-      'key-contacts',
-      'interview-feedback',
-      'offer-details',
-      'rejection-analysis',
-      'privacy-policy',
-      'lessons-learned',
-      'performance-metrics',
-      'advisor-review'
-    ];
+    // No sections will get save buttons - all job sections should look like Application Summary
+    const sections: string[] = [];
 
     sections.forEach(sectionName => {
       const sectionElement = document.querySelector(`[data-section="${sectionName}"]`);
@@ -660,7 +643,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }).join(', ');
         
         logToConsole(`⚠️ Cannot save - insufficient content. Missing: ${missingSections.join(', ')}`, "warning");
-        showNotification(`⚠️ Cannot save - need minimum content in: ${minRequirements}`, true);
         return;
       }
       
@@ -672,7 +654,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         logToConsole(`✅ ${sectionName} saved successfully`, "success");
       } else {
         logToConsole(`⚠️ No data to save for ${sectionName}`, "warning");
-        showNotification(`⚠️ No data to save for ${sectionName}`, true);
       }
     } catch (error) {
       logToConsole(`❌ Failed to save ${sectionName}: ${error}`, "error");
@@ -945,7 +926,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                     }).join(', ');
                     
                     logToConsole(`⚠️ Insufficient content for database creation. Missing: ${missingSections.join(', ')}`, "warning");
-                    showNotification(`⚠️ Need minimum content in: ${minRequirements}`, true);
                   }
                 }
                 

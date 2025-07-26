@@ -1114,7 +1114,6 @@
               return `${section} (${req?.minLength || 50}+ chars)`;
             }).join(", ");
             logToConsole(`\u26A0\uFE0F Insufficient content for database creation. Missing: ${missingSections.join(", ")}`, "warning");
-            showNotification2(`\u26A0\uFE0F Need minimum content in: ${minRequirements}`, true);
           }
         }
         populatePropertyFields(jobData);
@@ -1464,24 +1463,7 @@
       });
     }
     function setupSectionSaveButtons() {
-      const sections = [
-        "position-details",
-        "job-requirements",
-        "company-information",
-        "skills-matrix",
-        "application-materials",
-        "interview-schedule",
-        "interview-preparation",
-        "communication-log",
-        "key-contacts",
-        "interview-feedback",
-        "offer-details",
-        "rejection-analysis",
-        "privacy-policy",
-        "lessons-learned",
-        "performance-metrics",
-        "advisor-review"
-      ];
+      const sections = [];
       sections.forEach((sectionName) => {
         const sectionElement = document.querySelector(`[data-section="${sectionName}"]`);
         if (sectionElement) {
@@ -1540,7 +1522,6 @@
             return `${section} (${req?.minLength || 50}+ chars)`;
           }).join(", ");
           logToConsole(`\u26A0\uFE0F Cannot save - insufficient content. Missing: ${missingSections.join(", ")}`, "warning");
-          showNotification2(`\u26A0\uFE0F Cannot save - need minimum content in: ${minRequirements}`, true);
           return;
         }
         const sectionData = getSectionData(sectionName);
@@ -1549,7 +1530,6 @@
           logToConsole(`\u2705 ${sectionName} saved successfully`, "success");
         } else {
           logToConsole(`\u26A0\uFE0F No data to save for ${sectionName}`, "warning");
-          showNotification2(`\u26A0\uFE0F No data to save for ${sectionName}`, true);
         }
       } catch (error) {
         logToConsole(`\u274C Failed to save ${sectionName}: ${error}`, "error");
@@ -1789,7 +1769,6 @@
                         return `${section} (${req?.minLength || 50}+ chars)`;
                       }).join(", ");
                       logToConsole(`\u26A0\uFE0F Insufficient content for database creation. Missing: ${missingSections.join(", ")}`, "warning");
-                      showNotification2(`\u26A0\uFE0F Need minimum content in: ${minRequirements}`, true);
                     }
                   }
                   populatePropertyFields(jobData);
