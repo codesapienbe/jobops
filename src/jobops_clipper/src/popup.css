@@ -7,11 +7,12 @@ body {
 
 .glassmorphic-popup {
   width: 438px;
-  height: auto;
+  height: 100vh;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
   position: relative;
-  padding: 24px 18px 18px 18px;
+  padding: 24px 18px 0 18px;
   background: linear-gradient(135deg, rgba(24,24,32,0.85) 0%, rgba(24,24,32,0.85) 100%);
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.08);
   backdrop-filter: blur(18px) saturate(1.2);
@@ -21,7 +22,7 @@ body {
   font-weight: 500;
   text-shadow: 0 1px 4px rgba(0,0,0,0.7);
   transition: background 0.3s, box-shadow 0.3s;
-  overflow: auto;
+  overflow: hidden;
   min-height: 0;
 }
 
@@ -190,10 +191,7 @@ button:hover {
 
 /* Console Monitor Styles */
 .console-monitor {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  position: relative;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   border-top: 2px solid #00d4ff;
   box-shadow: 0 -4px 20px rgba(0, 212, 255, 0.3);
@@ -344,9 +342,22 @@ button:hover {
   }
 }
 
-/* Adjust main content to make room for console */
-body {
-  padding-bottom: 4px;
+/* Main content area should scroll above the console */
+.glassmorphic-popup > form#properties-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 210px; /* Reserve space for console */
+}
+
+/* Dock the console at the bottom of the popup */
+.console-monitor {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 438px;
+  margin: 0 auto;
 }
 
 /* Override any default white backgrounds in console */
@@ -722,37 +733,58 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-.properties-header, .markdown-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 0 14px;
+.job-header, .properties-header, .markdown-header, .realtime-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
   height: 40px;
   min-height: 40px;
   max-height: 40px;
-  border-radius: 8px 8px 0 0;
-  font-weight: 600;
-  font-size: 1em;
+  border-radius: 8px;
   cursor: pointer;
-  -webkit-user-select: none;
-  user-select: none;
   transition: all 0.3s ease;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+  color: #e0e0e0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  margin-bottom: 8px;
 }
 
-.properties-header:hover, .markdown-header:hover {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+.job-header:hover, .properties-header:hover, .markdown-header:hover, .realtime-header:hover {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
+/* Group arrow and save button to the right */
+.header-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
 .toggle-icon {
+  margin-left: 8px;
   font-size: 0.8em;
   transition: transform 0.3s ease;
   opacity: 0.9;
+}
+
+.section-save-btn {
+  margin-left: 4px;
+}
+
+/* Remove the old specific header background colors since we're using the job-section style */
+.properties-section, .markdown-section, .realtime-section {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-height: 600px;
 }
 
 .properties-content, .markdown-content {
@@ -777,42 +809,7 @@ body {
   transform: rotate(90deg);
 }
 
-.properties-section, .markdown-section, .realtime-section {
-  margin-bottom: 12px;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  max-height: 600px;
-}
-
 /* Real-time Response Section Styles */
-.realtime-header {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-  color: white;
-  padding: 0 14px;
-  height: 40px;
-  min-height: 40px;
-  max-height: 40px;
-  border-radius: 8px 8px 0 0;
-  font-weight: 600;
-  font-size: 1em;
-  cursor: pointer;
-  -webkit-user-select: none;
-  user-select: none;
-  transition: all 0.3s ease;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-sizing: border-box;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.realtime-header:hover {
-  background: linear-gradient(135deg, #ff5252 0%, #e64a19 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
 .realtime-content {
   max-height: 400px;
   overflow: hidden;
@@ -909,7 +906,7 @@ body {
 
 /* Job Application Sections Styles */
 .job-section {
-  margin-bottom: 12px;
+  margin-bottom: 0;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);

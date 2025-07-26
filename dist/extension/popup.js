@@ -1416,10 +1416,12 @@
         if (sectionElement) {
           const header = sectionElement.querySelector(".job-header");
           if (header) {
+            const toggleIcon = header.querySelector(".toggle-icon");
             const saveButton = document.createElement("button");
             saveButton.className = "section-save-btn";
             saveButton.innerHTML = "\u{1F4BE}";
             saveButton.title = `Save ${sectionName.replace("-", " ")}`;
+            saveButton.type = "button";
             saveButton.style.cssText = `
             background: none;
             border: none;
@@ -1428,6 +1430,8 @@
             margin-left: 8px;
             opacity: 0.7;
             transition: opacity 0.2s;
+            padding: 4px;
+            border-radius: 4px;
           `;
             saveButton.addEventListener("mouseenter", () => {
               saveButton.style.opacity = "1";
@@ -1439,7 +1443,13 @@
               e.stopPropagation();
               await handleSectionSave(sectionName);
             });
-            header.appendChild(saveButton);
+            if (toggleIcon && toggleIcon.nextSibling) {
+              header.insertBefore(saveButton, toggleIcon.nextSibling);
+            } else if (toggleIcon) {
+              header.appendChild(saveButton);
+            } else {
+              header.appendChild(saveButton);
+            }
           }
         }
       });
