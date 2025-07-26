@@ -10,54 +10,65 @@
     <div class="glassmorphic-popup">
       <form id="properties-form" autocomplete="off">
         <div class="properties-section">
-          <div class="properties-header">Properties ▼</div>
-          <div class="property-row">
-            <span class="property-icon">📝</span>
-            <input id="prop-title" class="property-input" type="text" placeholder="Title" />
+          <div class="properties-header" data-toggle="properties-content">
+            Properties <span class="toggle-icon">▶</span>
           </div>
-          <div class="property-row">
-            <span class="property-icon">🔗</span>
-            <input id="prop-url" class="property-input" type="text" placeholder="Source URL" />
-          </div>
-          <div class="property-row">
-            <span class="property-icon">👤</span>
-            <input id="prop-author" class="property-input" type="text" placeholder="Author" />
-          </div>
-          <div class="property-row">
-            <span class="property-icon">📅</span>
-            <input id="prop-published" class="property-input" type="text" placeholder="Published" />
-          </div>
-          <div class="property-row">
-            <span class="property-icon">⏰</span>
-            <input id="prop-created" class="property-input" type="text" placeholder="Created" />
-          </div>
-          <div class="property-row">
-            <span class="property-icon">📝</span>
-            <input id="prop-description" class="property-input" type="text" placeholder="Description" />
-          </div>
-          <div class="property-row">
-            <span class="property-icon">🏷️</span>
-            <input id="prop-tags" class="property-input" type="text" placeholder="Tags (comma separated)" />
-          </div>
-          <div class="property-row">
-            <span class="property-icon">🏷️</span>
-            <div id="prop-headings" class="property-tags"></div>
-          </div>
-          <div class="property-row">
-            <span class="property-icon">🖼️</span>
-            <div id="prop-images" class="property-images"></div>
-          </div>
-          <div class="property-row">
-            <span class="property-icon">📍</span>
-            <input id="prop-location" class="property-input" type="text" placeholder="Location" />
+          <div id="properties-content" class="properties-content collapsed">
+            <div class="property-row">
+              <span class="property-icon">📝</span>
+              <input id="prop-title" class="property-input" type="text" placeholder="Title" />
+            </div>
+            <div class="property-row">
+              <span class="property-icon">🔗</span>
+              <input id="prop-url" class="property-input" type="text" placeholder="Source URL" />
+            </div>
+            <div class="property-row">
+              <span class="property-icon">👤</span>
+              <input id="prop-author" class="property-input" type="text" placeholder="Author" />
+            </div>
+            <div class="property-row">
+              <span class="property-icon">📅</span>
+              <input id="prop-published" class="property-input" type="text" placeholder="Published" />
+            </div>
+            <div class="property-row">
+              <span class="property-icon">⏰</span>
+              <input id="prop-created" class="property-input" type="text" placeholder="Created" />
+            </div>
+            <div class="property-row">
+              <span class="property-icon">📝</span>
+              <input id="prop-description" class="property-input" type="text" placeholder="Description" />
+            </div>
+            <div class="property-row">
+              <span class="property-icon">🏷️</span>
+              <input id="prop-tags" class="property-input" type="text" placeholder="Tags (comma separated)" />
+            </div>
+            <div class="property-row">
+              <span class="property-icon">🏷️</span>
+              <div id="prop-headings" class="property-tags"></div>
+            </div>
+            <div class="property-row">
+              <span class="property-icon">🖼️</span>
+              <div id="prop-images" class="property-images"></div>
+            </div>
+            <div class="property-row">
+              <span class="property-icon">📍</span>
+              <input id="prop-location" class="property-input" type="text" placeholder="Location" />
+            </div>
           </div>
         </div>
+        <div class="markdown-section">
+          <div class="markdown-header" data-toggle="markdown-content">
+            Markdown Preview <span class="toggle-icon">▶</span>
+          </div>
+          <div id="markdown-content" class="markdown-content collapsed">
+            <textarea id="markdown-editor" class="markdown-editor" placeholder="Edit your markdown here..."></textarea>
+          </div>
+        </div>
+        <div class="action-buttons">
+          <button id="auto-map-ollama" class="action-button" aria-label="Auto-map with Ollama">🪄</button>
+          <button id="copy-markdown" class="action-button" aria-label="Copy to Clipboard">📋</button>
+        </div>
       </form>
-      <textarea id="markdown-editor" class="markdown-editor" placeholder="Edit your markdown here..."></textarea>
-      <div class="buttons">
-        <button id="auto-map-ollama" aria-label="Auto-map with Ollama">🪄 Auto-map with Ollama</button>
-        <button id="copy-markdown" aria-label="Copy to Clipboard" disabled>📋 Copy to Clipboard</button>
-      </div>
       <div id="clip-status"></div>
     </div>
     <script src="popup.js"></script>

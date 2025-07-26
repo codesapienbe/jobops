@@ -23,8 +23,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const propLocation = document.getElementById("prop-location") as HTMLInputElement;
   const autoMapBtn = document.getElementById("auto-map-ollama") as HTMLButtonElement;
   
-  // Enable copy button by default
+  // Enable copy button by default - it should always be clickable
   copyBtn.disabled = false;
+
+  // Set up toggle functionality
+  setupToggleHandlers();
 
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
@@ -38,10 +41,43 @@ document.addEventListener("DOMContentLoaded", async () => {
       jobData = msg.jobData;
       populatePropertyFields(jobData);
       markdownEditor.value = generateMarkdown(jobData);
-      // Enable copy button when we have data
+      // Copy button is always enabled
       copyBtn.disabled = false;
     }
   });
+
+  function setupToggleHandlers() {
+    // Add click event listeners to all toggle headers
+    const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header');
+    toggleHeaders.forEach(header => {
+      header.addEventListener('click', () => {
+        const toggleTarget = header.getAttribute('data-toggle');
+        if (toggleTarget) {
+          toggleSection(toggleTarget);
+        }
+      });
+    });
+  }
+
+  function toggleSection(sectionId: string) {
+    const content = document.getElementById(sectionId);
+    const header = content?.parentElement?.querySelector('.properties-header, .markdown-header');
+    const toggleIcon = header?.querySelector('.toggle-icon');
+    
+    if (content && header && toggleIcon) {
+      const isCollapsed = content.classList.contains('collapsed');
+      
+      if (isCollapsed) {
+        content.classList.remove('collapsed');
+        content.classList.add('expanded');
+        toggleIcon.textContent = '▼';
+      } else {
+        content.classList.remove('expanded');
+        content.classList.add('collapsed');
+        toggleIcon.textContent = '▶';
+      }
+    }
+  }
 
   function populatePropertyFields(data: Record<string, any>) {
     propTitle.value = data.title || '';
@@ -117,7 +153,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 jobData = response.jobData;
                 populatePropertyFields(jobData);
                 markdownEditor.value = generateMarkdown(jobData);
-                // Enable copy button when we have data
+                // Copy button is always enabled
                 copyBtn.disabled = false;
               }
             }
@@ -127,15 +163,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // Enhanced copy function with notification
   copyBtn.onclick = async () => {
     try {
-      await navigator.clipboard.writeText(markdownEditor.value);
+      const contentToCopy = markdownEditor.value || generateMarkdown(jobData);
+      
+      if (!contentToCopy.trim()) {
+        showNotification("No content to copy!", true);
+        return;
+      }
+
+      await navigator.clipboard.writeText(contentToCopy);
+      
+      // Show success notification
+      showNotification("✅ Content copied to clipboard!");
+      
+      // Also update status for additional feedback
       status.textContent = "Copied to clipboard!";
-      setTimeout(() => status.textContent = '', 1200);
+      setTimeout(() => status.textContent = '', 2000);
+      
     } catch (e) {
+      console.error("Copy failed:", e);
+      showNotification("❌ Failed to copy to clipboard", true);
       status.textContent = "Failed to copy to clipboard.";
     }
   };
+
+  // Notification function using Chrome notifications
+  function showNotification(message: string, isError: boolean = false) {
+    // Try to use Chrome notifications first
+    if (chrome.notifications) {
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icon.png",
+        title: "JobOps Clipper",
+        message: message,
+        priority: isError ? 2 : 1
+      });
+    } else {
+      // Fallback to status message
+      status.textContent = message;
+      setTimeout(() => status.textContent = '', 3000);
+    }
+  }
 
   autoMapBtn.onclick = async () => {
     autoMapBtn.disabled = true;
@@ -146,11 +216,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       populatePropertyFields(jobData);
       markdownEditor.value = generateMarkdown(jobData);
       status.textContent = "Fields auto-mapped!";
-      // Keep copy button enabled
+      // Copy button remains enabled regardless of Ollama success
       copyBtn.disabled = false;
     } catch (e: any) {
       status.textContent = "Ollama mapping failed: " + (e?.message || e);
-      // Keep copy button enabled even if Ollama fails
+      // Copy button remains enabled even if Ollama fails
       copyBtn.disabled = false;
     } finally {
       autoMapBtn.disabled = false;

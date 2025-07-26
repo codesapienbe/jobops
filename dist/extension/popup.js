@@ -17,7 +17,8 @@
     const propImages = document.getElementById("prop-images");
     const propLocation = document.getElementById("prop-location");
     const autoMapBtn = document.getElementById("auto-map-ollama");
-    copyBtn.disabled = true;
+    copyBtn.disabled = false;
+    setupToggleHandlers();
     const backendUrl = typeof JOBOPS_BACKEND_URL !== "undefined" ? JOBOPS_BACKEND_URL : "http://localhost:8877";
     chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
       requestJobData();
@@ -27,8 +28,37 @@
         jobData = msg.jobData;
         populatePropertyFields(jobData);
         markdownEditor.value = generateMarkdown(jobData);
+        copyBtn.disabled = false;
       }
     });
+    function setupToggleHandlers() {
+      const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header");
+      toggleHeaders.forEach((header) => {
+        header.addEventListener("click", () => {
+          const toggleTarget = header.getAttribute("data-toggle");
+          if (toggleTarget) {
+            toggleSection(toggleTarget);
+          }
+        });
+      });
+    }
+    function toggleSection(sectionId) {
+      const content = document.getElementById(sectionId);
+      const header = content?.parentElement?.querySelector(".properties-header, .markdown-header");
+      const toggleIcon = header?.querySelector(".toggle-icon");
+      if (content && header && toggleIcon) {
+        const isCollapsed = content.classList.contains("collapsed");
+        if (isCollapsed) {
+          content.classList.remove("collapsed");
+          content.classList.add("expanded");
+          toggleIcon.textContent = "\u25BC";
+        } else {
+          content.classList.remove("expanded");
+          content.classList.add("collapsed");
+          toggleIcon.textContent = "\u25B6";
+        }
+      }
+    }
     function populatePropertyFields(data) {
       propTitle.value = data.title || "";
       propUrl.value = data.url || "";
@@ -99,6 +129,7 @@
                   jobData = response.jobData;
                   populatePropertyFields(jobData);
                   markdownEditor.value = generateMarkdown(jobData);
+                  copyBtn.disabled = false;
                 }
               }
             );
@@ -108,13 +139,35 @@
     }
     copyBtn.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(markdownEditor.value);
+        const contentToCopy = markdownEditor.value || generateMarkdown(jobData);
+        if (!contentToCopy.trim()) {
+          showNotification("No content to copy!", true);
+          return;
+        }
+        await navigator.clipboard.writeText(contentToCopy);
+        showNotification("\u2705 Content copied to clipboard!");
         status.textContent = "Copied to clipboard!";
-        setTimeout(() => status.textContent = "", 1200);
+        setTimeout(() => status.textContent = "", 2e3);
       } catch (e) {
+        console.error("Copy failed:", e);
+        showNotification("\u274C Failed to copy to clipboard", true);
         status.textContent = "Failed to copy to clipboard.";
       }
     };
+    function showNotification(message, isError = false) {
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icon.png",
+          title: "JobOps Clipper",
+          message,
+          priority: isError ? 2 : 1
+        });
+      } else {
+        status.textContent = message;
+        setTimeout(() => status.textContent = "", 3e3);
+      }
+    }
     autoMapBtn.onclick = async () => {
       autoMapBtn.disabled = true;
       status.textContent = "Auto-mapping with Ollama...";
@@ -127,7 +180,7 @@
         copyBtn.disabled = false;
       } catch (e) {
         status.textContent = "Ollama mapping failed: " + (e?.message || e);
-        copyBtn.disabled = true;
+        copyBtn.disabled = false;
       } finally {
         autoMapBtn.disabled = false;
         setTimeout(() => status.textContent = "", 2e3);
