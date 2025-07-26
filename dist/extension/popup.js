@@ -1092,19 +1092,29 @@
           logToConsole("\u{1F504} Existing job application found and loaded", "info");
           showNotification2("\u{1F504} Existing job application loaded");
         } else {
-          const { hasContent, missingSections } = checkRequiredSectionsContent();
+          const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
           if (hasContent) {
-            logToConsole("\u{1F195} Creating new job application", "info");
+            logToConsole(`\u{1F195} Creating new job application (Quality: ${contentQuality})`, "info");
             try {
               await jobOpsDataManager.createNewJobApplication(jobData);
-              showNotification2("\u{1F195} New job application created");
+              showNotification2(`\u{1F195} New job application created (${contentQuality} content)`);
+              validateAndProvideFeedback(contentQuality, missingSections);
             } catch (error) {
               logToConsole(`\u274C Error creating job application: ${error}`, "error");
               showNotification2("\u274C Error creating job application", true);
             }
           } else {
+            const minRequirements = missingSections.map((section) => {
+              const req = [
+                { name: "Position Details", minLength: 50 },
+                { name: "Job Requirements", minLength: 50 },
+                { name: "Company Information", minLength: 30 },
+                { name: "Offer Details", minLength: 20 }
+              ].find((s) => s.name === section);
+              return `${section} (${req?.minLength || 50}+ chars)`;
+            }).join(", ");
             logToConsole(`\u26A0\uFE0F Insufficient content for database creation. Missing: ${missingSections.join(", ")}`, "warning");
-            showNotification2(`\u26A0\uFE0F Need 255+ chars in: ${missingSections.join(", ")}`, true);
+            showNotification2(`\u26A0\uFE0F Need minimum content in: ${minRequirements}`, true);
           }
         }
         populatePropertyFields(jobData);
@@ -1155,6 +1165,24 @@
       };
       console.log("APPLICATION_LOG:", JSON.stringify(logEntry));
     };
+    function validateAndProvideFeedback(contentQuality, missingSections) {
+      const guidance = getContentGuidance(contentQuality, missingSections);
+      logToApplicationLog("INFO", "Content validation feedback provided", {
+        contentQuality,
+        missingSections,
+        guidanceCount: guidance.length
+      });
+      guidance.forEach((tip) => {
+        logToConsole(tip, "info");
+      });
+      if (contentQuality === "minimal" && missingSections.length > 0) {
+        logToConsole("\u{1F50D} Tip: Expand the sections above to add more details", "info");
+      } else if (contentQuality === "adequate") {
+        logToConsole("\u2705 Good progress! Consider adding more specific examples", "success");
+      } else if (contentQuality === "complete") {
+        logToConsole("\u{1F389} Excellent! Your application is ready for comprehensive analysis", "success");
+      }
+    }
     logToApplicationLog("INFO", "JobOps Clipper extension initialized", {
       version: "1.0.0",
       database_ready: true,
@@ -1241,22 +1269,41 @@
     }
     function checkRequiredSectionsContent() {
       const requiredSections = [
-        { name: "Position Details", id: "position-details" },
-        { name: "Job Requirements", id: "job-requirements" },
-        { name: "Company Information", id: "company-information" },
-        { name: "Offer Details", id: "offer-details" },
-        { name: "Markdown Preview", id: "markdown" }
+        { name: "Position Details", id: "position-details", minLength: 50, adequateLength: 150 },
+        { name: "Job Requirements", id: "job-requirements", minLength: 50, adequateLength: 150 },
+        { name: "Company Information", id: "company-information", minLength: 30, adequateLength: 100 },
+        { name: "Offer Details", id: "offer-details", minLength: 20, adequateLength: 80 }
       ];
       const missingSections = [];
       let hasContent = true;
+      let totalContentLength = 0;
+      let sectionsWithAdequateContent = 0;
       for (const section of requiredSections) {
         const sectionContent = getSectionContent(section.id);
-        if (sectionContent.length < 255) {
+        const contentLength = sectionContent.trim().length;
+        totalContentLength += contentLength;
+        if (contentLength < section.minLength) {
           missingSections.push(section.name);
           hasContent = false;
+        } else if (contentLength >= section.adequateLength) {
+          sectionsWithAdequateContent++;
         }
       }
-      return { hasContent, missingSections };
+      let contentQuality = "minimal";
+      if (totalContentLength >= 500 && sectionsWithAdequateContent >= 2) {
+        contentQuality = "adequate";
+      }
+      if (totalContentLength >= 800 && sectionsWithAdequateContent >= 3) {
+        contentQuality = "complete";
+      }
+      logToApplicationLog("DEBUG", "Content validation completed", {
+        totalContentLength,
+        sectionsWithAdequateContent,
+        missingSections,
+        contentQuality,
+        hasContent
+      });
+      return { hasContent, missingSections, contentQuality };
     }
     function getSectionContent(sectionId) {
       switch (sectionId) {
@@ -1273,6 +1320,30 @@
         default:
           return "";
       }
+    }
+    function getContentGuidance(contentQuality, missingSections) {
+      const guidance = [];
+      switch (contentQuality) {
+        case "minimal":
+          guidance.push("\u{1F4A1} Add more details to improve application quality");
+          if (missingSections.includes("Position Details")) {
+            guidance.push("\u{1F4DD} Include job title, company, location, salary range, and key responsibilities");
+          }
+          if (missingSections.includes("Job Requirements")) {
+            guidance.push("\u{1F4CB} List required skills, experience level, education, and technical requirements");
+          }
+          if (missingSections.includes("Company Information")) {
+            guidance.push("\u{1F3E2} Add company size, industry, mission, and recent news");
+          }
+          break;
+        case "adequate":
+          guidance.push("\u2705 Good content level - consider adding more specific details");
+          break;
+        case "complete":
+          guidance.push("\u{1F389} Excellent content level - ready for comprehensive analysis");
+          break;
+      }
+      return guidance;
     }
     function getInputValue(id) {
       const element = document.getElementById(id);
@@ -1366,7 +1437,7 @@
           saveTimeout = setTimeout(async () => {
             try {
               updateJobDataFromFields();
-              const { hasContent, missingSections } = checkRequiredSectionsContent();
+              const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
               if (hasContent) {
                 if (jobData.title || jobData.description || jobData.location) {
                   await saveSectionData("position_details", {
@@ -1457,10 +1528,19 @@
     async function handleSectionSave(sectionName) {
       try {
         logToConsole(`\u{1F4BE} Saving ${sectionName}...`, "info");
-        const { hasContent, missingSections } = checkRequiredSectionsContent();
+        const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
         if (!hasContent) {
+          const minRequirements = missingSections.map((section) => {
+            const req = [
+              { name: "Position Details", minLength: 50 },
+              { name: "Job Requirements", minLength: 50 },
+              { name: "Company Information", minLength: 30 },
+              { name: "Offer Details", minLength: 20 }
+            ].find((s) => s.name === section);
+            return `${section} (${req?.minLength || 50}+ chars)`;
+          }).join(", ");
           logToConsole(`\u26A0\uFE0F Cannot save - insufficient content. Missing: ${missingSections.join(", ")}`, "warning");
-          showNotification2(`\u26A0\uFE0F Cannot save - need 255+ chars in: ${missingSections.join(", ")}`, true);
+          showNotification2(`\u26A0\uFE0F Cannot save - need minimum content in: ${minRequirements}`, true);
           return;
         }
         const sectionData = getSectionData(sectionName);
@@ -1687,19 +1767,29 @@
                     logToConsole("\u{1F504} Existing job application found and loaded", "info");
                     showNotification2("\u{1F504} Existing job application loaded");
                   } else {
-                    const { hasContent, missingSections } = checkRequiredSectionsContent();
+                    const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
                     if (hasContent) {
-                      logToConsole("\u{1F195} Creating new job application", "info");
+                      logToConsole(`\u{1F195} Creating new job application (Quality: ${contentQuality})`, "info");
                       try {
                         await jobOpsDataManager.createNewJobApplication(jobData);
-                        showNotification2("\u{1F195} New job application created");
+                        showNotification2(`\u{1F195} New job application created (${contentQuality} content)`);
+                        validateAndProvideFeedback(contentQuality, missingSections);
                       } catch (error) {
                         logToConsole(`\u274C Error creating job application: ${error}`, "error");
                         showNotification2("\u274C Error creating job application", true);
                       }
                     } else {
+                      const minRequirements = missingSections.map((section) => {
+                        const req = [
+                          { name: "Position Details", minLength: 50 },
+                          { name: "Job Requirements", minLength: 50 },
+                          { name: "Company Information", minLength: 30 },
+                          { name: "Offer Details", minLength: 20 }
+                        ].find((s) => s.name === section);
+                        return `${section} (${req?.minLength || 50}+ chars)`;
+                      }).join(", ");
                       logToConsole(`\u26A0\uFE0F Insufficient content for database creation. Missing: ${missingSections.join(", ")}`, "warning");
-                      showNotification2(`\u26A0\uFE0F Need 255+ chars in: ${missingSections.join(", ")}`, true);
+                      showNotification2(`\u26A0\uFE0F Need minimum content in: ${minRequirements}`, true);
                     }
                   }
                   populatePropertyFields(jobData);
