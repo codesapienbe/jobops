@@ -46,7 +46,17 @@ try:
     img = Image.open(BytesIO(icon_data))
     img.show()
 except Exception as e:
-    print("Failed to load image:", e)
+    # Log image loading failure with structured logging
+    logging.warning(
+        "Embedded icon image loading failed - gracefully handled",
+        extra={
+            'component': 'jobops_tray.ui',
+            'error_type': 'image_decode_error',
+            'error_message': str(e),
+            'action_taken': 'continued_without_icon',
+            'image_source': 'embedded_base64_data'
+        }
+    )
 
 load_dotenv()
 

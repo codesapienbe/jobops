@@ -152,12 +152,70 @@
       }
       propImages.innerHTML = "";
       if (Array.isArray(data.images) && data.images.length > 0) {
+        logToConsole(`\u{1F5BC}\uFE0F Processing ${data.images.length} images...`, "debug");
         for (const img of data.images) {
           const thumb = document.createElement("img");
           thumb.className = "property-image-thumb";
-          thumb.src = img.src;
           thumb.alt = img.alt || "";
           thumb.title = img.alt || img.src;
+          thumb.onerror = () => {
+            const logEntry = {
+              timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+              level: "WARN",
+              component: "jobops_clipper.ui",
+              message: "Image loading failed - gracefully handled with placeholder",
+              correlation_id: null,
+              user_id: null,
+              request_id: null,
+              image_url: img.src,
+              image_alt: img.alt || null,
+              error_type: "CORS_or_network_error",
+              action_taken: "replaced_with_placeholder"
+            };
+            logToConsole(`\u26A0\uFE0F Image loading failed: ${img.src}`, "warning");
+            chrome.storage.sync.get(["jobops_backend_url"], (result) => {
+              const backendUrl2 = result.jobops_backend_url || "http://localhost:8877";
+              fetch(`${backendUrl2}/log`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(logEntry)
+              }).catch(() => {
+                console.warn("Image loading failed:", logEntry);
+              });
+            });
+            thumb.style.display = "none";
+            const placeholder = document.createElement("div");
+            placeholder.className = "property-image-placeholder";
+            placeholder.textContent = "\u{1F5BC}\uFE0F";
+            placeholder.title = img.alt || img.src;
+            thumb.parentNode?.replaceChild(placeholder, thumb);
+          };
+          thumb.onload = () => {
+            const logEntry = {
+              timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+              level: "INFO",
+              component: "jobops_clipper.ui",
+              message: "Image loaded successfully",
+              correlation_id: null,
+              user_id: null,
+              request_id: null,
+              image_url: img.src,
+              image_alt: img.alt || null,
+              status: "loaded_successfully"
+            };
+            logToConsole(`\u2705 Image loaded successfully: ${img.src}`, "debug");
+            chrome.storage.sync.get(["jobops_backend_url"], (result) => {
+              const backendUrl2 = result.jobops_backend_url || "http://localhost:8877";
+              fetch(`${backendUrl2}/log`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(logEntry)
+              }).catch(() => {
+                console.log("Image loaded successfully:", logEntry);
+              });
+            });
+          };
+          thumb.src = img.src;
           propImages.appendChild(thumb);
         }
       }
@@ -208,12 +266,20 @@
                 if (response && response.jobData) {
                   logToConsole("\u2705 Job data received successfully!", "success");
                   logToConsole(`\u{1F4CA} Job title: ${response.jobData.title || "N/A"}`, "info");
+                  logToConsole(`\u{1F4CB} Job data keys: ${Object.keys(response.jobData).join(", ")}`, "debug");
+                  if (!response.jobData.title && !response.jobData.body) {
+                    logToConsole("\u26A0\uFE0F Job data missing essential fields (title/body)", "warning");
+                    showNotification2("\u26A0\uFE0F Job data incomplete. Please refresh the page and try again.", true);
+                    return;
+                  }
                   jobData = response.jobData;
                   populatePropertyFields(jobData);
                   markdownEditor.value = generateMarkdown(jobData);
                   copyBtn.disabled = false;
+                  logToConsole("\u2705 Job data populated successfully", "success");
                 } else {
                   logToConsole("\u26A0\uFE0F No job data received from content script", "warning");
+                  showNotification2("\u26A0\uFE0F No job data found. Please refresh the page and try again.", true);
                 }
               }
             );
@@ -257,6 +323,7 @@
       }
     }
     async function handleResumeUpload(event) {
+      console.log("\u{1F3AF} RESUME UPLOAD TRIGGERED - DIRECT CONSOLE LOG");
       logToConsole("\u{1F4C1} Resume upload triggered", "info");
       const target = event.target;
       const file = target.files?.[0];
@@ -280,9 +347,12 @@
         status.className = "loading";
         showNotification2("\u{1F50D} Extracting PDF content...");
         logToConsole("\u{1F50D} Extracting text content from PDF...", "progress");
+        console.log("\u{1F3AF} ABOUT TO EXTRACT PDF CONTENT - DIRECT CONSOLE LOG");
         resumeContent = await extractPdfContent(file);
+        console.log("\u{1F3AF} PDF EXTRACTION COMPLETED - DIRECT CONSOLE LOG");
         logToConsole(`\u2705 PDF extraction completed! Content length: ${resumeContent.length} characters`, "success");
         logToConsole(`\u{1F4C4} Resume content preview: ${resumeContent.substring(0, 200)}${resumeContent.length > 200 ? "..." : ""}`, "debug");
+        logToConsole(`\u{1F4C4} Resume content stored in variable: ${resumeContent ? "YES" : "NO"}`, "debug");
         status.textContent = "\u2705 Resume content extracted successfully!";
         status.className = "success";
         showNotification2("\u2705 Resume content extracted successfully!");
@@ -300,6 +370,10 @@
       }
     }
     async function handleGenerateReport() {
+      console.log("\u{1F3AF} GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
+      logToConsole("\u{1F680} Generate Report button clicked", "info");
+      logToConsole(`\u{1F4CA} Current resumeContent length: ${resumeContent.length}`, "debug");
+      logToConsole(`\u{1F4CB} Current jobData keys: ${Object.keys(jobData).join(", ")}`, "debug");
       if (!resumeContent) {
         logToConsole("\u{1F4C1} No resume content found, triggering file upload", "warning");
         resumeUpload.click();
@@ -307,7 +381,24 @@
       }
       if (!jobData || Object.keys(jobData).length === 0) {
         logToConsole("\u{1F4CB} No job data found, requesting from current page", "warning");
-        requestJobData();
+        await new Promise((resolve) => {
+          requestJobData();
+          setTimeout(() => {
+            logToConsole(`\u{1F4CB} After requestJobData - jobData keys: ${Object.keys(jobData).join(", ")}`, "debug");
+            logToConsole(`\u{1F4CB} Job data title: ${jobData.title || "N/A"}`, "debug");
+            logToConsole(`\u{1F4CB} Job data body length: ${jobData.body ? jobData.body.length : 0}`, "debug");
+            resolve();
+          }, 1e3);
+        });
+        if (!jobData || Object.keys(jobData).length === 0) {
+          logToConsole("\u274C Still no job data after request, cannot proceed", "error");
+          showNotification2("\u274C No job data available. Please refresh the page and try again.", true);
+          return;
+        }
+      }
+      if (!jobData.title && !jobData.body) {
+        logToConsole("\u274C Job data missing essential fields (title/body)", "error");
+        showNotification2("\u274C Job data incomplete. Please refresh the page and try again.", true);
         return;
       }
       logToConsole("\u{1F680} Starting report generation process", "info");
@@ -315,6 +406,7 @@
       status.textContent = "\u{1F504} Starting report generation...";
       status.className = "loading";
       showNotification2("\u{1F504} Starting report generation...");
+      logToConsole("\u{1F3AF} BUTTON CLICK VERIFICATION - This should appear immediately", "info");
       try {
         logToConsole("\u{1F511} Checking API configuration...", "progress");
         status.textContent = "\u{1F511} Checking API configuration...";
@@ -562,29 +654,90 @@ ${value}
           logToConsole("\u{1F4D6} File read successfully, creating typed array...", "debug");
           const typedarray = new Uint8Array(e.target?.result);
           logToConsole(`\u{1F4CA} Typed array created, size: ${typedarray.length} bytes`, "debug");
-          const pdfjsLib = window["pdfjs-dist/build/pdf"];
-          logToConsole(`\u{1F4DA} PDF.js library available: ${!!pdfjsLib}`, "debug");
-          if (!pdfjsLib) {
-            logToConsole("\u{1F4DA} PDF.js not available, loading dynamically...", "progress");
-            const status = document.getElementById("clip-status");
-            if (status) {
-              status.textContent = "\u{1F4DA} Loading PDF processing library...";
-              status.className = "loading";
-            }
-            const script = document.createElement("script");
-            script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-            script.onload = () => {
-              logToConsole("\u2705 PDF.js loaded dynamically, proceeding with extraction...", "success");
+          const header = new TextDecoder().decode(typedarray.slice(0, 10));
+          logToConsole(`\u{1F4C4} File header: ${header}`, "debug");
+          if (!header.includes("%PDF")) {
+            logToConsole("\u26A0\uFE0F File doesn't appear to be a valid PDF", "warning");
+          }
+          try {
+            const pdfjsLib = window["pdfjs-dist/build/pdf"];
+            if (pdfjsLib) {
+              logToConsole("\u2705 PDF.js available, using it for extraction...", "success");
               extractPdfWithLibrary(typedarray, resolve, reject);
-            };
-            script.onerror = () => {
-              logToConsole("\u274C Failed to load PDF.js from CDN", "error");
-              reject(new Error("Failed to load PDF.js"));
-            };
-            document.head.appendChild(script);
-          } else {
-            logToConsole("\u2705 PDF.js already available, proceeding with extraction...", "success");
-            extractPdfWithLibrary(typedarray, resolve, reject);
+              return;
+            }
+          } catch (error) {
+            logToConsole(`\u26A0\uFE0F PDF.js method failed: ${error}`, "warning");
+          }
+          logToConsole("\u{1F4DA} PDF.js not available, trying to load from multiple sources...", "progress");
+          const status = document.getElementById("clip-status");
+          if (status) {
+            status.textContent = "\u{1F4DA} Loading PDF processing library...";
+            status.className = "loading";
+          }
+          const cdnSources = [
+            "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+            "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"
+          ];
+          let loaded = false;
+          const timeout = setTimeout(() => {
+            if (!loaded) {
+              logToConsole("\u23F0 PDF.js loading timeout, using fallback method", "warning");
+              const fallbackText = extractPdfFallback(typedarray);
+              if (fallbackText && fallbackText.length > 50) {
+                resolve(fallbackText);
+              } else {
+                const manualText = prompt("PDF extraction failed. Please paste your resume content manually:");
+                if (manualText && manualText.trim().length > 10) {
+                  resolve(manualText.trim());
+                } else {
+                  reject(new Error("No resume content available"));
+                }
+              }
+            }
+          }, 1e4);
+          for (const source of cdnSources) {
+            if (loaded)
+              break;
+            try {
+              logToConsole(`\u{1F4DA} Trying to load PDF.js from: ${source}`, "debug");
+              const script = document.createElement("script");
+              script.src = source;
+              script.onload = () => {
+                if (!loaded) {
+                  loaded = true;
+                  clearTimeout(timeout);
+                  logToConsole(`\u2705 PDF.js loaded from ${source}`, "success");
+                  extractPdfWithLibrary(typedarray, resolve, reject);
+                }
+              };
+              script.onerror = () => {
+                logToConsole(`\u274C Failed to load PDF.js from ${source}`, "debug");
+              };
+              document.head.appendChild(script);
+              await new Promise((resolve2) => setTimeout(resolve2, 2e3));
+            } catch (error) {
+              logToConsole(`\u274C Error loading from ${source}: ${error}`, "debug");
+            }
+          }
+          if (!loaded) {
+            logToConsole("\u26A0\uFE0F All PDF.js sources failed, using fallback method...", "warning");
+            const fallbackText = extractPdfFallback(typedarray);
+            if (fallbackText && fallbackText.length > 50) {
+              logToConsole("\u2705 Fallback PDF extraction successful", "success");
+              resolve(fallbackText);
+            } else {
+              logToConsole("\u274C All PDF extraction methods failed, using manual input", "warning");
+              const manualText = prompt("PDF extraction failed. Please paste your resume content manually:");
+              if (manualText && manualText.trim().length > 10) {
+                logToConsole("\u2705 Manual resume content provided", "success");
+                resolve(manualText.trim());
+              } else {
+                logToConsole("\u274C No manual content provided", "error");
+                reject(new Error("No resume content available"));
+              }
+            }
           }
         } catch (error) {
           logToConsole(`\u274C Error in PDF extraction: ${error}`, "error");
@@ -597,6 +750,34 @@ ${value}
       };
       reader.readAsArrayBuffer(file);
     });
+  }
+  function extractPdfFallback(typedarray) {
+    try {
+      logToConsole("\u{1F504} Using fallback PDF extraction method...", "progress");
+      const decoder = new TextDecoder("utf-8");
+      const text = decoder.decode(typedarray);
+      const textMatches = text.match(/\(([^)]+)\)/g);
+      if (textMatches && textMatches.length > 0) {
+        const extractedText = textMatches.map((match) => match.slice(1, -1)).filter((text2) => text2.length > 3 && !text2.match(/^[0-9\s]+$/)).join(" ");
+        if (extractedText.length > 50) {
+          logToConsole(`\u2705 Fallback extraction found ${extractedText.length} characters`, "success");
+          return extractedText;
+        }
+      }
+      const readableText = text.match(/[A-Za-z\s]{10,}/g);
+      if (readableText && readableText.length > 0) {
+        const combined = readableText.join(" ").trim();
+        if (combined.length > 50) {
+          logToConsole(`\u2705 Fallback extraction found ${combined.length} characters`, "success");
+          return combined;
+        }
+      }
+      logToConsole("\u26A0\uFE0F Fallback extraction found minimal text", "warning");
+      return "PDF content could not be extracted. Please ensure the PDF contains text (not just images).";
+    } catch (error) {
+      logToConsole(`\u274C Fallback extraction failed: ${error}`, "error");
+      return "PDF extraction failed. Please try a different PDF file.";
+    }
   }
   async function extractPdfWithLibrary(typedarray, resolve, reject) {
     try {

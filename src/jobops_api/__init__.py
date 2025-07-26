@@ -592,6 +592,86 @@ async def extract_skills_endpoint(
         return JSONResponse(status_code=500, content=err.dict())
 
 @app.post(
+    "/log",
+    tags=["system"],
+    summary="Log a message to application.log",
+    description="Log a structured message to the application log file for monitoring and debugging.",
+    response_model=dict,
+    responses={
+        200: {"description": "Message logged", "content": {"application/json": {"example": {"status": "success"}}}},
+        400: {"model": ErrorResponse, "description": "Invalid log data"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def log_endpoint(
+    log_data: dict = Body(..., description="Structured log data"),
+    request: Optional[Request] = None
+):
+    """Log a structured message to application.log"""
+    try:
+        # Validate required fields
+        required_fields = ['timestamp', 'level', 'component', 'message']
+        for field in required_fields:
+            if field not in log_data:
+                return JSONResponse(
+                    status_code=400,
+                    content=ErrorResponse(
+                        message=f"Missing required field: {field}",
+                        correlation_id=getattr(request, 'correlation_id', None)
+                    ).dict()
+                )
+        
+        # Sanitize and validate log level
+        level = log_data.get('level', 'INFO').upper()
+        valid_levels = ['DEBUG', 'INFO', 'WARN', 'WARNING', 'ERROR', 'CRITICAL']
+        if level not in valid_levels:
+            level = 'INFO'  # Default to INFO for invalid levels
+        
+        # Create log record with structured data
+        log_record = {
+            "timestamp": log_data.get('timestamp'),
+            "level": level,
+            "component": log_data.get('component', 'jobops_clipper'),
+            "message": log_data.get('message'),
+            "correlation_id": log_data.get('correlation_id'),
+            "user_id": log_data.get('user_id'),
+            "request_id": log_data.get('request_id'),
+        }
+        
+        # Add any additional fields from log_data
+        for key, value in log_data.items():
+            if key not in log_record and value is not None:
+                log_record[key] = value
+        
+        # Log the message
+        if level == 'DEBUG':
+            logger.debug(log_record['message'], extra=log_record)
+        elif level in ['WARN', 'WARNING']:
+            logger.warning(log_record['message'], extra=log_record)
+        elif level == 'ERROR':
+            logger.error(log_record['message'], extra=log_record)
+        elif level == 'CRITICAL':
+            logger.critical(log_record['message'], extra=log_record)
+        else:
+            logger.info(log_record['message'], extra=log_record)
+        
+        return {"status": "success", "message": "Log entry recorded"}
+        
+    except Exception as e:
+        logger.error(f"Failed to log message: {str(e)}", extra={
+            'component': 'jobops_api.log_endpoint',
+            'error': str(e),
+            'correlation_id': getattr(request, 'correlation_id', None)
+        })
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                message=f"Failed to log message: {str(e)}",
+                correlation_id=getattr(request, 'correlation_id', None)
+            ).dict()
+        )
+
+@app.post(
     "/extract-document",
     tags=["document"],
     summary="Extract structured data from a document",

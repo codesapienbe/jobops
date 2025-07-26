@@ -61,6 +61,13 @@
             ([_, v]) => Array.isArray(v) ? v.length > 0 : v && String(v).trim() !== ""
           )
         );
+        console.log("[JobOps Clipper] Extracted data:", {
+          title: jobData.title,
+          url: jobData.url,
+          bodyLength: jobData.body ? jobData.body.length : 0,
+          imagesCount: jobData.images ? jobData.images.length : 0,
+          headingsCount: jobData.headings ? jobData.headings.length : 0
+        });
         chrome.runtime.sendMessage({ action: "show_preview", jobData });
         sendResponse({ jobData });
       } catch (e) {

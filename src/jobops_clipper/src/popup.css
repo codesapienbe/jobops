@@ -605,6 +605,21 @@ body {
   box-shadow: 0 1px 4px rgba(0,0,0,0.10);
   margin-right: 2px;
 }
+
+.property-image-placeholder {
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  border: 1.5px solid #ff6b6b;
+  background: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #ff6b6b;
+  margin-right: 2px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+}
 .property-input {
   flex: 1;
   background: rgba(24,24,32,0.85);

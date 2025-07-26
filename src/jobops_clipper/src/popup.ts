@@ -203,15 +203,92 @@ document.addEventListener("DOMContentLoaded", async () => {
         propHeadings.appendChild(tag);
       }
     }
-    // Images as thumbnails
+    // Images as thumbnails with CORS error handling
     propImages.innerHTML = '';
     if (Array.isArray(data.images) && data.images.length > 0) {
+      logToConsole(`🖼️ Processing ${data.images.length} images...`, "debug");
       for (const img of data.images) {
         const thumb = document.createElement('img');
         thumb.className = 'property-image-thumb';
-        thumb.src = img.src;
         thumb.alt = img.alt || '';
         thumb.title = img.alt || img.src;
+        
+        // Handle CORS errors gracefully
+        thumb.onerror = () => {
+          // Log image loading failure with structured logging
+          const logEntry = {
+            timestamp: new Date().toISOString(),
+            level: "WARN",
+            component: "jobops_clipper.ui",
+            message: "Image loading failed - gracefully handled with placeholder",
+            correlation_id: null,
+            user_id: null,
+            request_id: null,
+            image_url: img.src,
+            image_alt: img.alt || null,
+            error_type: "CORS_or_network_error",
+            action_taken: "replaced_with_placeholder"
+          };
+          
+          // Log to console for debugging
+          logToConsole(`⚠️ Image loading failed: ${img.src}`, "warning");
+          
+          // Write to application.log file via backend API
+          chrome.storage.sync.get(['jobops_backend_url'], (result) => {
+            const backendUrl = result.jobops_backend_url || 'http://localhost:8877';
+            fetch(`${backendUrl}/log`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(logEntry)
+            }).catch(() => {
+              // Fallback: write to console if API call fails
+              console.warn('Image loading failed:', logEntry);
+            });
+          });
+          
+          thumb.style.display = 'none';
+          // Create a placeholder instead
+          const placeholder = document.createElement('div');
+          placeholder.className = 'property-image-placeholder';
+          placeholder.textContent = '🖼️';
+          placeholder.title = img.alt || img.src;
+          thumb.parentNode?.replaceChild(placeholder, thumb);
+        };
+        
+        thumb.onload = () => {
+          // Log successful image loading with structured logging
+          const logEntry = {
+            timestamp: new Date().toISOString(),
+            level: "INFO",
+            component: "jobops_clipper.ui",
+            message: "Image loaded successfully",
+            correlation_id: null,
+            user_id: null,
+            request_id: null,
+            image_url: img.src,
+            image_alt: img.alt || null,
+            status: "loaded_successfully"
+          };
+          
+          // Log to console for debugging
+          logToConsole(`✅ Image loaded successfully: ${img.src}`, "debug");
+          
+          // Write to application.log file via backend API
+          chrome.storage.sync.get(['jobops_backend_url'], (result) => {
+            const backendUrl = result.jobops_backend_url || 'http://localhost:8877';
+            fetch(`${backendUrl}/log`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(logEntry)
+            }).catch(() => {
+              // Fallback: write to console if API call fails
+              console.log('Image loaded successfully:', logEntry);
+            });
+          });
+        };
+        
+        // Set src after setting up error handlers
+        thumb.src = img.src;
         propImages.appendChild(thumb);
       }
     }
@@ -268,13 +345,25 @@ document.addEventListener("DOMContentLoaded", async () => {
               if (response && response.jobData) {
                 logToConsole("✅ Job data received successfully!", "success");
                 logToConsole(`📊 Job title: ${response.jobData.title || 'N/A'}`, "info");
+                logToConsole(`📋 Job data keys: ${Object.keys(response.jobData).join(', ')}`, "debug");
+                
+                // Ensure we have the essential data
+                if (!response.jobData.title && !response.jobData.body) {
+                  logToConsole("⚠️ Job data missing essential fields (title/body)", "warning");
+                  showNotification("⚠️ Job data incomplete. Please refresh the page and try again.", true);
+                  return;
+                }
+                
                 jobData = response.jobData;
                 populatePropertyFields(jobData);
                 markdownEditor.value = generateMarkdown(jobData);
                 // Copy button is always enabled
                 copyBtn.disabled = false;
+                
+                logToConsole("✅ Job data populated successfully", "success");
               } else {
                 logToConsole("⚠️ No job data received from content script", "warning");
+                showNotification("⚠️ No job data found. Please refresh the page and try again.", true);
               }
             }
           );
@@ -335,6 +424,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Handle resume upload
   async function handleResumeUpload(event: Event) {
+    console.log("🎯 RESUME UPLOAD TRIGGERED - DIRECT CONSOLE LOG");
     logToConsole("📁 Resume upload triggered", "info");
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
@@ -366,10 +456,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       showNotification("🔍 Extracting PDF content...");
       logToConsole("🔍 Extracting text content from PDF...", "progress");
       
+      console.log("🎯 ABOUT TO EXTRACT PDF CONTENT - DIRECT CONSOLE LOG");
       resumeContent = await extractPdfContent(file);
+      console.log("🎯 PDF EXTRACTION COMPLETED - DIRECT CONSOLE LOG");
       
       logToConsole(`✅ PDF extraction completed! Content length: ${resumeContent.length} characters`, "success");
       logToConsole(`📄 Resume content preview: ${resumeContent.substring(0, 200)}${resumeContent.length > 200 ? '...' : ''}`, "debug");
+      logToConsole(`📄 Resume content stored in variable: ${resumeContent ? 'YES' : 'NO'}`, "debug");
       
       // Step 3: Success
       status.textContent = "✅ Resume content extracted successfully!";
@@ -394,6 +487,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Handle generate report
   async function handleGenerateReport() {
+    console.log("🎯 GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
+    logToConsole("🚀 Generate Report button clicked", "info");
+    logToConsole(`📊 Current resumeContent length: ${resumeContent.length}`, "debug");
+    logToConsole(`📋 Current jobData keys: ${Object.keys(jobData).join(', ')}`, "debug");
+    
     if (!resumeContent) {
       logToConsole("📁 No resume content found, triggering file upload", "warning");
       // Trigger file upload if no resume content
@@ -404,7 +502,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Also check if we have job data
     if (!jobData || Object.keys(jobData).length === 0) {
       logToConsole("📋 No job data found, requesting from current page", "warning");
-      requestJobData();
+      // Wait for job data to be loaded
+      await new Promise<void>((resolve) => {
+        requestJobData();
+        // Give it a moment to load
+        setTimeout(() => {
+          logToConsole(`📋 After requestJobData - jobData keys: ${Object.keys(jobData).join(', ')}`, "debug");
+          logToConsole(`📋 Job data title: ${jobData.title || 'N/A'}`, "debug");
+          logToConsole(`📋 Job data body length: ${jobData.body ? jobData.body.length : 0}`, "debug");
+          resolve();
+        }, 1000);
+      });
+      
+      // Check again after waiting
+      if (!jobData || Object.keys(jobData).length === 0) {
+        logToConsole("❌ Still no job data after request, cannot proceed", "error");
+        showNotification("❌ No job data available. Please refresh the page and try again.", true);
+        return;
+      }
+    }
+    
+    // Verify we have essential data
+    if (!jobData.title && !jobData.body) {
+      logToConsole("❌ Job data missing essential fields (title/body)", "error");
+      showNotification("❌ Job data incomplete. Please refresh the page and try again.", true);
       return;
     }
 
@@ -413,6 +534,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     status.textContent = "🔄 Starting report generation...";
     status.className = "loading";
     showNotification("🔄 Starting report generation...");
+    
+    // Add immediate test message to verify button click is working
+    logToConsole("🎯 BUTTON CLICK VERIFICATION - This should appear immediately", "info");
 
     try {
       // Step 1: Check API key
@@ -681,7 +805,7 @@ function escapeHtml(str: string): string {
   });
 }
 
-// Extract PDF content using PDF.js
+// Extract PDF content using a more robust method
 async function extractPdfContent(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     logToConsole("🔄 Starting PDF content extraction...", "progress");
@@ -693,34 +817,107 @@ async function extractPdfContent(file: File): Promise<string> {
         const typedarray = new Uint8Array(e.target?.result as ArrayBuffer);
         logToConsole(`📊 Typed array created, size: ${typedarray.length} bytes`, "debug");
         
-        // Use PDF.js to extract text
-        const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
-        logToConsole(`📚 PDF.js library available: ${!!pdfjsLib}`, "debug");
-        
-        if (!pdfjsLib) {
-          // Fallback: try to load PDF.js dynamically
-          logToConsole("📚 PDF.js not available, loading dynamically...", "progress");
-          const status = document.getElementById("clip-status") as HTMLElement;
-          if (status) {
-            status.textContent = "📚 Loading PDF processing library...";
-            status.className = "loading";
-          }
-          
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-          script.onload = () => {
-            logToConsole("✅ PDF.js loaded dynamically, proceeding with extraction...", "success");
-            extractPdfWithLibrary(typedarray, resolve, reject);
-          };
-          script.onerror = () => {
-            logToConsole("❌ Failed to load PDF.js from CDN", "error");
-            reject(new Error('Failed to load PDF.js'));
-          };
-          document.head.appendChild(script);
-        } else {
-          logToConsole("✅ PDF.js already available, proceeding with extraction...", "success");
-          extractPdfWithLibrary(typedarray, resolve, reject);
+        // Verify the file content looks like a PDF
+        const header = new TextDecoder().decode(typedarray.slice(0, 10));
+        logToConsole(`📄 File header: ${header}`, "debug");
+        if (!header.includes('%PDF')) {
+          logToConsole("⚠️ File doesn't appear to be a valid PDF", "warning");
         }
+        
+        // Try multiple PDF extraction methods
+        try {
+          // Method 1: Try PDF.js if available
+          const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
+          if (pdfjsLib) {
+            logToConsole("✅ PDF.js available, using it for extraction...", "success");
+            extractPdfWithLibrary(typedarray, resolve, reject);
+            return;
+          }
+        } catch (error) {
+          logToConsole(`⚠️ PDF.js method failed: ${error}`, "warning");
+        }
+        
+        // Method 2: Try to load PDF.js from multiple sources
+        logToConsole("📚 PDF.js not available, trying to load from multiple sources...", "progress");
+        const status = document.getElementById("clip-status") as HTMLElement;
+        if (status) {
+          status.textContent = "📚 Loading PDF processing library...";
+          status.className = "loading";
+        }
+        
+        // Try multiple CDN sources
+        const cdnSources = [
+          'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js',
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+          'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
+        ];
+        
+        let loaded = false;
+        const timeout = setTimeout(() => {
+          if (!loaded) {
+            logToConsole("⏰ PDF.js loading timeout, using fallback method", "warning");
+            const fallbackText = extractPdfFallback(typedarray);
+            if (fallbackText && fallbackText.length > 50) {
+              resolve(fallbackText);
+            } else {
+              const manualText = prompt("PDF extraction failed. Please paste your resume content manually:");
+              if (manualText && manualText.trim().length > 10) {
+                resolve(manualText.trim());
+              } else {
+                reject(new Error('No resume content available'));
+              }
+            }
+          }
+        }, 10000); // 10 second timeout
+        
+        for (const source of cdnSources) {
+          if (loaded) break;
+          
+          try {
+            logToConsole(`📚 Trying to load PDF.js from: ${source}`, "debug");
+            const script = document.createElement('script');
+            script.src = source;
+            script.onload = () => {
+              if (!loaded) {
+                loaded = true;
+                clearTimeout(timeout);
+                logToConsole(`✅ PDF.js loaded from ${source}`, "success");
+                extractPdfWithLibrary(typedarray, resolve, reject);
+              }
+            };
+            script.onerror = () => {
+              logToConsole(`❌ Failed to load PDF.js from ${source}`, "debug");
+            };
+            document.head.appendChild(script);
+            
+            // Wait a bit before trying the next source
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } catch (error) {
+            logToConsole(`❌ Error loading from ${source}: ${error}`, "debug");
+          }
+        }
+        
+        // Method 3: Fallback to simple text extraction
+        if (!loaded) {
+          logToConsole("⚠️ All PDF.js sources failed, using fallback method...", "warning");
+          const fallbackText = extractPdfFallback(typedarray);
+          if (fallbackText && fallbackText.length > 50) {
+            logToConsole("✅ Fallback PDF extraction successful", "success");
+            resolve(fallbackText);
+          } else {
+            logToConsole("❌ All PDF extraction methods failed, using manual input", "warning");
+            // Provide manual input option
+            const manualText = prompt("PDF extraction failed. Please paste your resume content manually:");
+            if (manualText && manualText.trim().length > 10) {
+              logToConsole("✅ Manual resume content provided", "success");
+              resolve(manualText.trim());
+            } else {
+              logToConsole("❌ No manual content provided", "error");
+              reject(new Error('No resume content available'));
+            }
+          }
+        }
+        
       } catch (error) {
         logToConsole(`❌ Error in PDF extraction: ${error}`, "error");
         reject(error);
@@ -732,6 +929,48 @@ async function extractPdfContent(file: File): Promise<string> {
     };
     reader.readAsArrayBuffer(file);
   });
+}
+
+// Fallback PDF extraction method that doesn't require external libraries
+function extractPdfFallback(typedarray: Uint8Array): string {
+  try {
+    logToConsole("🔄 Using fallback PDF extraction method...", "progress");
+    
+    // Convert to string and look for text patterns
+    const decoder = new TextDecoder('utf-8');
+    const text = decoder.decode(typedarray);
+    
+    // Look for common PDF text markers
+    const textMatches = text.match(/\(([^)]+)\)/g);
+    if (textMatches && textMatches.length > 0) {
+      const extractedText = textMatches
+        .map(match => match.slice(1, -1)) // Remove parentheses
+        .filter(text => text.length > 3 && !text.match(/^[0-9\s]+$/)) // Filter out numbers and short strings
+        .join(' ');
+      
+      if (extractedText.length > 50) {
+        logToConsole(`✅ Fallback extraction found ${extractedText.length} characters`, "success");
+        return extractedText;
+      }
+    }
+    
+    // Alternative: look for readable text sequences
+    const readableText = text.match(/[A-Za-z\s]{10,}/g);
+    if (readableText && readableText.length > 0) {
+      const combined = readableText.join(' ').trim();
+      if (combined.length > 50) {
+        logToConsole(`✅ Fallback extraction found ${combined.length} characters`, "success");
+        return combined;
+      }
+    }
+    
+    logToConsole("⚠️ Fallback extraction found minimal text", "warning");
+    return "PDF content could not be extracted. Please ensure the PDF contains text (not just images).";
+    
+  } catch (error) {
+    logToConsole(`❌ Fallback extraction failed: ${error}`, "error");
+    return "PDF extraction failed. Please try a different PDF file.";
+  }
 }
 
 async function extractPdfWithLibrary(typedarray: Uint8Array, resolve: (text: string) => void, reject: (error: Error) => void) {

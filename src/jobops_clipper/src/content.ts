@@ -70,6 +70,15 @@ chrome.runtime.onMessage.addListener((msg: { action: string }, sender: chrome.ru
           Array.isArray(v) ? v.length > 0 : v && String(v).trim() !== ""
         )
       );
+      // Log extracted data for debugging
+      console.log("[JobOps Clipper] Extracted data:", {
+        title: jobData.title,
+        url: jobData.url,
+        bodyLength: jobData.body ? jobData.body.length : 0,
+        imagesCount: jobData.images ? jobData.images.length : 0,
+        headingsCount: jobData.headings ? jobData.headings.length : 0
+      });
+      
       // Only send jobData to popup for preview, do NOT copy to clipboard here
       chrome.runtime.sendMessage({ action: "show_preview", jobData });
       sendResponse({ jobData }); // <-- Add this line to respond directly to popup
