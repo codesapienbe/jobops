@@ -1077,7 +1077,7 @@
     generateReportBtn.style.cursor = "pointer";
     setupToggleHandlers();
     setupAutoSave();
-    setupSectionSaveButtons();
+    setupSaveOnCollapse();
     const backendUrl = typeof JOBOPS_BACKEND_URL !== "undefined" ? JOBOPS_BACKEND_URL : "http://localhost:8877";
     chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
       requestJobData();
@@ -1462,47 +1462,40 @@
         });
       });
     }
-    function setupSectionSaveButtons() {
-      const sections = [];
+    function setupSaveOnCollapse() {
+      const sections = [
+        "position-details",
+        "job-requirements",
+        "company-information",
+        "skills-matrix",
+        "application-materials",
+        "interview-schedule",
+        "interview-preparation",
+        "communication-log",
+        "key-contacts",
+        "interview-feedback",
+        "offer-details",
+        "rejection-analysis",
+        "privacy-policy",
+        "lessons-learned",
+        "performance-metrics",
+        "advisor-review",
+        "application-summary"
+      ];
       sections.forEach((sectionName) => {
         const sectionElement = document.querySelector(`[data-section="${sectionName}"]`);
         if (sectionElement) {
           const header = sectionElement.querySelector(".job-header");
-          if (header) {
-            const toggleIcon = header.querySelector(".toggle-icon");
-            const saveButton = document.createElement("button");
-            saveButton.className = "section-save-btn";
-            saveButton.innerHTML = "\u{1F4BE}";
-            saveButton.title = `Save ${sectionName.replace("-", " ")}`;
-            saveButton.type = "button";
-            saveButton.style.cssText = `
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            margin-left: 8px;
-            opacity: 0.7;
-            transition: opacity 0.2s;
-            padding: 4px;
-            border-radius: 4px;
-          `;
-            saveButton.addEventListener("mouseenter", () => {
-              saveButton.style.opacity = "1";
+          const content = sectionElement.querySelector(".job-content");
+          if (header && content) {
+            header.addEventListener("click", async (e) => {
+              const isCurrentlyExpanded = !content.classList.contains("collapsed");
+              if (isCurrentlyExpanded) {
+                setTimeout(async () => {
+                  await handleSectionSave(sectionName);
+                }, 100);
+              }
             });
-            saveButton.addEventListener("mouseleave", () => {
-              saveButton.style.opacity = "0.7";
-            });
-            saveButton.addEventListener("click", async (e) => {
-              e.stopPropagation();
-              await handleSectionSave(sectionName);
-            });
-            if (toggleIcon && toggleIcon.nextSibling) {
-              header.insertBefore(saveButton, toggleIcon.nextSibling);
-            } else if (toggleIcon) {
-              header.appendChild(saveButton);
-            } else {
-              header.appendChild(saveButton);
-            }
           }
         }
       });

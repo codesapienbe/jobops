@@ -91,9 +91,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Set up toggle functionality
   setupToggleHandlers();
 
-  // Set up auto-save and section save buttons
+  // Set up auto-save and save-on-collapse functionality
   setupAutoSave();
-  setupSectionSaveButtons();
+  setupSaveOnCollapse();
 
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
@@ -574,50 +574,52 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Setup save buttons for each section (when UI is implemented)
-  function setupSectionSaveButtons() {
-    // No sections will get save buttons - all job sections should look like Application Summary
-    const sections: string[] = [];
+  // Setup save-on-collapse functionality for job sections
+  function setupSaveOnCollapse() {
+    // All job sections will save when collapsed
+    const sections = [
+      'position-details',
+      'job-requirements', 
+      'company-information',
+      'skills-matrix',
+      'application-materials',
+      'interview-schedule',
+      'interview-preparation',
+      'communication-log',
+      'key-contacts',
+      'interview-feedback',
+      'offer-details',
+      'rejection-analysis',
+      'privacy-policy',
+      'lessons-learned',
+      'performance-metrics',
+      'advisor-review',
+      'application-summary'
+    ];
 
     sections.forEach(sectionName => {
       const sectionElement = document.querySelector(`[data-section="${sectionName}"]`);
       if (sectionElement) {
         const header = sectionElement.querySelector('.job-header');
-        if (header) {
-          const toggleIcon = header.querySelector('.toggle-icon');
-          const saveButton = document.createElement('button');
-          saveButton.className = 'section-save-btn';
-          saveButton.innerHTML = '💾';
-          saveButton.title = `Save ${sectionName.replace('-', ' ')}`;
-          saveButton.type = 'button';
-          saveButton.style.cssText = `
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            margin-left: 8px;
-            opacity: 0.7;
-            transition: opacity 0.2s;
-            padding: 4px;
-            border-radius: 4px;
-          `;
-          saveButton.addEventListener('mouseenter', () => {
-            saveButton.style.opacity = '1';
+        const content = sectionElement.querySelector('.job-content');
+        
+        if (header && content) {
+          // Override the click handler to add save-on-collapse functionality
+          header.addEventListener('click', async (e) => {
+            // Check if section is currently expanded and will be collapsed
+            const isCurrentlyExpanded = !content.classList.contains('collapsed');
+            
+            // Let the original toggle behavior happen first (toggleSection will be called)
+            // We don't need to call it manually as the data-toggle attribute handles it
+            
+            // If the section was expanded and is now being collapsed, trigger save
+            if (isCurrentlyExpanded) {
+              // Small delay to ensure the collapse animation has started
+              setTimeout(async () => {
+                await handleSectionSave(sectionName);
+              }, 100);
+            }
           });
-          saveButton.addEventListener('mouseleave', () => {
-            saveButton.style.opacity = '0.7';
-          });
-          saveButton.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            await handleSectionSave(sectionName);
-          });
-          if (toggleIcon && toggleIcon.nextSibling) {
-            header.insertBefore(saveButton, toggleIcon.nextSibling);
-          } else if (toggleIcon) {
-            header.appendChild(saveButton);
-          } else {
-            header.appendChild(saveButton);
-          }
         }
       }
     });
