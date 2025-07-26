@@ -161,20 +161,7 @@ button:hover {
 }
 
 #clip-status {
-  font-size: 0.95em;
-  color: #a8ff78;
-  font-weight: 600;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.7);
-  margin-top: 6px;
-  min-height: 18px;
-  margin-bottom: 220px;
-  transition: all 0.3s ease;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: none;
 }
 
 #clip-status.loading {
@@ -221,15 +208,15 @@ button:hover {
   flex-direction: column;
 }
 
+/* Update console header to use flexbox */
 .console-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   padding: 8px 12px;
-  background: rgba(0, 212, 255, 0.1);
-  border-bottom: 1px solid rgba(0, 212, 255, 0.3);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.2) 100%);
+  border-radius: 8px 8px 0 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .console-title {
@@ -239,23 +226,23 @@ button:hover {
   text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
 }
 
+/* Console clear button styling */
 .console-clear-btn {
-  background: rgba(255, 59, 48, 0.2);
-  border: 1px solid rgba(255, 59, 48, 0.4);
-  color: #ff3b30;
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 10px;
+  background: none;
+  border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  font-size: 12px;
+  padding: 4px;
+  border-radius: 4px;
+  margin-left: auto;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  color: #e0e0e0;
 }
 
 .console-clear-btn:hover {
-  background: rgba(255, 59, 48, 0.3);
-  border-color: rgba(255, 59, 48, 0.6);
-  transform: scale(1.05);
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .console-output {
@@ -925,23 +912,22 @@ body {
   max-height: 600px;
 }
 
+/* Update job header to use flexbox for proper alignment */
 .job-header {
-  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
-  color: white;
-  padding: 10px 14px;
-  border-radius: 8px 8px 0 0;
-  font-weight: 600;
-  font-size: 1em;
-  cursor: pointer;
-  -webkit-user-select: none;
-  user-select: none;
-  transition: all 0.3s ease;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  height: 40px;
-  box-sizing: border-box;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #e0e0e0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .job-header:hover {
@@ -1206,4 +1192,23 @@ body {
 
 .job-section[data-section="application-summary"] .job-header:hover {
   background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+}
+
+/* Save button styling for section headers */
+.section-save-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: auto;
+  margin-right: 8px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.section-save-btn:hover {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
 }

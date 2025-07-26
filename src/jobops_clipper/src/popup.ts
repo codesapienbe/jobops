@@ -55,10 +55,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
   const stopGenerationBtn = document.getElementById("stop-generation") as HTMLButtonElement;
   const copyRealtimeBtn = document.getElementById("copy-realtime") as HTMLButtonElement;
-  const status = document.getElementById("clip-status") as HTMLElement;
-  if (!status) {
-    console.error("Status element not found!");
-  }
   const resumeUpload = document.getElementById("resume-upload") as HTMLInputElement;
   
   // Console monitor elements
@@ -112,21 +108,29 @@ document.addEventListener("DOMContentLoaded", async () => {
       logToConsole(`📊 Job title: ${msg.jobData.title || 'N/A'}`, "info");
       jobData = msg.jobData;
       
-      // Check if job application already exists
-      const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
-      if (jobExists) {
-        logToConsole("🔄 Existing job application found and loaded", "info");
-        showNotification("🔄 Existing job application loaded");
-      } else {
-        logToConsole("🆕 Creating new job application", "info");
-        try {
-          await jobOpsDataManager.createNewJobApplication(jobData);
-          showNotification("🆕 New job application created");
-        } catch (error) {
-          logToConsole(`❌ Error creating job application: ${error}`, "error");
-          showNotification("❌ Error creating job application", true);
-        }
-      }
+                      // Check if job application already exists
+                const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
+                if (jobExists) {
+                  logToConsole("🔄 Existing job application found and loaded", "info");
+                  showNotification("🔄 Existing job application loaded");
+                } else {
+                  // Check if we have sufficient content to create a database record
+                  const { hasContent, missingSections } = checkRequiredSectionsContent();
+                  
+                  if (hasContent) {
+                    logToConsole("🆕 Creating new job application", "info");
+                    try {
+                      await jobOpsDataManager.createNewJobApplication(jobData);
+                      showNotification("🆕 New job application created");
+                    } catch (error) {
+                      logToConsole(`❌ Error creating job application: ${error}`, "error");
+                      showNotification("❌ Error creating job application", true);
+                    }
+                  } else {
+                    logToConsole(`⚠️ Insufficient content for database creation. Missing: ${missingSections.join(', ')}`, "warning");
+                    showNotification(`⚠️ Need 255+ chars in: ${missingSections.join(', ')}`, true);
+                  }
+                }
       
       populatePropertyFields(jobData);
       markdownEditor.value = generateMarkdown(jobData);
@@ -292,6 +296,144 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  // Check if required sections have sufficient content (255+ chars each)
+  function checkRequiredSectionsContent(): { hasContent: boolean; missingSections: string[] } {
+    const requiredSections = [
+      { name: 'Position Details', id: 'position-details' },
+      { name: 'Job Requirements', id: 'job-requirements' },
+      { name: 'Company Information', id: 'company-information' },
+      { name: 'Offer Details', id: 'offer-details' },
+      { name: 'Markdown Preview', id: 'markdown' }
+    ];
+
+    const missingSections: string[] = [];
+    let hasContent = true;
+
+    for (const section of requiredSections) {
+      const sectionContent = getSectionContent(section.id);
+      if (sectionContent.length < 255) {
+        missingSections.push(section.name);
+        hasContent = false;
+      }
+    }
+
+    return { hasContent, missingSections };
+  }
+
+  // Get content from a specific section
+  function getSectionContent(sectionId: string): string {
+    switch (sectionId) {
+      case 'position-details':
+        return getTextareaValue('position-summary');
+
+      case 'job-requirements':
+        return getTextareaValue('requirements-summary');
+
+      case 'company-information':
+        return getTextareaValue('company-summary');
+
+      case 'offer-details':
+        return getTextareaValue('offer-summary');
+
+      case 'markdown':
+        return getTextareaValue('markdown-editor');
+
+      default:
+        return '';
+    }
+  }
+
+  // Helper functions to get form values
+  function getInputValue(id: string): string {
+    const element = document.getElementById(id) as HTMLInputElement;
+    return element ? element.value : '';
+  }
+
+  function getTextareaValue(id: string): string {
+    const element = document.getElementById(id) as HTMLTextAreaElement;
+    return element ? element.value : '';
+  }
+
+  function getSelectValue(id: string): string {
+    const element = document.getElementById(id) as HTMLSelectElement;
+    return element ? element.value : '';
+  }
+
+  function getCheckboxValue(id: string): boolean {
+    const element = document.getElementById(id) as HTMLInputElement;
+    return element ? element.checked : false;
+  }
+
+  // Collect all form data as JSON
+  function collectAllFormData(): any {
+    const formData = {
+      positionDetails: {
+        summary: getTextareaValue('position-summary')
+      },
+      jobRequirements: {
+        summary: getTextareaValue('requirements-summary')
+      },
+      companyInformation: {
+        summary: getTextareaValue('company-summary')
+      },
+      skillsMatrix: {
+        summary: getTextareaValue('skills-assessment')
+      },
+      applicationMaterials: {
+        summary: getTextareaValue('materials-summary')
+      },
+      interviewSchedule: {
+        summary: getTextareaValue('interview-details')
+      },
+      interviewPreparation: {
+        summary: getTextareaValue('preparation-summary')
+      },
+      communicationLog: {
+        summary: getTextareaValue('communication-summary')
+      },
+      keyContacts: {
+        summary: getTextareaValue('contacts-summary')
+      },
+      interviewFeedback: {
+        summary: getTextareaValue('feedback-summary')
+      },
+      offerDetails: {
+        summary: getTextareaValue('offer-summary')
+      },
+      rejectionAnalysis: {
+        summary: getTextareaValue('rejection-summary')
+      },
+      privacyPolicy: {
+        summary: getTextareaValue('privacy-summary')
+      },
+      lessonsLearned: {
+        summary: getTextareaValue('lessons-summary')
+      },
+      performanceMetrics: {
+        summary: getTextareaValue('metrics-summary')
+      },
+      advisorReview: {
+        summary: getTextareaValue('advisor-summary')
+      },
+      applicationSummary: {
+        summary: getTextareaValue('overall-summary')
+      },
+      markdownPreview: getTextareaValue('markdown-editor'),
+      metadata: {
+        url: getInputValue('prop-url'),
+        title: getInputValue('prop-title'),
+        author: getInputValue('prop-author'),
+        published: getInputValue('prop-published'),
+        created: getInputValue('prop-created'),
+        description: getInputValue('prop-description'),
+        tags: getInputValue('prop-tags'),
+        location: getInputValue('prop-location')
+      }
+    };
+
+    return formData;
+  }
+
   // Auto-save functionality for form fields
   function setupAutoSave() {
     // Auto-save job data when property fields change
@@ -309,22 +451,29 @@ document.addEventListener("DOMContentLoaded", async () => {
           try {
             updateJobDataFromFields();
             
-            // Save position details with updated job data
-            if (jobData.title || jobData.description || jobData.location) {
-              await saveSectionData('position_details', {
-                job_title: jobData.title,
-                job_description: jobData.description,
-                location: jobData.location,
-                source_url: jobData.url,
-                company_name: jobData.company || '',
-                salary_range: '',
-                employment_type: '',
-                experience_level: '',
-                remote_work_policy: ''
-              });
-            }
+            // Check if we have sufficient content to create a database record
+            const { hasContent, missingSections } = checkRequiredSectionsContent();
             
-            logToConsole("💾 Auto-saved job data", "debug");
+            if (hasContent) {
+              // Save position details with updated job data
+              if (jobData.title || jobData.description || jobData.location) {
+                await saveSectionData('position_details', {
+                  job_title: jobData.title,
+                  job_description: jobData.description,
+                  location: jobData.location,
+                  source_url: jobData.url,
+                  company_name: jobData.company || '',
+                  salary_range: '',
+                  employment_type: '',
+                  experience_level: '',
+                  remote_work_policy: ''
+                });
+              }
+              
+              logToConsole("💾 Auto-saved job data to database", "debug");
+            } else {
+              logToConsole(`⚠️ Insufficient content for database save. Missing: ${missingSections.join(', ')}`, "debug");
+            }
           } catch (error) {
             logToConsole(`❌ Auto-save failed: ${error}`, "error");
           }
@@ -398,7 +547,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       logToConsole(`💾 Saving ${sectionName}...`, "info");
       
-      // Get data from the section (this would need to be implemented based on actual form fields)
+      // Check if we have sufficient content to save
+      const { hasContent, missingSections } = checkRequiredSectionsContent();
+      
+      if (!hasContent) {
+        logToConsole(`⚠️ Cannot save - insufficient content. Missing: ${missingSections.join(', ')}`, "warning");
+        showNotification(`⚠️ Cannot save - need 255+ chars in: ${missingSections.join(', ')}`, true);
+        return;
+      }
+      
+      // Get data from the section
       const sectionData = getSectionData(sectionName);
       
       if (sectionData && Object.keys(sectionData).length > 0) {
@@ -414,34 +572,78 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Get data from a specific section (placeholder - needs implementation based on actual form fields)
+  // Get data from a specific section
   function getSectionData(sectionName: string): any {
-    // This is a placeholder - in a real implementation, you would collect data from form fields
-    // based on the section name and return the appropriate data structure
-    
     switch (sectionName) {
       case 'position-details':
         return {
-          job_title: jobData.title || '',
-          job_description: jobData.description || '',
-          location: jobData.location || '',
-          source_url: jobData.url || '',
-          company_name: jobData.company || '',
-          salary_range: '',
-          employment_type: '',
-          experience_level: '',
-          remote_work_policy: ''
+          summary: getTextareaValue('position-summary'),
+          source_url: getInputValue('prop-url')
         };
       case 'job-requirements':
         return {
-          required_skills: [],
-          preferred_skills: [],
-          experience_years: '',
-          education_requirements: '',
-          certifications: [],
-          technical_requirements: []
+          summary: getTextareaValue('requirements-summary')
         };
-      // Add more cases for other sections as form fields are implemented
+      case 'company-information':
+        return {
+          summary: getTextareaValue('company-summary')
+        };
+      case 'skills-matrix':
+        return {
+          summary: getTextareaValue('skills-assessment')
+        };
+      case 'application-materials':
+        return {
+          summary: getTextareaValue('materials-summary')
+        };
+      case 'interview-schedule':
+        return {
+          summary: getTextareaValue('interview-details')
+        };
+      case 'interview-preparation':
+        return {
+          summary: getTextareaValue('preparation-summary')
+        };
+      case 'communication-log':
+        return {
+          summary: getTextareaValue('communication-summary')
+        };
+      case 'key-contacts':
+        return {
+          summary: getTextareaValue('contacts-summary')
+        };
+      case 'interview-feedback':
+        return {
+          summary: getTextareaValue('feedback-summary')
+        };
+      case 'offer-details':
+        return {
+          summary: getTextareaValue('offer-summary')
+        };
+      case 'rejection-analysis':
+        return {
+          summary: getTextareaValue('rejection-summary')
+        };
+      case 'privacy-policy':
+        return {
+          summary: getTextareaValue('privacy-summary')
+        };
+      case 'lessons-learned':
+        return {
+          summary: getTextareaValue('lessons-summary')
+        };
+      case 'performance-metrics':
+        return {
+          summary: getTextareaValue('metrics-summary')
+        };
+      case 'advisor-review':
+        return {
+          summary: getTextareaValue('advisor-summary')
+        };
+      case 'application-summary':
+        return {
+          summary: getTextareaValue('overall-summary')
+        };
       default:
         return {};
     }
@@ -576,7 +778,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         async (results) => {
           if (chrome.runtime.lastError || !results || !results[0].result) {
             logToConsole("❌ Content script not loaded. Please refresh the page and try again.", "error");
-            status.textContent = "Content script not loaded. Please refresh the page and try again.";
             return;
           }
           
@@ -587,7 +788,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             async (response) => {
               if (chrome.runtime.lastError) {
                 logToConsole("❌ Could not connect to content script. Try refreshing the page.", "error");
-                status.textContent = "Could not connect to content script. Try refreshing the page.";
                 return;
               }
               if (response && response.jobData) {
@@ -610,13 +810,21 @@ document.addEventListener("DOMContentLoaded", async () => {
                   logToConsole("🔄 Existing job application found and loaded", "info");
                   showNotification("🔄 Existing job application loaded");
                 } else {
-                  logToConsole("🆕 Creating new job application", "info");
-                  try {
-                    await jobOpsDataManager.createNewJobApplication(jobData);
-                    showNotification("🆕 New job application created");
-                  } catch (error) {
-                    logToConsole(`❌ Error creating job application: ${error}`, "error");
-                    showNotification("❌ Error creating job application", true);
+                  // Check if we have sufficient content to create a database record
+                  const { hasContent, missingSections } = checkRequiredSectionsContent();
+                  
+                  if (hasContent) {
+                    logToConsole("🆕 Creating new job application", "info");
+                    try {
+                      await jobOpsDataManager.createNewJobApplication(jobData);
+                      showNotification("🆕 New job application created");
+                    } catch (error) {
+                      logToConsole(`❌ Error creating job application: ${error}`, "error");
+                      showNotification("❌ Error creating job application", true);
+                    }
+                  } else {
+                    logToConsole(`⚠️ Insufficient content for database creation. Missing: ${missingSections.join(', ')}`, "warning");
+                    showNotification(`⚠️ Need 255+ chars in: ${missingSections.join(', ')}`, true);
                   }
                 }
                 
@@ -637,34 +845,50 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Enhanced copy function with notification
+  // Enhanced copy function with notification - now exports all form data as JSON
   copyBtn.onclick = async () => {
     logToConsole("📋 Copy to clipboard triggered", "info");
     
     try {
-      const contentToCopy = markdownEditor.value || generateMarkdown(jobData);
+      // Collect all form data as JSON
+      const allFormData = collectAllFormData();
       
-      if (!contentToCopy.trim()) {
+      // Check if we have any content to copy
+      const hasContent = Object.values(allFormData).some(section => {
+        if (typeof section === 'string') {
+          return section.trim().length > 0;
+        } else if (typeof section === 'object' && section !== null) {
+          return Object.values(section).some(value => {
+            if (typeof value === 'string') {
+              return value.trim().length > 0;
+            } else if (typeof value === 'boolean') {
+              return value;
+            }
+            return false;
+          });
+        }
+        return false;
+      });
+      
+      if (!hasContent) {
         logToConsole("❌ No content to copy", "error");
         showNotification("No content to copy!", true);
         return;
       }
 
-      logToConsole(`📋 Copying content (${contentToCopy.length} characters) to clipboard...`, "progress");
-      await navigator.clipboard.writeText(contentToCopy);
+      // Convert to formatted JSON
+      const jsonContent = JSON.stringify(allFormData, null, 2);
+      
+      logToConsole(`📋 Copying JSON data (${jsonContent.length} characters) to clipboard...`, "progress");
+      await navigator.clipboard.writeText(jsonContent);
       
       // Show success notification
-      logToConsole("✅ Content copied to clipboard successfully!", "success");
-      showNotification("✅ Content copied to clipboard!");
-      
-      // Also update status for additional feedback
-      status.textContent = "Copied to clipboard!";
-      setTimeout(() => status.textContent = '', 2000);
+      logToConsole("✅ All form data copied to clipboard as JSON!", "success");
+      showNotification("✅ All form data copied as JSON!");
       
     } catch (e) {
       logToConsole(`❌ Copy failed: ${e}`, "error");
       showNotification("❌ Failed to copy to clipboard", true);
-      status.textContent = "Failed to copy to clipboard.";
     }
   };
 
@@ -681,8 +905,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     } else {
       // Fallback to status message
-      status.textContent = message;
-      setTimeout(() => status.textContent = '', 3000);
+      logToConsole(message, isError ? "error" : "info");
     }
   }
 
@@ -710,14 +933,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       // Step 1: Start extraction
-      status.textContent = "📄 Loading PDF file...";
-      status.className = "loading";
+      logToConsole("📄 Loading PDF file...", "progress");
       showNotification("📄 Loading PDF file...");
       logToConsole("📄 Loading PDF file into memory...", "progress");
 
       // Step 2: Extract content
-      status.textContent = "🔍 Extracting text content from PDF...";
-      status.className = "loading";
+      logToConsole("🔍 Extracting text content from PDF...", "progress");
       showNotification("🔍 Extracting PDF content...");
       logToConsole("🔍 Extracting text content from PDF...", "progress");
       
@@ -730,22 +951,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       logToConsole(`📄 Resume content stored in variable: ${resumeContent ? 'YES' : 'NO'}`, "debug");
       
       // Step 3: Success
-      status.textContent = "✅ Resume content extracted successfully!";
-      status.className = "success";
-      showNotification("✅ Resume content extracted successfully!");
+      logToConsole("✅ Resume content extracted successfully!", "success");
+      logToConsole("📋 Resume ready for report generation", "success");
       
       // Step 4: Ready for generation
       setTimeout(() => {
-        status.textContent = "📋 Resume ready - click 📊 Generate Report to continue";
-        status.className = "success";
         logToConsole("📋 Resume ready for report generation", "success");
       }, 2000);
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logToConsole(`❌ PDF extraction failed: ${errorMessage}`, "error");
-      status.textContent = `❌ PDF extraction failed: ${errorMessage}`;
-      status.className = "error";
       showNotification(`❌ Failed to extract PDF content: ${errorMessage}`, true);
     }
   }
@@ -796,8 +1012,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     logToConsole("🚀 Starting report generation process", "info");
     generateReportBtn.disabled = true;
-    status.textContent = "🔄 Starting report generation...";
-    status.className = "loading";
+    logToConsole("🔄 Starting report generation...", "info");
     showNotification("🔄 Starting report generation...");
     
     // Add immediate test message to verify button click is working
@@ -806,8 +1021,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       // Step 1: Check API key
       logToConsole("🔑 Checking API configuration...", "progress");
-      status.textContent = "🔑 Checking API configuration...";
-      status.className = "loading";
+      logToConsole("🔑 Checking API configuration...", "info");
       const apiKey = await getGroqApiKey();
       if (!apiKey) {
         throw new Error('Groq API key not configured');
@@ -819,15 +1033,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       logToConsole("📊 Preparing job data and resume content...", "progress");
       logToConsole(`📋 Job data keys: ${Object.keys(jobData).join(', ')}`, "debug");
       logToConsole(`📄 Resume content length: ${resumeContent.length} characters`, "debug");
-      status.textContent = "📊 Preparing job data and resume content...";
-      status.className = "loading";
-      showNotification("📊 Preparing data for analysis...");
+      logToConsole("📊 Preparing data for analysis...", "info");
 
       // Step 3: Generate report with streaming
       logToConsole("🤖 Starting streaming report generation...", "progress");
-      status.textContent = "🤖 Starting streaming report generation...";
-      status.className = "loading";
-      showNotification("🤖 Starting streaming analysis...");
+      logToConsole("🤖 Starting streaming report generation...", "info");
+      logToConsole("🤖 Starting streaming analysis...", "info");
       
       // Force expand real-time section first
       logToConsole("🔧 Forcing real-time section expansion...", "debug");
@@ -888,9 +1099,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       // Step 4: Success
       logToConsole("✅ Report generated successfully!", "success");
-      status.textContent = "✅ Report generated successfully!";
-      status.className = "success";
-      showNotification("✅ Report generated successfully!");
+      logToConsole("📋 Report ready for copying", "success");
       markdownEditor.value = report;
       
       // Also update real-time response with final content
@@ -901,8 +1110,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       // Keep success message visible longer
       setTimeout(() => {
-        status.textContent = "📋 Report ready - use Copy button to copy content";
-        status.className = "success";
         logToConsole("📋 Report ready for copying", "success");
       }, 2000);
       
@@ -927,35 +1134,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       if (errorMessage.includes('API key')) {
         logToConsole("🔧 API key required - please configure in settings", "warning");
-        status.textContent = "❌ API key required - click ⚙️ to configure";
-        status.className = "error";
         showNotification("❌ Groq API key not configured. Click ⚙️ to set it up.", true);
       } else if (errorMessage.includes('Groq API')) {
         logToConsole("⚠️ Groq API failed, trying Ollama fallback...", "warning");
-        status.textContent = "⚠️ Groq API failed, trying Ollama fallback...";
-        status.className = "loading";
         showNotification("⚠️ Groq API failed, trying Ollama...");
-        
         try {
           logToConsole("🔄 Attempting Ollama fallback...", "progress");
-          status.textContent = "🔄 Attempting Ollama fallback...";
-          status.className = "loading";
           const report = await generateJobReportWithOllama(jobData, resumeContent);
           markdownEditor.value = report;
           logToConsole("✅ Report generated with Ollama fallback!", "success");
-          status.textContent = "✅ Report generated with Ollama!";
-          status.className = "success";
           showNotification("✅ Report generated with Ollama fallback!");
         } catch (ollamaError) {
           logToConsole("❌ Both Groq and Ollama failed", "error");
-          status.textContent = "❌ Both Groq and Ollama failed";
-          status.className = "error";
           showNotification("❌ Report generation failed on all services", true);
         }
       } else {
         logToConsole("❌ Report generation failed with unknown error", "error");
-        status.textContent = "❌ Report generation failed";
-        status.className = "error";
         showNotification("❌ Report generation failed", true);
       }
     } finally {

@@ -1052,10 +1052,6 @@
     const realtimeResponse = document.getElementById("realtime-response");
     const stopGenerationBtn = document.getElementById("stop-generation");
     const copyRealtimeBtn = document.getElementById("copy-realtime");
-    const status = document.getElementById("clip-status");
-    if (!status) {
-      console.error("Status element not found!");
-    }
     const resumeUpload = document.getElementById("resume-upload");
     consoleOutput = document.getElementById("console-output");
     const clearConsoleBtn = document.getElementById("clear-console");
@@ -1096,13 +1092,19 @@
           logToConsole("\u{1F504} Existing job application found and loaded", "info");
           showNotification2("\u{1F504} Existing job application loaded");
         } else {
-          logToConsole("\u{1F195} Creating new job application", "info");
-          try {
-            await jobOpsDataManager.createNewJobApplication(jobData);
-            showNotification2("\u{1F195} New job application created");
-          } catch (error) {
-            logToConsole(`\u274C Error creating job application: ${error}`, "error");
-            showNotification2("\u274C Error creating job application", true);
+          const { hasContent, missingSections } = checkRequiredSectionsContent();
+          if (hasContent) {
+            logToConsole("\u{1F195} Creating new job application", "info");
+            try {
+              await jobOpsDataManager.createNewJobApplication(jobData);
+              showNotification2("\u{1F195} New job application created");
+            } catch (error) {
+              logToConsole(`\u274C Error creating job application: ${error}`, "error");
+              showNotification2("\u274C Error creating job application", true);
+            }
+          } else {
+            logToConsole(`\u26A0\uFE0F Insufficient content for database creation. Missing: ${missingSections.join(", ")}`, "warning");
+            showNotification2(`\u26A0\uFE0F Need 255+ chars in: ${missingSections.join(", ")}`, true);
           }
         }
         populatePropertyFields(jobData);
@@ -1237,6 +1239,124 @@
         throw error;
       }
     }
+    function checkRequiredSectionsContent() {
+      const requiredSections = [
+        { name: "Position Details", id: "position-details" },
+        { name: "Job Requirements", id: "job-requirements" },
+        { name: "Company Information", id: "company-information" },
+        { name: "Offer Details", id: "offer-details" },
+        { name: "Markdown Preview", id: "markdown" }
+      ];
+      const missingSections = [];
+      let hasContent = true;
+      for (const section of requiredSections) {
+        const sectionContent = getSectionContent(section.id);
+        if (sectionContent.length < 255) {
+          missingSections.push(section.name);
+          hasContent = false;
+        }
+      }
+      return { hasContent, missingSections };
+    }
+    function getSectionContent(sectionId) {
+      switch (sectionId) {
+        case "position-details":
+          return getTextareaValue("position-summary");
+        case "job-requirements":
+          return getTextareaValue("requirements-summary");
+        case "company-information":
+          return getTextareaValue("company-summary");
+        case "offer-details":
+          return getTextareaValue("offer-summary");
+        case "markdown":
+          return getTextareaValue("markdown-editor");
+        default:
+          return "";
+      }
+    }
+    function getInputValue(id) {
+      const element = document.getElementById(id);
+      return element ? element.value : "";
+    }
+    function getTextareaValue(id) {
+      const element = document.getElementById(id);
+      return element ? element.value : "";
+    }
+    function getSelectValue(id) {
+      const element = document.getElementById(id);
+      return element ? element.value : "";
+    }
+    function getCheckboxValue(id) {
+      const element = document.getElementById(id);
+      return element ? element.checked : false;
+    }
+    function collectAllFormData() {
+      const formData = {
+        positionDetails: {
+          summary: getTextareaValue("position-summary")
+        },
+        jobRequirements: {
+          summary: getTextareaValue("requirements-summary")
+        },
+        companyInformation: {
+          summary: getTextareaValue("company-summary")
+        },
+        skillsMatrix: {
+          summary: getTextareaValue("skills-assessment")
+        },
+        applicationMaterials: {
+          summary: getTextareaValue("materials-summary")
+        },
+        interviewSchedule: {
+          summary: getTextareaValue("interview-details")
+        },
+        interviewPreparation: {
+          summary: getTextareaValue("preparation-summary")
+        },
+        communicationLog: {
+          summary: getTextareaValue("communication-summary")
+        },
+        keyContacts: {
+          summary: getTextareaValue("contacts-summary")
+        },
+        interviewFeedback: {
+          summary: getTextareaValue("feedback-summary")
+        },
+        offerDetails: {
+          summary: getTextareaValue("offer-summary")
+        },
+        rejectionAnalysis: {
+          summary: getTextareaValue("rejection-summary")
+        },
+        privacyPolicy: {
+          summary: getTextareaValue("privacy-summary")
+        },
+        lessonsLearned: {
+          summary: getTextareaValue("lessons-summary")
+        },
+        performanceMetrics: {
+          summary: getTextareaValue("metrics-summary")
+        },
+        advisorReview: {
+          summary: getTextareaValue("advisor-summary")
+        },
+        applicationSummary: {
+          summary: getTextareaValue("overall-summary")
+        },
+        markdownPreview: getTextareaValue("markdown-editor"),
+        metadata: {
+          url: getInputValue("prop-url"),
+          title: getInputValue("prop-title"),
+          author: getInputValue("prop-author"),
+          published: getInputValue("prop-published"),
+          created: getInputValue("prop-created"),
+          description: getInputValue("prop-description"),
+          tags: getInputValue("prop-tags"),
+          location: getInputValue("prop-location")
+        }
+      };
+      return formData;
+    }
     function setupAutoSave() {
       const autoSaveFields = [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation];
       autoSaveFields.forEach((field) => {
@@ -1246,20 +1366,25 @@
           saveTimeout = setTimeout(async () => {
             try {
               updateJobDataFromFields();
-              if (jobData.title || jobData.description || jobData.location) {
-                await saveSectionData("position_details", {
-                  job_title: jobData.title,
-                  job_description: jobData.description,
-                  location: jobData.location,
-                  source_url: jobData.url,
-                  company_name: jobData.company || "",
-                  salary_range: "",
-                  employment_type: "",
-                  experience_level: "",
-                  remote_work_policy: ""
-                });
+              const { hasContent, missingSections } = checkRequiredSectionsContent();
+              if (hasContent) {
+                if (jobData.title || jobData.description || jobData.location) {
+                  await saveSectionData("position_details", {
+                    job_title: jobData.title,
+                    job_description: jobData.description,
+                    location: jobData.location,
+                    source_url: jobData.url,
+                    company_name: jobData.company || "",
+                    salary_range: "",
+                    employment_type: "",
+                    experience_level: "",
+                    remote_work_policy: ""
+                  });
+                }
+                logToConsole("\u{1F4BE} Auto-saved job data to database", "debug");
+              } else {
+                logToConsole(`\u26A0\uFE0F Insufficient content for database save. Missing: ${missingSections.join(", ")}`, "debug");
               }
-              logToConsole("\u{1F4BE} Auto-saved job data", "debug");
             } catch (error) {
               logToConsole(`\u274C Auto-save failed: ${error}`, "error");
             }
@@ -1322,6 +1447,12 @@
     async function handleSectionSave(sectionName) {
       try {
         logToConsole(`\u{1F4BE} Saving ${sectionName}...`, "info");
+        const { hasContent, missingSections } = checkRequiredSectionsContent();
+        if (!hasContent) {
+          logToConsole(`\u26A0\uFE0F Cannot save - insufficient content. Missing: ${missingSections.join(", ")}`, "warning");
+          showNotification2(`\u26A0\uFE0F Cannot save - need 255+ chars in: ${missingSections.join(", ")}`, true);
+          return;
+        }
         const sectionData = getSectionData(sectionName);
         if (sectionData && Object.keys(sectionData).length > 0) {
           await saveSectionData(sectionName.replace("-", "_"), sectionData);
@@ -1339,24 +1470,72 @@
       switch (sectionName) {
         case "position-details":
           return {
-            job_title: jobData.title || "",
-            job_description: jobData.description || "",
-            location: jobData.location || "",
-            source_url: jobData.url || "",
-            company_name: jobData.company || "",
-            salary_range: "",
-            employment_type: "",
-            experience_level: "",
-            remote_work_policy: ""
+            summary: getTextareaValue("position-summary"),
+            source_url: getInputValue("prop-url")
           };
         case "job-requirements":
           return {
-            required_skills: [],
-            preferred_skills: [],
-            experience_years: "",
-            education_requirements: "",
-            certifications: [],
-            technical_requirements: []
+            summary: getTextareaValue("requirements-summary")
+          };
+        case "company-information":
+          return {
+            summary: getTextareaValue("company-summary")
+          };
+        case "skills-matrix":
+          return {
+            summary: getTextareaValue("skills-assessment")
+          };
+        case "application-materials":
+          return {
+            summary: getTextareaValue("materials-summary")
+          };
+        case "interview-schedule":
+          return {
+            summary: getTextareaValue("interview-details")
+          };
+        case "interview-preparation":
+          return {
+            summary: getTextareaValue("preparation-summary")
+          };
+        case "communication-log":
+          return {
+            summary: getTextareaValue("communication-summary")
+          };
+        case "key-contacts":
+          return {
+            summary: getTextareaValue("contacts-summary")
+          };
+        case "interview-feedback":
+          return {
+            summary: getTextareaValue("feedback-summary")
+          };
+        case "offer-details":
+          return {
+            summary: getTextareaValue("offer-summary")
+          };
+        case "rejection-analysis":
+          return {
+            summary: getTextareaValue("rejection-summary")
+          };
+        case "privacy-policy":
+          return {
+            summary: getTextareaValue("privacy-summary")
+          };
+        case "lessons-learned":
+          return {
+            summary: getTextareaValue("lessons-summary")
+          };
+        case "performance-metrics":
+          return {
+            summary: getTextareaValue("metrics-summary")
+          };
+        case "advisor-review":
+          return {
+            summary: getTextareaValue("advisor-summary")
+          };
+        case "application-summary":
+          return {
+            summary: getTextareaValue("overall-summary")
           };
         default:
           return {};
@@ -1368,11 +1547,11 @@
         url: jobOpsDataManager.getCurrentCanonicalUrl()
       };
     }
-    async function updateJobStatus(status2) {
+    async function updateJobStatus(status) {
       try {
-        await jobOpsDataManager.updateJobStatus(status2);
-        logToConsole(`\u2705 Job status updated to: ${status2}`, "success");
-        showNotification2(`\u2705 Status updated to: ${status2}`);
+        await jobOpsDataManager.updateJobStatus(status);
+        logToConsole(`\u2705 Job status updated to: ${status}`, "success");
+        showNotification2(`\u2705 Status updated to: ${status}`);
       } catch (error) {
         logToConsole(`\u274C Error updating job status: ${error}`, "error");
         showNotification2(`\u274C Error updating status`, true);
@@ -1472,7 +1651,6 @@
           async (results) => {
             if (chrome.runtime.lastError || !results || !results[0].result) {
               logToConsole("\u274C Content script not loaded. Please refresh the page and try again.", "error");
-              status.textContent = "Content script not loaded. Please refresh the page and try again.";
               return;
             }
             logToConsole("\u2705 Content script available, requesting page data...", "success");
@@ -1482,7 +1660,6 @@
               async (response) => {
                 if (chrome.runtime.lastError) {
                   logToConsole("\u274C Could not connect to content script. Try refreshing the page.", "error");
-                  status.textContent = "Could not connect to content script. Try refreshing the page.";
                   return;
                 }
                 if (response && response.jobData) {
@@ -1500,13 +1677,19 @@
                     logToConsole("\u{1F504} Existing job application found and loaded", "info");
                     showNotification2("\u{1F504} Existing job application loaded");
                   } else {
-                    logToConsole("\u{1F195} Creating new job application", "info");
-                    try {
-                      await jobOpsDataManager.createNewJobApplication(jobData);
-                      showNotification2("\u{1F195} New job application created");
-                    } catch (error) {
-                      logToConsole(`\u274C Error creating job application: ${error}`, "error");
-                      showNotification2("\u274C Error creating job application", true);
+                    const { hasContent, missingSections } = checkRequiredSectionsContent();
+                    if (hasContent) {
+                      logToConsole("\u{1F195} Creating new job application", "info");
+                      try {
+                        await jobOpsDataManager.createNewJobApplication(jobData);
+                        showNotification2("\u{1F195} New job application created");
+                      } catch (error) {
+                        logToConsole(`\u274C Error creating job application: ${error}`, "error");
+                        showNotification2("\u274C Error creating job application", true);
+                      }
+                    } else {
+                      logToConsole(`\u26A0\uFE0F Insufficient content for database creation. Missing: ${missingSections.join(", ")}`, "warning");
+                      showNotification2(`\u26A0\uFE0F Need 255+ chars in: ${missingSections.join(", ")}`, true);
                     }
                   }
                   populatePropertyFields(jobData);
@@ -1526,22 +1709,35 @@
     copyBtn.onclick = async () => {
       logToConsole("\u{1F4CB} Copy to clipboard triggered", "info");
       try {
-        const contentToCopy = markdownEditor.value || generateMarkdown(jobData);
-        if (!contentToCopy.trim()) {
+        const allFormData = collectAllFormData();
+        const hasContent = Object.values(allFormData).some((section) => {
+          if (typeof section === "string") {
+            return section.trim().length > 0;
+          } else if (typeof section === "object" && section !== null) {
+            return Object.values(section).some((value) => {
+              if (typeof value === "string") {
+                return value.trim().length > 0;
+              } else if (typeof value === "boolean") {
+                return value;
+              }
+              return false;
+            });
+          }
+          return false;
+        });
+        if (!hasContent) {
           logToConsole("\u274C No content to copy", "error");
           showNotification2("No content to copy!", true);
           return;
         }
-        logToConsole(`\u{1F4CB} Copying content (${contentToCopy.length} characters) to clipboard...`, "progress");
-        await navigator.clipboard.writeText(contentToCopy);
-        logToConsole("\u2705 Content copied to clipboard successfully!", "success");
-        showNotification2("\u2705 Content copied to clipboard!");
-        status.textContent = "Copied to clipboard!";
-        setTimeout(() => status.textContent = "", 2e3);
+        const jsonContent = JSON.stringify(allFormData, null, 2);
+        logToConsole(`\u{1F4CB} Copying JSON data (${jsonContent.length} characters) to clipboard...`, "progress");
+        await navigator.clipboard.writeText(jsonContent);
+        logToConsole("\u2705 All form data copied to clipboard as JSON!", "success");
+        showNotification2("\u2705 All form data copied as JSON!");
       } catch (e) {
         logToConsole(`\u274C Copy failed: ${e}`, "error");
         showNotification2("\u274C Failed to copy to clipboard", true);
-        status.textContent = "Failed to copy to clipboard.";
       }
     };
     function showNotification2(message, isError = false) {
@@ -1554,8 +1750,7 @@
           priority: isError ? 2 : 1
         });
       } else {
-        status.textContent = message;
-        setTimeout(() => status.textContent = "", 3e3);
+        logToConsole(message, isError ? "error" : "info");
       }
     }
     async function handleResumeUpload(event) {
@@ -1575,12 +1770,10 @@
       }
       logToConsole(`\u{1F4C4} Starting PDF extraction: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, "progress");
       try {
-        status.textContent = "\u{1F4C4} Loading PDF file...";
-        status.className = "loading";
+        logToConsole("\u{1F4C4} Loading PDF file...", "progress");
         showNotification2("\u{1F4C4} Loading PDF file...");
         logToConsole("\u{1F4C4} Loading PDF file into memory...", "progress");
-        status.textContent = "\u{1F50D} Extracting text content from PDF...";
-        status.className = "loading";
+        logToConsole("\u{1F50D} Extracting text content from PDF...", "progress");
         showNotification2("\u{1F50D} Extracting PDF content...");
         logToConsole("\u{1F50D} Extracting text content from PDF...", "progress");
         console.log("\u{1F3AF} ABOUT TO EXTRACT PDF CONTENT - DIRECT CONSOLE LOG");
@@ -1589,19 +1782,14 @@
         logToConsole(`\u2705 PDF extraction completed! Content length: ${resumeContent.length} characters`, "success");
         logToConsole(`\u{1F4C4} Resume content preview: ${resumeContent.substring(0, 200)}${resumeContent.length > 200 ? "..." : ""}`, "debug");
         logToConsole(`\u{1F4C4} Resume content stored in variable: ${resumeContent ? "YES" : "NO"}`, "debug");
-        status.textContent = "\u2705 Resume content extracted successfully!";
-        status.className = "success";
-        showNotification2("\u2705 Resume content extracted successfully!");
+        logToConsole("\u2705 Resume content extracted successfully!", "success");
+        logToConsole("\u{1F4CB} Resume ready for report generation", "success");
         setTimeout(() => {
-          status.textContent = "\u{1F4CB} Resume ready - click \u{1F4CA} Generate Report to continue";
-          status.className = "success";
           logToConsole("\u{1F4CB} Resume ready for report generation", "success");
         }, 2e3);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logToConsole(`\u274C PDF extraction failed: ${errorMessage}`, "error");
-        status.textContent = `\u274C PDF extraction failed: ${errorMessage}`;
-        status.className = "error";
         showNotification2(`\u274C Failed to extract PDF content: ${errorMessage}`, true);
       }
     }
@@ -1639,14 +1827,12 @@
       }
       logToConsole("\u{1F680} Starting report generation process", "info");
       generateReportBtn.disabled = true;
-      status.textContent = "\u{1F504} Starting report generation...";
-      status.className = "loading";
+      logToConsole("\u{1F504} Starting report generation...", "info");
       showNotification2("\u{1F504} Starting report generation...");
       logToConsole("\u{1F3AF} BUTTON CLICK VERIFICATION - This should appear immediately", "info");
       try {
         logToConsole("\u{1F511} Checking API configuration...", "progress");
-        status.textContent = "\u{1F511} Checking API configuration...";
-        status.className = "loading";
+        logToConsole("\u{1F511} Checking API configuration...", "info");
         const apiKey = await getGroqApiKey();
         if (!apiKey) {
           throw new Error("Groq API key not configured");
@@ -1656,13 +1842,10 @@
         logToConsole("\u{1F4CA} Preparing job data and resume content...", "progress");
         logToConsole(`\u{1F4CB} Job data keys: ${Object.keys(jobData).join(", ")}`, "debug");
         logToConsole(`\u{1F4C4} Resume content length: ${resumeContent.length} characters`, "debug");
-        status.textContent = "\u{1F4CA} Preparing job data and resume content...";
-        status.className = "loading";
-        showNotification2("\u{1F4CA} Preparing data for analysis...");
+        logToConsole("\u{1F4CA} Preparing data for analysis...", "info");
         logToConsole("\u{1F916} Starting streaming report generation...", "progress");
-        status.textContent = "\u{1F916} Starting streaming report generation...";
-        status.className = "loading";
-        showNotification2("\u{1F916} Starting streaming analysis...");
+        logToConsole("\u{1F916} Starting streaming report generation...", "info");
+        logToConsole("\u{1F916} Starting streaming analysis...", "info");
         logToConsole("\u{1F527} Forcing real-time section expansion...", "debug");
         const realtimeContent = document.getElementById("realtime-content");
         if (realtimeContent) {
@@ -1711,17 +1894,13 @@
           throw new Error("No report generated - API returned empty response");
         }
         logToConsole("\u2705 Report generated successfully!", "success");
-        status.textContent = "\u2705 Report generated successfully!";
-        status.className = "success";
-        showNotification2("\u2705 Report generated successfully!");
+        logToConsole("\u{1F4CB} Report ready for copying", "success");
         markdownEditor.value = report;
         if (realtimeResponse2) {
           realtimeResponse2.classList.remove("typing");
           logToConsole("\u2705 Real-time response completed", "success");
         }
         setTimeout(() => {
-          status.textContent = "\u{1F4CB} Report ready - use Copy button to copy content";
-          status.className = "success";
           logToConsole("\u{1F4CB} Report ready for copying", "success");
         }, 2e3);
       } catch (error) {
@@ -1740,34 +1919,22 @@
         }
         if (errorMessage.includes("API key")) {
           logToConsole("\u{1F527} API key required - please configure in settings", "warning");
-          status.textContent = "\u274C API key required - click \u2699\uFE0F to configure";
-          status.className = "error";
           showNotification2("\u274C Groq API key not configured. Click \u2699\uFE0F to set it up.", true);
         } else if (errorMessage.includes("Groq API")) {
           logToConsole("\u26A0\uFE0F Groq API failed, trying Ollama fallback...", "warning");
-          status.textContent = "\u26A0\uFE0F Groq API failed, trying Ollama fallback...";
-          status.className = "loading";
           showNotification2("\u26A0\uFE0F Groq API failed, trying Ollama...");
           try {
             logToConsole("\u{1F504} Attempting Ollama fallback...", "progress");
-            status.textContent = "\u{1F504} Attempting Ollama fallback...";
-            status.className = "loading";
             const report = await generateJobReportWithOllama(jobData, resumeContent);
             markdownEditor.value = report;
             logToConsole("\u2705 Report generated with Ollama fallback!", "success");
-            status.textContent = "\u2705 Report generated with Ollama!";
-            status.className = "success";
             showNotification2("\u2705 Report generated with Ollama fallback!");
           } catch (ollamaError) {
             logToConsole("\u274C Both Groq and Ollama failed", "error");
-            status.textContent = "\u274C Both Groq and Ollama failed";
-            status.className = "error";
             showNotification2("\u274C Report generation failed on all services", true);
           }
         } else {
           logToConsole("\u274C Report generation failed with unknown error", "error");
-          status.textContent = "\u274C Report generation failed";
-          status.className = "error";
           showNotification2("\u274C Report generation failed", true);
         }
       } finally {
