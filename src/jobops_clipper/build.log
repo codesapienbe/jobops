@@ -2,24 +2,24 @@
 > jobops_clipper@0.1.0 build
 > node build.js
 
-[2025-07-26T15:33:11.097Z] --- Build started ---
-[2025-07-26T15:33:11.101Z] Output directory: C:\Users\Administrator\Projects\jobops\dist\extension
-[2025-07-26T15:33:11.102Z] Ensuring output directory exists...
-[2025-07-26T15:33:11.103Z] Output directory ready.
-[2025-07-26T15:33:11.103Z] Running TypeScript build...
-[2025-07-26T15:33:12.686Z] TypeScript build completed.
-[2025-07-26T15:33:12.687Z] Copying manifest and icon...
-[2025-07-26T15:33:12.691Z] Manifest and icon copied.
-[2025-07-26T15:33:12.692Z] Using BACKEND_API_BASE: http://localhost:8877
-[2025-07-26T15:33:12.693Z] Bundling background.ts with esbuild...
-[2025-07-26T15:33:12.870Z] background.ts bundled.
-[2025-07-26T15:33:12.871Z] Bundling content.ts with esbuild...
-[2025-07-26T15:33:13.086Z] content.ts bundled.
-[2025-07-26T15:33:13.088Z] Bundling popup.ts with esbuild...
-[2025-07-26T15:33:13.288Z] popup.ts bundled.
-[2025-07-26T15:33:13.288Z] Copying popup.html and popup.css...
-[2025-07-26T15:33:13.292Z] popup.html and popup.css copied.
-[2025-07-26T15:33:13.292Z] --- Build completed successfully ---
+[2025-07-26T15:48:39.049Z] --- Build started ---
+[2025-07-26T15:48:39.054Z] Output directory: C:\Users\Administrator\Projects\jobops\dist\extension
+[2025-07-26T15:48:39.055Z] Ensuring output directory exists...
+[2025-07-26T15:48:39.056Z] Output directory ready.
+[2025-07-26T15:48:39.057Z] Running TypeScript build...
+[2025-07-26T15:48:40.908Z] TypeScript build completed.
+[2025-07-26T15:48:40.908Z] Copying manifest and icon...
+[2025-07-26T15:48:40.914Z] Manifest and icon copied.
+[2025-07-26T15:48:40.914Z] Using BACKEND_API_BASE: http://localhost:8877
+[2025-07-26T15:48:40.916Z] Bundling background.ts with esbuild...
+[2025-07-26T15:48:41.791Z] background.ts bundled.
+[2025-07-26T15:48:41.792Z] Bundling content.ts with esbuild...
+[2025-07-26T15:48:41.950Z] content.ts bundled.
+[2025-07-26T15:48:41.950Z] Bundling popup.ts with esbuild...
+[2025-07-26T15:48:42.104Z] popup.ts bundled.
+[2025-07-26T15:48:42.104Z] Copying popup.html and popup.css...
+[2025-07-26T15:48:42.108Z] popup.html and popup.css copied.
+[2025-07-26T15:48:42.108Z] --- Build completed successfully ---
 
 
   ..\..\dist\extension\background.js  6.0kb
@@ -28,8 +28,8 @@ Done in 6ms
 
   ..\..\dist\extension\content.js  3.5kb
 
-Done in 12ms
+Done in 8ms
 
-  ..\..\dist\extension\popup.js  114.1kb
+  ..\..\dist\extension\popup.js  116.1kb
 
-Done in 14ms
+Done in 15ms

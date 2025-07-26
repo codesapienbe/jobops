@@ -21,6 +21,72 @@ let consoleOutput: HTMLElement | null = null;
 let isGenerating = false;
 let abortController: AbortController | null = null;
 
+// Theme management
+type ThemeMode = 'light' | 'dark' | 'system';
+let currentTheme: ThemeMode = 'system';
+let isDarkMode = false;
+
+// Theme management functions
+function detectSystemTheme(): boolean {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function updateThemeIcon(): void {
+  const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
+  if (themeToggle) {
+    const isDark = currentTheme === 'dark' || (currentTheme === 'system' && isDarkMode);
+    themeToggle.textContent = isDark ? '☀️' : '🌙';
+    themeToggle.setAttribute('aria-label', isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme');
+  }
+}
+
+function applyTheme(theme: ThemeMode): void {
+  const html = document.documentElement;
+  const isDark = theme === 'dark' || (theme === 'system' && detectSystemTheme());
+  
+  if (isDark) {
+    html.classList.remove('theme-light');
+    isDarkMode = true;
+  } else {
+    html.classList.add('theme-light');
+    isDarkMode = false;
+  }
+  
+  currentTheme = theme;
+  updateThemeIcon();
+  
+  // Log theme change
+  logToConsole(`🎨 Theme switched to ${theme} mode`, 'info');
+}
+
+function initializeTheme(): void {
+  // Load saved theme preference from storage
+  chrome.storage.sync.get(['jobops_theme'], (result) => {
+    const savedTheme = result.jobops_theme as ThemeMode || 'system';
+    applyTheme(savedTheme);
+  });
+  
+  // Listen for system theme changes
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  mediaQuery.addEventListener('change', (e) => {
+    if (currentTheme === 'system') {
+      applyTheme('system');
+    }
+  });
+}
+
+function toggleTheme(): void {
+  const newTheme: ThemeMode = currentTheme === 'light' ? 'dark' : 
+                             currentTheme === 'dark' ? 'system' : 'light';
+  
+  applyTheme(newTheme);
+  
+  // Save theme preference
+  chrome.storage.sync.set({ jobops_theme: newTheme }, () => {
+    logToConsole(`💾 Theme preference saved: ${newTheme}`, 'success');
+  });
+}
+
 function logToConsole(message: string, level: 'info' | 'success' | 'warning' | 'error' | 'debug' | 'progress' = 'info') {
   if (!consoleOutput) return;
   
@@ -61,12 +127,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   consoleOutput = document.getElementById("console-output") as HTMLElement;
   const clearConsoleBtn = document.getElementById("clear-console") as HTMLButtonElement;
   
+  // Theme toggle button
+  const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement;
+  
   // Validate console elements
   if (!consoleOutput) {
     console.error("Console output element not found!");
   } else {
     logToConsole("🔍 Console monitor initialized", "info");
   }
+  
+  // Initialize theme system
+  initializeTheme();
+  
+  // Set up theme toggle event listener
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', toggleTheme);
+    logToConsole("🎨 Theme toggle button initialized", "info");
+  }
+  
   // Property fields
   const propTitle = document.getElementById("prop-title") as HTMLInputElement;
   const propUrl = document.getElementById("prop-url") as HTMLInputElement;

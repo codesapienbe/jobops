@@ -1029,6 +1029,52 @@
   var consoleOutput = null;
   var isGenerating = false;
   var abortController = null;
+  var currentTheme = "system";
+  var isDarkMode = false;
+  function detectSystemTheme() {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function updateThemeIcon() {
+    const themeToggle = document.getElementById("theme-toggle");
+    if (themeToggle) {
+      const isDark = currentTheme === "dark" || currentTheme === "system" && isDarkMode;
+      themeToggle.textContent = isDark ? "\u2600\uFE0F" : "\u{1F319}";
+      themeToggle.setAttribute("aria-label", isDark ? "Switch to Light Theme" : "Switch to Dark Theme");
+    }
+  }
+  function applyTheme(theme) {
+    const html = document.documentElement;
+    const isDark = theme === "dark" || theme === "system" && detectSystemTheme();
+    if (isDark) {
+      html.classList.remove("theme-light");
+      isDarkMode = true;
+    } else {
+      html.classList.add("theme-light");
+      isDarkMode = false;
+    }
+    currentTheme = theme;
+    updateThemeIcon();
+    logToConsole(`\u{1F3A8} Theme switched to ${theme} mode`, "info");
+  }
+  function initializeTheme() {
+    chrome.storage.sync.get(["jobops_theme"], (result) => {
+      const savedTheme = result.jobops_theme || "system";
+      applyTheme(savedTheme);
+    });
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    mediaQuery.addEventListener("change", (e) => {
+      if (currentTheme === "system") {
+        applyTheme("system");
+      }
+    });
+  }
+  function toggleTheme() {
+    const newTheme = currentTheme === "light" ? "dark" : currentTheme === "dark" ? "system" : "light";
+    applyTheme(newTheme);
+    chrome.storage.sync.set({ jobops_theme: newTheme }, () => {
+      logToConsole(`\u{1F4BE} Theme preference saved: ${newTheme}`, "success");
+    });
+  }
   function logToConsole(message, level = "info") {
     if (!consoleOutput)
       return;
@@ -1059,10 +1105,16 @@
     const resumeUpload = document.getElementById("resume-upload");
     consoleOutput = document.getElementById("console-output");
     const clearConsoleBtn = document.getElementById("clear-console");
+    const themeToggleBtn = document.getElementById("theme-toggle");
     if (!consoleOutput) {
       console.error("Console output element not found!");
     } else {
       logToConsole("\u{1F50D} Console monitor initialized", "info");
+    }
+    initializeTheme();
+    if (themeToggleBtn) {
+      themeToggleBtn.addEventListener("click", toggleTheme);
+      logToConsole("\u{1F3A8} Theme toggle button initialized", "info");
     }
     const propTitle = document.getElementById("prop-title");
     const propUrl = document.getElementById("prop-url");

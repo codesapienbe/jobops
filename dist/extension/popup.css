@@ -386,6 +386,92 @@
   --theme-console-line-error: var(--dark-theme-console-line-error);
   --theme-console-line-debug: var(--dark-theme-console-line-debug);
   --theme-console-line-progress: var(--dark-theme-console-line-progress);
+  
+  /* Job section theme variables - Dark theme (default) */
+  --theme-job-section-position-details-primary: var(--dark-theme-job-section-position-details-primary);
+  --theme-job-section-position-details-secondary: var(--dark-theme-job-section-position-details-secondary);
+  --theme-job-section-position-details-hover-primary: var(--dark-theme-job-section-position-details-hover-primary);
+  --theme-job-section-position-details-hover-secondary: var(--dark-theme-job-section-position-details-hover-secondary);
+  
+  --theme-job-section-job-requirements-primary: var(--dark-theme-job-section-job-requirements-primary);
+  --theme-job-section-job-requirements-secondary: var(--dark-theme-job-section-job-requirements-secondary);
+  --theme-job-section-job-requirements-hover-primary: var(--dark-theme-job-section-job-requirements-hover-primary);
+  --theme-job-section-job-requirements-hover-secondary: var(--dark-theme-job-section-job-requirements-hover-secondary);
+  
+  --theme-job-section-company-information-primary: var(--dark-theme-job-section-company-information-primary);
+  --theme-job-section-company-information-secondary: var(--dark-theme-job-section-company-information-secondary);
+  --theme-job-section-company-information-hover-primary: var(--dark-theme-job-section-company-information-hover-primary);
+  --theme-job-section-company-information-hover-secondary: var(--dark-theme-job-section-company-information-hover-secondary);
+  
+  --theme-job-section-skills-matrix-primary: var(--dark-theme-job-section-skills-matrix-primary);
+  --theme-job-section-skills-matrix-secondary: var(--dark-theme-job-section-skills-matrix-secondary);
+  --theme-job-section-skills-matrix-hover-primary: var(--dark-theme-job-section-skills-matrix-hover-primary);
+  --theme-job-section-skills-matrix-hover-secondary: var(--dark-theme-job-section-skills-matrix-hover-secondary);
+  
+  --theme-job-section-application-materials-primary: var(--dark-theme-job-section-application-materials-primary);
+  --theme-job-section-application-materials-secondary: var(--dark-theme-job-section-application-materials-secondary);
+  --theme-job-section-application-materials-hover-primary: var(--dark-theme-job-section-application-materials-hover-primary);
+  --theme-job-section-application-materials-hover-secondary: var(--dark-theme-job-section-application-materials-hover-secondary);
+  
+  --theme-job-section-interview-schedule-primary: var(--dark-theme-job-section-interview-schedule-primary);
+  --theme-job-section-interview-schedule-secondary: var(--dark-theme-job-section-interview-schedule-secondary);
+  --theme-job-section-interview-schedule-hover-primary: var(--dark-theme-job-section-interview-schedule-hover-primary);
+  --theme-job-section-interview-schedule-hover-secondary: var(--dark-theme-job-section-interview-schedule-hover-secondary);
+  
+  --theme-job-section-interview-preparation-primary: var(--dark-theme-job-section-interview-preparation-primary);
+  --theme-job-section-interview-preparation-secondary: var(--dark-theme-job-section-interview-preparation-secondary);
+  --theme-job-section-interview-preparation-hover-primary: var(--dark-theme-job-section-interview-preparation-hover-primary);
+  --theme-job-section-interview-preparation-hover-secondary: var(--dark-theme-job-section-interview-preparation-hover-secondary);
+  
+  --theme-job-section-communication-log-primary: var(--dark-theme-job-section-communication-log-primary);
+  --theme-job-section-communication-log-secondary: var(--dark-theme-job-section-communication-log-secondary);
+  --theme-job-section-communication-log-hover-primary: var(--dark-theme-job-section-communication-log-hover-primary);
+  --theme-job-section-communication-log-hover-secondary: var(--dark-theme-job-section-communication-log-hover-secondary);
+  
+  --theme-job-section-key-contacts-primary: var(--dark-theme-job-section-key-contacts-primary);
+  --theme-job-section-key-contacts-secondary: var(--dark-theme-job-section-key-contacts-secondary);
+  --theme-job-section-key-contacts-hover-primary: var(--dark-theme-job-section-key-contacts-hover-primary);
+  --theme-job-section-key-contacts-hover-secondary: var(--dark-theme-job-section-key-contacts-hover-secondary);
+  
+  --theme-job-section-interview-feedback-primary: var(--dark-theme-job-section-interview-feedback-primary);
+  --theme-job-section-interview-feedback-secondary: var(--dark-theme-job-section-interview-feedback-secondary);
+  --theme-job-section-interview-feedback-hover-primary: var(--dark-theme-job-section-interview-feedback-hover-primary);
+  --theme-job-section-interview-feedback-hover-secondary: var(--dark-theme-job-section-interview-feedback-hover-secondary);
+  
+  --theme-job-section-offer-details-primary: var(--dark-theme-job-section-offer-details-primary);
+  --theme-job-section-offer-details-secondary: var(--dark-theme-job-section-offer-details-secondary);
+  --theme-job-section-offer-details-hover-primary: var(--dark-theme-job-section-offer-details-hover-primary);
+  --theme-job-section-offer-details-hover-secondary: var(--dark-theme-job-section-offer-details-hover-secondary);
+  
+  --theme-job-section-rejection-analysis-primary: var(--dark-theme-job-section-rejection-analysis-primary);
+  --theme-job-section-rejection-analysis-secondary: var(--dark-theme-job-section-rejection-analysis-secondary);
+  --theme-job-section-rejection-analysis-hover-primary: var(--dark-theme-job-section-rejection-analysis-hover-primary);
+  --theme-job-section-rejection-analysis-hover-secondary: var(--dark-theme-job-section-rejection-analysis-hover-secondary);
+  
+  --theme-job-section-privacy-policy-primary: var(--dark-theme-job-section-privacy-policy-primary);
+  --theme-job-section-privacy-policy-secondary: var(--dark-theme-job-section-privacy-policy-secondary);
+  --theme-job-section-privacy-policy-hover-primary: var(--dark-theme-job-section-privacy-policy-hover-primary);
+  --theme-job-section-privacy-policy-hover-secondary: var(--dark-theme-job-section-privacy-policy-hover-secondary);
+  
+  --theme-job-section-lessons-learned-primary: var(--dark-theme-job-section-lessons-learned-primary);
+  --theme-job-section-lessons-learned-secondary: var(--dark-theme-job-section-lessons-learned-secondary);
+  --theme-job-section-lessons-learned-hover-primary: var(--dark-theme-job-section-lessons-learned-hover-primary);
+  --theme-job-section-lessons-learned-hover-secondary: var(--dark-theme-job-section-lessons-learned-hover-secondary);
+  
+  --theme-job-section-performance-metrics-primary: var(--dark-theme-job-section-performance-metrics-primary);
+  --theme-job-section-performance-metrics-secondary: var(--dark-theme-job-section-performance-metrics-secondary);
+  --theme-job-section-performance-metrics-hover-primary: var(--dark-theme-job-section-performance-metrics-hover-primary);
+  --theme-job-section-performance-metrics-hover-secondary: var(--dark-theme-job-section-performance-metrics-hover-secondary);
+  
+  --theme-job-section-advisor-review-primary: var(--dark-theme-job-section-advisor-review-primary);
+  --theme-job-section-advisor-review-secondary: var(--dark-theme-job-section-advisor-review-secondary);
+  --theme-job-section-advisor-review-hover-primary: var(--dark-theme-job-section-advisor-review-hover-primary);
+  --theme-job-section-advisor-review-hover-secondary: var(--dark-theme-job-section-advisor-review-hover-secondary);
+  
+  --theme-job-section-application-summary-primary: var(--dark-theme-job-section-application-summary-primary);
+  --theme-job-section-application-summary-secondary: var(--dark-theme-job-section-application-summary-secondary);
+  --theme-job-section-application-summary-hover-primary: var(--dark-theme-job-section-application-summary-hover-primary);
+  --theme-job-section-application-summary-hover-secondary: var(--dark-theme-job-section-application-summary-hover-secondary);
 }
 
 /* Light theme class */
@@ -459,6 +545,106 @@
   --theme-console-line-error: var(--light-theme-console-line-error);
   --theme-console-line-debug: var(--light-theme-console-line-debug);
   --theme-console-line-progress: var(--light-theme-console-line-progress);
+  
+  /* Job section theme variables - Light theme */
+  --theme-job-section-position-details-primary: var(--light-theme-job-section-position-details-primary);
+  --theme-job-section-position-details-secondary: var(--light-theme-job-section-position-details-secondary);
+  --theme-job-section-position-details-hover-primary: var(--light-theme-job-section-position-details-hover-primary);
+  --theme-job-section-position-details-hover-secondary: var(--light-theme-job-section-position-details-hover-secondary);
+  
+  --theme-job-section-job-requirements-primary: var(--light-theme-job-section-job-requirements-primary);
+  --theme-job-section-job-requirements-secondary: var(--light-theme-job-section-job-requirements-secondary);
+  --theme-job-section-job-requirements-hover-primary: var(--light-theme-job-section-job-requirements-hover-primary);
+  --theme-job-section-job-requirements-hover-secondary: var(--light-theme-job-section-job-requirements-hover-secondary);
+  
+  --theme-job-section-company-information-primary: var(--light-theme-job-section-company-information-primary);
+  --theme-job-section-company-information-secondary: var(--light-theme-job-section-company-information-secondary);
+  --theme-job-section-company-information-hover-primary: var(--light-theme-job-section-company-information-hover-primary);
+  --theme-job-section-company-information-hover-secondary: var(--light-theme-job-section-company-information-hover-secondary);
+  
+  --theme-job-section-skills-matrix-primary: var(--light-theme-job-section-skills-matrix-primary);
+  --theme-job-section-skills-matrix-secondary: var(--light-theme-job-section-skills-matrix-secondary);
+  --theme-job-section-skills-matrix-hover-primary: var(--light-theme-job-section-skills-matrix-hover-primary);
+  --theme-job-section-skills-matrix-hover-secondary: var(--light-theme-job-section-skills-matrix-hover-secondary);
+  
+  --theme-job-section-application-materials-primary: var(--light-theme-job-section-application-materials-primary);
+  --theme-job-section-application-materials-secondary: var(--light-theme-job-section-application-materials-secondary);
+  --theme-job-section-application-materials-hover-primary: var(--light-theme-job-section-application-materials-hover-primary);
+  --theme-job-section-application-materials-hover-secondary: var(--light-theme-job-section-application-materials-hover-secondary);
+  
+  --theme-job-section-interview-schedule-primary: var(--light-theme-job-section-interview-schedule-primary);
+  --theme-job-section-interview-schedule-secondary: var(--light-theme-job-section-interview-schedule-secondary);
+  --theme-job-section-interview-schedule-hover-primary: var(--light-theme-job-section-interview-schedule-hover-primary);
+  --theme-job-section-interview-schedule-hover-secondary: var(--light-theme-job-section-interview-schedule-hover-secondary);
+  
+  --theme-job-section-interview-preparation-primary: var(--light-theme-job-section-interview-preparation-primary);
+  --theme-job-section-interview-preparation-secondary: var(--light-theme-job-section-interview-preparation-secondary);
+  --theme-job-section-interview-preparation-hover-primary: var(--light-theme-job-section-interview-preparation-hover-primary);
+  --theme-job-section-interview-preparation-hover-secondary: var(--light-theme-job-section-interview-preparation-hover-secondary);
+  
+  --theme-job-section-communication-log-primary: var(--light-theme-job-section-communication-log-primary);
+  --theme-job-section-communication-log-secondary: var(--light-theme-job-section-communication-log-secondary);
+  --theme-job-section-communication-log-hover-primary: var(--light-theme-job-section-communication-log-hover-primary);
+  --theme-job-section-communication-log-hover-secondary: var(--light-theme-job-section-communication-log-hover-secondary);
+  
+  --theme-job-section-key-contacts-primary: var(--light-theme-job-section-key-contacts-primary);
+  --theme-job-section-key-contacts-secondary: var(--light-theme-job-section-key-contacts-secondary);
+  --theme-job-section-key-contacts-hover-primary: var(--light-theme-job-section-key-contacts-hover-primary);
+  --theme-job-section-key-contacts-hover-secondary: var(--light-theme-job-section-key-contacts-hover-secondary);
+  
+  --theme-job-section-interview-feedback-primary: var(--light-theme-job-section-interview-feedback-primary);
+  --theme-job-section-interview-feedback-secondary: var(--light-theme-job-section-interview-feedback-secondary);
+  --theme-job-section-interview-feedback-hover-primary: var(--light-theme-job-section-interview-feedback-hover-primary);
+  --theme-job-section-interview-feedback-hover-secondary: var(--light-theme-job-section-interview-feedback-hover-secondary);
+  
+  --theme-job-section-offer-details-primary: var(--light-theme-job-section-offer-details-primary);
+  --theme-job-section-offer-details-secondary: var(--light-theme-job-section-offer-details-secondary);
+  --theme-job-section-offer-details-hover-primary: var(--light-theme-job-section-offer-details-hover-primary);
+  --theme-job-section-offer-details-hover-secondary: var(--light-theme-job-section-offer-details-hover-secondary);
+  
+  --theme-job-section-rejection-analysis-primary: var(--light-theme-job-section-rejection-analysis-primary);
+  --theme-job-section-rejection-analysis-secondary: var(--light-theme-job-section-rejection-analysis-secondary);
+  --theme-job-section-rejection-analysis-hover-primary: var(--light-theme-job-section-rejection-analysis-hover-primary);
+  --theme-job-section-rejection-analysis-hover-secondary: var(--light-theme-job-section-rejection-analysis-hover-secondary);
+  
+  --theme-job-section-privacy-policy-primary: var(--light-theme-job-section-privacy-policy-primary);
+  --theme-job-section-privacy-policy-secondary: var(--light-theme-job-section-privacy-policy-secondary);
+  --theme-job-section-privacy-policy-hover-primary: var(--light-theme-job-section-privacy-policy-hover-primary);
+  --theme-job-section-privacy-policy-hover-secondary: var(--light-theme-job-section-privacy-policy-hover-secondary);
+  
+  --theme-job-section-lessons-learned-primary: var(--light-theme-job-section-lessons-learned-primary);
+  --theme-job-section-lessons-learned-secondary: var(--light-theme-job-section-lessons-learned-secondary);
+  --theme-job-section-lessons-learned-hover-primary: var(--light-theme-job-section-lessons-learned-hover-primary);
+  --theme-job-section-lessons-learned-hover-secondary: var(--light-theme-job-section-lessons-learned-hover-secondary);
+  
+  --theme-job-section-performance-metrics-primary: var(--light-theme-job-section-performance-metrics-primary);
+  --theme-job-section-performance-metrics-secondary: var(--light-theme-job-section-performance-metrics-secondary);
+  --theme-job-section-performance-metrics-hover-primary: var(--light-theme-job-section-performance-metrics-hover-primary);
+  --theme-job-section-performance-metrics-hover-secondary: var(--light-theme-job-section-performance-metrics-hover-secondary);
+  
+  --theme-job-section-advisor-review-primary: var(--light-theme-job-section-advisor-review-primary);
+  --theme-job-section-advisor-review-secondary: var(--light-theme-job-section-advisor-review-secondary);
+  --theme-job-section-advisor-review-hover-primary: var(--light-theme-job-section-advisor-review-hover-primary);
+  --theme-job-section-advisor-review-hover-secondary: var(--light-theme-job-section-advisor-review-hover-secondary);
+  
+  --theme-job-section-application-summary-primary: var(--light-theme-job-section-application-summary-primary);
+  --theme-job-section-application-summary-secondary: var(--light-theme-job-section-application-summary-secondary);
+  --theme-job-section-application-summary-hover-primary: var(--light-theme-job-section-application-summary-hover-primary);
+  --theme-job-section-application-summary-hover-secondary: var(--light-theme-job-section-application-summary-hover-secondary);
+}
+
+/* Smooth theme transitions */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Ensure theme toggle button has proper transitions */
+#theme-toggle {
+  transition: all 0.3s ease, transform 0.2s ease;
+}
+
+#theme-toggle:hover {
+  transform: scale(1.1) rotate(180deg);
 }
 
 body {
@@ -1613,278 +1799,143 @@ button:hover {
   text-align: center;
 }
 
-/* Job section specific colors */
+/* Job section specific colors - Theme-aware */
 .job-section[data-section="position-details"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-position-details-primary) 0%, var(--dark-theme-job-section-position-details-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-position-details-primary) 0%, var(--theme-job-section-position-details-secondary) 100%);
 }
 
 .job-section[data-section="position-details"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-position-details-hover-primary) 0%, var(--dark-theme-job-section-position-details-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-position-details-hover-primary) 0%, var(--theme-job-section-position-details-hover-secondary) 100%);
 }
 
 .job-section[data-section="job-requirements"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-job-requirements-primary) 0%, var(--dark-theme-job-section-job-requirements-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-job-requirements-primary) 0%, var(--theme-job-section-job-requirements-secondary) 100%);
 }
 
 .job-section[data-section="job-requirements"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-job-requirements-hover-primary) 0%, var(--dark-theme-job-section-job-requirements-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-job-requirements-hover-primary) 0%, var(--theme-job-section-job-requirements-hover-secondary) 100%);
 }
 
 .job-section[data-section="company-information"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-company-information-primary) 0%, var(--dark-theme-job-section-company-information-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-company-information-primary) 0%, var(--theme-job-section-company-information-secondary) 100%);
 }
 
 .job-section[data-section="company-information"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-company-information-hover-primary) 0%, var(--dark-theme-job-section-company-information-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-company-information-hover-primary) 0%, var(--theme-job-section-company-information-hover-secondary) 100%);
 }
 
 .job-section[data-section="skills-matrix"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-skills-matrix-primary) 0%, var(--dark-theme-job-section-skills-matrix-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-skills-matrix-primary) 0%, var(--theme-job-section-skills-matrix-secondary) 100%);
 }
 
 .job-section[data-section="skills-matrix"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-skills-matrix-hover-primary) 0%, var(--dark-theme-job-section-skills-matrix-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-skills-matrix-hover-primary) 0%, var(--theme-job-section-skills-matrix-hover-secondary) 100%);
 }
 
 .job-section[data-section="application-materials"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-application-materials-primary) 0%, var(--dark-theme-job-section-application-materials-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-application-materials-primary) 0%, var(--theme-job-section-application-materials-secondary) 100%);
 }
 
 .job-section[data-section="application-materials"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-application-materials-hover-primary) 0%, var(--dark-theme-job-section-application-materials-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-application-materials-hover-primary) 0%, var(--theme-job-section-application-materials-hover-secondary) 100%);
 }
 
 .job-section[data-section="interview-schedule"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-schedule-primary) 0%, var(--dark-theme-job-section-interview-schedule-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-interview-schedule-primary) 0%, var(--theme-job-section-interview-schedule-secondary) 100%);
 }
 
 .job-section[data-section="interview-schedule"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-schedule-hover-primary) 0%, var(--dark-theme-job-section-interview-schedule-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-interview-schedule-hover-primary) 0%, var(--theme-job-section-interview-schedule-hover-secondary) 100%);
 }
 
 .job-section[data-section="interview-preparation"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-preparation-primary) 0%, var(--dark-theme-job-section-interview-preparation-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-interview-preparation-primary) 0%, var(--theme-job-section-interview-preparation-secondary) 100%);
 }
 
 .job-section[data-section="interview-preparation"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-preparation-hover-primary) 0%, var(--dark-theme-job-section-interview-preparation-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-interview-preparation-hover-primary) 0%, var(--theme-job-section-interview-preparation-hover-secondary) 100%);
 }
 
 .job-section[data-section="communication-log"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-communication-log-primary) 0%, var(--dark-theme-job-section-communication-log-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-communication-log-primary) 0%, var(--theme-job-section-communication-log-secondary) 100%);
 }
 
 .job-section[data-section="communication-log"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-communication-log-hover-primary) 0%, var(--dark-theme-job-section-communication-log-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-communication-log-hover-primary) 0%, var(--theme-job-section-communication-log-hover-secondary) 100%);
 }
 
 .job-section[data-section="key-contacts"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-key-contacts-primary) 0%, var(--dark-theme-job-section-key-contacts-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-key-contacts-primary) 0%, var(--theme-job-section-key-contacts-secondary) 100%);
 }
 
 .job-section[data-section="key-contacts"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-key-contacts-hover-primary) 0%, var(--dark-theme-job-section-key-contacts-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-key-contacts-hover-primary) 0%, var(--theme-job-section-key-contacts-hover-secondary) 100%);
 }
 
 .job-section[data-section="interview-feedback"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-feedback-primary) 0%, var(--dark-theme-job-section-interview-feedback-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-interview-feedback-primary) 0%, var(--theme-job-section-interview-feedback-secondary) 100%);
 }
 
 .job-section[data-section="interview-feedback"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-feedback-hover-primary) 0%, var(--dark-theme-job-section-interview-feedback-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-interview-feedback-hover-primary) 0%, var(--theme-job-section-interview-feedback-hover-secondary) 100%);
 }
 
 .job-section[data-section="offer-details"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-offer-details-primary) 0%, var(--dark-theme-job-section-offer-details-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-offer-details-primary) 0%, var(--theme-job-section-offer-details-secondary) 100%);
 }
 
 .job-section[data-section="offer-details"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-offer-details-hover-primary) 0%, var(--dark-theme-job-section-offer-details-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-offer-details-hover-primary) 0%, var(--theme-job-section-offer-details-hover-secondary) 100%);
 }
 
 .job-section[data-section="rejection-analysis"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-rejection-analysis-primary) 0%, var(--dark-theme-job-section-rejection-analysis-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-rejection-analysis-primary) 0%, var(--theme-job-section-rejection-analysis-secondary) 100%);
 }
 
 .job-section[data-section="rejection-analysis"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-rejection-analysis-hover-primary) 0%, var(--dark-theme-job-section-rejection-analysis-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-rejection-analysis-hover-primary) 0%, var(--theme-job-section-rejection-analysis-hover-secondary) 100%);
 }
 
 .job-section[data-section="privacy-policy"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-privacy-policy-primary) 0%, var(--dark-theme-job-section-privacy-policy-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-privacy-policy-primary) 0%, var(--theme-job-section-privacy-policy-secondary) 100%);
 }
 
 .job-section[data-section="privacy-policy"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-privacy-policy-hover-primary) 0%, var(--dark-theme-job-section-privacy-policy-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-privacy-policy-hover-primary) 0%, var(--theme-job-section-privacy-policy-hover-secondary) 100%);
 }
 
 .job-section[data-section="lessons-learned"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-lessons-learned-primary) 0%, var(--dark-theme-job-section-lessons-learned-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-lessons-learned-primary) 0%, var(--theme-job-section-lessons-learned-secondary) 100%);
 }
 
 .job-section[data-section="lessons-learned"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-lessons-learned-hover-primary) 0%, var(--dark-theme-job-section-lessons-learned-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-lessons-learned-hover-primary) 0%, var(--theme-job-section-lessons-learned-hover-secondary) 100%);
 }
 
 .job-section[data-section="performance-metrics"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-performance-metrics-primary) 0%, var(--dark-theme-job-section-performance-metrics-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-performance-metrics-primary) 0%, var(--theme-job-section-performance-metrics-secondary) 100%);
 }
 
 .job-section[data-section="performance-metrics"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-performance-metrics-hover-primary) 0%, var(--dark-theme-job-section-performance-metrics-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-performance-metrics-hover-primary) 0%, var(--theme-job-section-performance-metrics-hover-secondary) 100%);
 }
 
 .job-section[data-section="advisor-review"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-advisor-review-primary) 0%, var(--dark-theme-job-section-advisor-review-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-advisor-review-primary) 0%, var(--theme-job-section-advisor-review-secondary) 100%);
 }
 
 .job-section[data-section="advisor-review"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-advisor-review-hover-primary) 0%, var(--dark-theme-job-section-advisor-review-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-advisor-review-hover-primary) 0%, var(--theme-job-section-advisor-review-hover-secondary) 100%);
 }
 
 .job-section[data-section="application-summary"] .job-header {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-application-summary-primary) 0%, var(--dark-theme-job-section-application-summary-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-application-summary-primary) 0%, var(--theme-job-section-application-summary-secondary) 100%);
 }
 
 .job-section[data-section="application-summary"] .job-header:hover {
-  background: linear-gradient(135deg, var(--dark-theme-job-section-application-summary-hover-primary) 0%, var(--dark-theme-job-section-application-summary-hover-secondary) 100%);
+  background: linear-gradient(135deg, var(--theme-job-section-application-summary-hover-primary) 0%, var(--theme-job-section-application-summary-hover-secondary) 100%);
 }
 
-/* Light theme overrides for job sections */
-.theme-light .job-section[data-section="position-details"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-position-details-primary) 0%, var(--light-theme-job-section-position-details-secondary) 100%);
-}
 
-.theme-light .job-section[data-section="position-details"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-position-details-hover-primary) 0%, var(--light-theme-job-section-position-details-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="job-requirements"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-job-requirements-primary) 0%, var(--light-theme-job-section-job-requirements-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="job-requirements"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-job-requirements-hover-primary) 0%, var(--light-theme-job-section-job-requirements-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="company-information"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-company-information-primary) 0%, var(--light-theme-job-section-company-information-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="company-information"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-company-information-hover-primary) 0%, var(--light-theme-job-section-company-information-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="skills-matrix"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-skills-matrix-primary) 0%, var(--light-theme-job-section-skills-matrix-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="skills-matrix"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-skills-matrix-hover-primary) 0%, var(--light-theme-job-section-skills-matrix-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="application-materials"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-application-materials-primary) 0%, var(--light-theme-job-section-application-materials-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="application-materials"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-application-materials-hover-primary) 0%, var(--light-theme-job-section-application-materials-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="interview-schedule"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-interview-schedule-primary) 0%, var(--light-theme-job-section-interview-schedule-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="interview-schedule"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-interview-schedule-hover-primary) 0%, var(--light-theme-job-section-interview-schedule-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="interview-preparation"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-interview-preparation-primary) 0%, var(--light-theme-job-section-interview-preparation-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="interview-preparation"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-interview-preparation-hover-primary) 0%, var(--light-theme-job-section-interview-preparation-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="communication-log"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-communication-log-primary) 0%, var(--light-theme-job-section-communication-log-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="communication-log"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-communication-log-hover-primary) 0%, var(--light-theme-job-section-communication-log-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="key-contacts"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-key-contacts-primary) 0%, var(--light-theme-job-section-key-contacts-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="key-contacts"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-key-contacts-hover-primary) 0%, var(--light-theme-job-section-key-contacts-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="interview-feedback"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-interview-feedback-primary) 0%, var(--light-theme-job-section-interview-feedback-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="interview-feedback"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-interview-feedback-hover-primary) 0%, var(--light-theme-job-section-interview-feedback-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="offer-details"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-offer-details-primary) 0%, var(--light-theme-job-section-offer-details-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="offer-details"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-offer-details-hover-primary) 0%, var(--light-theme-job-section-offer-details-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="rejection-analysis"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-rejection-analysis-primary) 0%, var(--light-theme-job-section-rejection-analysis-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="rejection-analysis"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-rejection-analysis-hover-primary) 0%, var(--light-theme-job-section-rejection-analysis-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="privacy-policy"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-privacy-policy-primary) 0%, var(--light-theme-job-section-privacy-policy-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="privacy-policy"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-privacy-policy-hover-primary) 0%, var(--light-theme-job-section-privacy-policy-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="lessons-learned"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-lessons-learned-primary) 0%, var(--light-theme-job-section-lessons-learned-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="lessons-learned"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-lessons-learned-hover-primary) 0%, var(--light-theme-job-section-lessons-learned-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="performance-metrics"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-performance-metrics-primary) 0%, var(--light-theme-job-section-performance-metrics-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="performance-metrics"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-performance-metrics-hover-primary) 0%, var(--light-theme-job-section-performance-metrics-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="advisor-review"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-advisor-review-primary) 0%, var(--light-theme-job-section-advisor-review-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="advisor-review"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-advisor-review-hover-primary) 0%, var(--light-theme-job-section-advisor-review-hover-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="application-summary"] .job-header {
-  background: linear-gradient(135deg, var(--light-theme-job-section-application-summary-primary) 0%, var(--light-theme-job-section-application-summary-secondary) 100%);
-}
-
-.theme-light .job-section[data-section="application-summary"] .job-header:hover {
-  background: linear-gradient(135deg, var(--light-theme-job-section-application-summary-hover-primary) 0%, var(--light-theme-job-section-application-summary-hover-secondary) 100%);
-}
 
 /* Save-on-collapse functionality - no UI elements needed */
