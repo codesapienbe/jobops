@@ -19,6 +19,14 @@ A Chrome extension for clipping job postings and generating comprehensive applic
   - **Primary**: Groq API with qwen2.5-32b-instant model (free tier with high usage limits)
   - **Fallback**: Local Ollama with qwen3:1.7b model
 
+### Linear Integration
+
+- **Export to Linear**: Send job applications directly to Linear as tasks and subtasks
+- **Smart Task Mapping**: Creates main task + 16 subtasks for each job application section
+- **Comprehensive Content**: Includes all job data, requirements, and tracking information
+- **Automatic Organization**: Uses Linear labels and priorities for better organization
+- **Direct Access**: Automatically opens created tasks in Linear for immediate access
+
 ### Report Template
 
 The extension generates detailed job application tracking reports including:
@@ -43,6 +51,7 @@ npm install
 ### 2. Configure API Keys
 
 - **Groq API Key**: Click the ⚙️ settings button in the extension popup to configure your Groq API key
+- **Linear API Key**: Configure Linear integration for task creation (API key + team ID required)
 - The extension will use Ollama as fallback if no Groq key is configured
 - API keys are stored securely in Chrome's sync storage
 
@@ -77,6 +86,16 @@ npm run build
    - Send job data + resume to Groq API (or Ollama fallback)
    - Generate a comprehensive application tracking report
    - Display the filled report in the markdown editor
+
+### Export to Linear
+
+1. Configure Linear API key and team ID in settings (⚙️ button)
+2. Click the 📤 "Export to Linear" button
+3. The extension will:
+   - Create a main task for the job application
+   - Generate 16 subtasks for each application section
+   - Include all job data and tracking information
+   - Automatically open the created task in Linear
 
 ## Database Overview
 
@@ -251,6 +270,8 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
 
 - `BACKEND_API_BASE`: Backend API URL (default: <http://localhost:8877>)
 - `GROQ_API_KEY`: Groq API key (stored securely in Chrome sync storage)
+- `LINEAR_API_KEY`: Linear API key (stored securely in Chrome sync storage)
+- `LINEAR_TEAM_ID`: Linear team ID for task creation
 
 ### Permissions
 
@@ -264,6 +285,7 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
 
 - `http://localhost:8877/*`: Backend API
 - `https://api.groq.com/*`: Groq API
+- `https://api.linear.app/*`: Linear API
 - `https://libretranslate.de/*`: Translation API (primary)
 - `https://translate.argosopentech.com/*`: Translation API (fallback)
 - `<all_urls>`: Content script injection
@@ -281,6 +303,15 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
   - No API key required
   - Slower but more private
 
+### Linear Integration
+
+- **GraphQL API**: Full Linear API integration using GraphQL
+- **Task Creation**: Creates main task with job application overview
+- **Subtask Generation**: Automatically creates 16 subtasks for each section
+- **Smart Mapping**: Maps job data to appropriate Linear task descriptions
+- **Label Integration**: Uses Linear labels for better organization
+- **Priority Management**: Sets appropriate priorities for tasks and subtasks
+
 ### PDF Processing
 
 - Uses PDF.js library for text extraction
@@ -294,6 +325,7 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
 - No data sent to external services without user consent
 - Local fallback option for privacy-conscious users
 - PDF content processed locally before sending to LLM
+- Linear API keys encrypted and stored securely
 
 ### Internationalization (i18n)
 
@@ -320,6 +352,8 @@ src/
 ├── popup.html        # Popup UI
 ├── popup.css         # Popup styling
 ├── i18n.ts           # Internationalization manager
+├── client.ts         # API clients (Linear, etc.)
+├── integration.ts    # Integration services (Linear, etc.)
 ├── locales/          # Language files
 │   ├── en.json       # English translations
 │   ├── nl.json       # Dutch translations

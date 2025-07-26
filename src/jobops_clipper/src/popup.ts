@@ -1480,32 +1480,91 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Handle settings
   async function handleSettings() {
     logToConsole("⚙️ Settings dialog opened", "info");
-    const apiKey = await getGroqApiKey();
-    const newApiKey = prompt('Enter your Groq API key (leave empty to remove):', apiKey || '');
     
-    if (newApiKey !== null) {
-      if (newApiKey.trim()) {
-        logToConsole("🔑 Saving new Groq API key...", "progress");
-        await new Promise<void>((resolve) => {
-          chrome.storage.sync.set({ groq_api_key: newApiKey.trim() }, () => {
-            logToConsole("✅ Groq API key saved successfully!", "success");
-            showNotification("✅ Groq API key saved!");
-            resolve();
-          });
-        });
-      } else {
-        logToConsole("🗑️ Removing Groq API key...", "warning");
-        await new Promise<void>((resolve) => {
-          chrome.storage.sync.remove(['groq_api_key'], () => {
-            logToConsole("✅ Groq API key removed successfully!", "success");
-            showNotification("✅ Groq API key removed!");
-            resolve();
-          });
-        });
+    // Get current settings
+    const groqApiKey = await getGroqApiKey();
+    const linearConfig = await getLinearConfig();
+    
+    // Create settings dialog
+    const settingsHtml = `
+      <div style="padding: 20px; max-width: 500px;">
+        <h3>🔑 Groq API Settings</h3>
+        <p>Enter your Groq API key for AI report generation:</p>
+        <input type="password" id="groq-api-key" placeholder="Groq API Key" value="${groqApiKey || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        
+        <h3>📤 Linear Integration Settings</h3>
+        <p>Configure Linear integration for task creation:</p>
+        <input type="password" id="linear-api-key" placeholder="Linear API Key" value="${linearConfig?.apiKey || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <input type="text" id="linear-team-id" placeholder="Linear Team ID" value="${linearConfig?.teamId || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <input type="text" id="linear-project-id" placeholder="Linear Project ID (optional)" value="${linearConfig?.projectId || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <input type="text" id="linear-assignee-id" placeholder="Linear Assignee ID (optional)" value="${linearConfig?.assigneeId || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        
+        <div style="margin-top: 20px;">
+          <button id="save-settings" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px;">Save Settings</button>
+          <button id="cancel-settings" style="background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 4px;">Cancel</button>
+        </div>
+      </div>
+    `;
+    
+    // Create modal dialog
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+      background: rgba(0,0,0,0.5); z-index: 10000; display: flex; 
+      align-items: center; justify-content: center;
+    `;
+    modal.innerHTML = `
+      <div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">
+        ${settingsHtml}
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Handle save button
+    const saveBtn = modal.querySelector('#save-settings');
+    saveBtn?.addEventListener('click', async () => {
+      const groqKey = (modal.querySelector('#groq-api-key') as HTMLInputElement)?.value.trim();
+      const linearKey = (modal.querySelector('#linear-api-key') as HTMLInputElement)?.value.trim();
+      const linearTeamId = (modal.querySelector('#linear-team-id') as HTMLInputElement)?.value.trim();
+      const linearProjectId = (modal.querySelector('#linear-project-id') as HTMLInputElement)?.value.trim();
+      const linearAssigneeId = (modal.querySelector('#linear-assignee-id') as HTMLInputElement)?.value.trim();
+      
+      // Save settings
+      const settings: any = {};
+      if (groqKey) settings.groq_api_key = groqKey;
+      if (linearKey && linearTeamId) {
+        settings.linear_api_key = linearKey;
+        settings.linear_team_id = linearTeamId;
+        if (linearProjectId) settings.linear_project_id = linearProjectId;
+        if (linearAssigneeId) settings.linear_assignee_id = linearAssigneeId;
       }
-    } else {
+      
+      await new Promise<void>((resolve) => {
+        chrome.storage.sync.set(settings, () => {
+          logToConsole("✅ Settings saved successfully!", "success");
+          showNotification("✅ Settings saved!");
+          resolve();
+        });
+      });
+      
+      document.body.removeChild(modal);
+    });
+    
+    // Handle cancel button
+    const cancelBtn = modal.querySelector('#cancel-settings');
+    cancelBtn?.addEventListener('click', () => {
+      document.body.removeChild(modal);
       logToConsole("❌ Settings dialog cancelled", "info");
-    }
+    });
+    
+    // Handle modal background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+        logToConsole("❌ Settings dialog cancelled", "info");
+      }
+    });
   }
 
   // Handle test API (right-click on settings button)
@@ -2168,3 +2227,99 @@ async function handleCopyRealtime() {
     showNotification(i18n.getNotificationMessage('copyFailed'), true);
   }
 }
+
+import { LinearIntegrationService, LinearIntegrationConfig } from './integration';
+
+// Linear integration functions
+async function getLinearConfig(): Promise<LinearIntegrationConfig | null> {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get(['linear_api_key', 'linear_team_id', 'linear_project_id', 'linear_assignee_id'], (result) => {
+      if (result.linear_api_key && result.linear_team_id) {
+        resolve({
+          apiKey: result.linear_api_key,
+          teamId: result.linear_team_id,
+          projectId: result.linear_project_id || undefined,
+          assigneeId: result.linear_assignee_id || undefined,
+          autoCreateSubtasks: true,
+          defaultPriority: 2
+        });
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
+async function handleExportToLinear() {
+  logToConsole("🚀 Starting Linear export...", "info");
+  
+  try {
+    // Check if we have a current job application
+    const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
+    if (!currentJobId) {
+      logToConsole("❌ No active job application found", "error");
+      showNotification("No active job application found. Please clip a job posting first.", true);
+      return;
+    }
+
+    // Get Linear configuration
+    const config = await getLinearConfig();
+    if (!config) {
+      logToConsole("❌ Linear configuration not found", "error");
+      showNotification("Linear configuration not found. Please configure Linear settings first.", true);
+      return;
+    }
+
+    logToConsole("🔧 Linear configuration loaded", "debug");
+    logToConsole(`📋 Team ID: ${config.teamId}`, "debug");
+    logToConsole(`📁 Project ID: ${config.projectId || 'None'}`, "debug");
+
+    // Create Linear integration service
+    const linearService = new LinearIntegrationService(config, jobOpsDataManager);
+    
+    // Test connection
+    logToConsole("🔗 Testing Linear connection...", "progress");
+    const connectionTest = await linearService.testConnection();
+    if (!connectionTest) {
+      logToConsole("❌ Linear connection test failed", "error");
+      showNotification("Failed to connect to Linear. Please check your API key and try again.", true);
+      return;
+    }
+    logToConsole("✅ Linear connection successful", "success");
+
+    // Export job to Linear
+    logToConsole("📤 Exporting job application to Linear...", "progress");
+    const result = await linearService.exportJobToLinear(currentJobId);
+    
+    if (result.success) {
+      logToConsole("✅ Job exported to Linear successfully", "success");
+      logToConsole(`📋 Main task created: ${result.mainTask.title}`, "info");
+      logToConsole(`📋 Subtasks created: ${result.subtasks.length}`, "info");
+      
+      // Show success notification with link
+      const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
+      showNotification(message);
+      
+      // Open the main task in Linear
+      if (result.mainTask.url) {
+        logToConsole(`🔗 Opening Linear task: ${result.mainTask.url}`, "info");
+        chrome.tabs.create({ url: result.mainTask.url });
+      }
+    } else {
+      logToConsole(`❌ Linear export failed: ${result.error}`, "error");
+      showNotification(`Failed to export to Linear: ${result.error}`, true);
+    }
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logToConsole(`❌ Linear export error: ${errorMessage}`, "error");
+    showNotification(`Linear export failed: ${errorMessage}`, true);
+  }
+}
+
+// ... existing code ...
+
+// Add Linear export button event listener
+document.getElementById("export-linear")?.addEventListener("click", handleExportToLinear);
+
+// ... existing code ...

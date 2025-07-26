@@ -569,3 +569,36 @@ export enum ApplicationStatus {
   // Export all types and classes
   export default JobApplication;
   
+export interface LinearIntegration {
+  apiKey?: string;
+  teamId?: string;
+  projectId?: string;
+  enabled: boolean;
+}
+
+export interface LinearTask {
+  title: string;
+  description: string;
+  teamId: string;
+  projectId?: string;
+  priority: number;
+  labels?: string[];
+  assigneeId?: string;
+}
+
+export interface LinearSubtask {
+  title: string;
+  description: string;
+  parentId: string;
+  priority: number;
+  labels?: string[];
+}
+
+export interface LinearSectionMapping {
+  sectionName: string;
+  taskTitle: string;
+  taskDescription: string;
+  priority: number;
+  labels: string[];
+}
+  
