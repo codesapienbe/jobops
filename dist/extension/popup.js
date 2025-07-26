@@ -1045,6 +1045,7 @@
       }
       this.initializationPromise = this.loadAllTranslations();
       await this.initializationPromise;
+      this.detectBrowserLanguage();
       this.isInitialized = true;
     }
     /**
@@ -1117,24 +1118,7 @@
         throw new Error(`Translation not loaded for language: ${lang}`);
       }
       this.currentLanguage = lang;
-      chrome.storage.sync.set({ jobops_language: lang }, () => {
-        console.log(`Language preference saved: ${lang}`);
-      });
       this.updateUI();
-    }
-    /**
-     * Load saved language preference
-     */
-    async loadSavedLanguage() {
-      return new Promise((resolve) => {
-        chrome.storage.sync.get(["jobops_language"], (result) => {
-          const savedLang = result.jobops_language;
-          if (savedLang && this.isSupportedLanguage(savedLang)) {
-            this.currentLanguage = savedLang;
-          }
-          resolve();
-        });
-      });
     }
     /**
      * Get translation for a key
@@ -1339,8 +1323,7 @@
       const actionButtons = [
         { id: "copy-markdown", key: "copy" },
         { id: "generate-report", key: "generateReport" },
-        { id: "settings", key: "settings" },
-        { id: "language-toggle", key: "languageSelector" }
+        { id: "settings", key: "settings" }
       ];
       const controlButtons = [
         { id: "stop-generation", key: "stop" },
@@ -1369,7 +1352,6 @@
       const ariaLabels = [
         { id: "copy-markdown", key: "copyToClipboard" },
         { id: "generate-report", key: "generateReport" },
-        { id: "theme-toggle", key: "toggleTheme" },
         { id: "settings", key: "settings" },
         { id: "clear-console", key: "clearConsole" }
       ];
@@ -1462,65 +1444,16 @@
     logToConsole(`${i18n.getConsoleMessage("themeSwitched")} ${theme} ${i18n.getConsoleMessage("mode")}`, "info");
   }
   function initializeTheme() {
-    chrome.storage.sync.get(["jobops_theme"], (result) => {
-      const savedTheme = result.jobops_theme || "system";
-      applyTheme(savedTheme);
-    });
+    applyTheme("system");
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     mediaQuery.addEventListener("change", (e) => {
-      if (currentTheme === "system") {
-        applyTheme("system");
-      }
+      applyTheme("system");
     });
-  }
-  function toggleTheme() {
-    const newTheme = currentTheme === "light" ? "dark" : currentTheme === "dark" ? "system" : "light";
-    applyTheme(newTheme);
-    chrome.storage.sync.set({ jobops_theme: newTheme }, () => {
-      logToConsole(`${i18n.getConsoleMessage("themePreferenceSaved")}: ${newTheme}`, "success");
-    });
-  }
-  function toggleLanguageDropdown() {
-    const currentLang = i18n.getCurrentLanguage();
-    const supportedLanguages = ["en", "fr", "nl", "tr"];
-    const currentIndex = supportedLanguages.indexOf(currentLang);
-    const nextIndex = (currentIndex + 1) % supportedLanguages.length;
-    const nextLanguage = supportedLanguages[nextIndex];
-    handleLanguageChange(nextLanguage);
-  }
-  async function handleLanguageChange(langCode) {
-    try {
-      logToConsole(`\u{1F310} Changing language to ${langCode}...`, "info");
-      await i18n.setLanguage(langCode);
-      i18n.updateUI();
-      await i18n.translateDynamicContent();
-      updateLanguageButtonIcon();
-      logToConsole(`\u2705 Language changed to ${langCode}`, "success");
-      showNotification(i18n.getNotificationMessage("languageChanged"));
-    } catch (error) {
-      logToConsole(`\u274C Error changing language: ${error}`, "error");
-      showNotification("Error changing language", true);
-    }
-  }
-  function updateLanguageButtonIcon() {
-    const languageButton = document.getElementById("language-toggle");
-    if (!languageButton)
-      return;
-    const currentLang = i18n.getCurrentLanguage();
-    const supportedLanguages = i18n.getSupportedLanguages();
-    const currentLanguage = supportedLanguages.find((lang) => lang.code === currentLang);
-    if (currentLanguage) {
-      languageButton.textContent = currentLanguage.flag;
-      languageButton.setAttribute("aria-label", `${i18n.t("languageSelector", "ariaLabels")} - ${currentLanguage.name}`);
-    }
   }
   function initializeLanguage() {
     i18n.initialize().then(() => {
-      i18n.loadSavedLanguage().then(() => {
-        i18n.updateUI();
-        updateLanguageButtonIcon();
-        logToConsole(`\u{1F310} Language system initialized: ${i18n.getCurrentLanguage()}`, "info");
-      });
+      i18n.updateUI();
+      logToConsole(`\u{1F310} Language system initialized: ${i18n.getCurrentLanguage()}`, "info");
     }).catch((error) => {
       logToConsole(`\u274C Error initializing language system: ${error}`, "error");
     });
@@ -1555,23 +1488,13 @@
     const resumeUpload = document.getElementById("resume-upload");
     consoleOutput = document.getElementById("console-output");
     const clearConsoleBtn = document.getElementById("clear-console");
-    const themeToggleBtn = document.getElementById("theme-toggle");
     if (!consoleOutput) {
       console.error("Console output element not found!");
     } else {
       logToConsole(i18n.getConsoleMessage("initialized"), "info");
     }
     initializeTheme();
-    if (themeToggleBtn) {
-      themeToggleBtn.addEventListener("click", toggleTheme);
-      logToConsole(i18n.getConsoleMessage("themeToggleInitialized"), "info");
-    }
     initializeLanguage();
-    const languageToggleBtn = document.getElementById("language-toggle");
-    if (languageToggleBtn) {
-      languageToggleBtn.addEventListener("click", toggleLanguageDropdown);
-      logToConsole(i18n.getConsoleMessage("languageToggleInitialized"), "info");
-    }
     if (copyBtn) {
       copyBtn.addEventListener("click", async () => {
         try {

@@ -63,102 +63,26 @@ function applyTheme(theme: ThemeMode): void {
 }
 
 function initializeTheme(): void {
-  // Load saved theme preference from storage
-  chrome.storage.sync.get(['jobops_theme'], (result) => {
-    const savedTheme = result.jobops_theme as ThemeMode || 'system';
-    applyTheme(savedTheme);
-  });
+  // Always use system theme
+  applyTheme('system');
   
   // Listen for system theme changes
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   mediaQuery.addEventListener('change', (e) => {
-    if (currentTheme === 'system') {
-      applyTheme('system');
-    }
-  });
-}
-
-function toggleTheme(): void {
-  const newTheme: ThemeMode = currentTheme === 'light' ? 'dark' : 
-                             currentTheme === 'dark' ? 'system' : 'light';
-  
-  applyTheme(newTheme);
-  
-  // Save theme preference
-  chrome.storage.sync.set({ jobops_theme: newTheme }, () => {
-    logToConsole(`${i18n.getConsoleMessage('themePreferenceSaved')}: ${newTheme}`, 'success');
+    applyTheme('system');
   });
 }
 
 
-function toggleLanguageDropdown(): void {
-  // Get current language and cycle to next alphabetically
-  const currentLang = i18n.getCurrentLanguage();
-  const supportedLanguages: SupportedLanguage[] = ['en', 'fr', 'nl', 'tr']; // Alphabetical order
-  
-  // Find current index and get next language
-  const currentIndex = supportedLanguages.indexOf(currentLang);
-  const nextIndex = (currentIndex + 1) % supportedLanguages.length;
-  const nextLanguage = supportedLanguages[nextIndex];
-  
-  // Switch to next language
-  handleLanguageChange(nextLanguage);
-}
 
-
-
-async function handleLanguageChange(langCode: SupportedLanguage): Promise<void> {
-  try {
-    logToConsole(`🌐 Changing language to ${langCode}...`, 'info');
-    
-    // Change language
-    await i18n.setLanguage(langCode);
-    
-    // Update UI with new language
-    i18n.updateUI();
-    
-    // Translate dynamic content
-    await i18n.translateDynamicContent();
-    
-    // Update language button icon
-    updateLanguageButtonIcon();
-    
-    logToConsole(`✅ Language changed to ${langCode}`, 'success');
-    showNotification(i18n.getNotificationMessage('languageChanged'));
-    
-  } catch (error) {
-    logToConsole(`❌ Error changing language: ${error}`, 'error');
-    showNotification('Error changing language', true);
-  }
-}
-
-function updateLanguageButtonIcon(): void {
-  const languageButton = document.getElementById('language-toggle') as HTMLButtonElement;
-  if (!languageButton) return;
-  
-  const currentLang = i18n.getCurrentLanguage();
-  const supportedLanguages = i18n.getSupportedLanguages();
-  const currentLanguage = supportedLanguages.find(lang => lang.code === currentLang);
-  
-  if (currentLanguage) {
-    languageButton.textContent = currentLanguage.flag;
-    languageButton.setAttribute('aria-label', `${i18n.t('languageSelector', 'ariaLabels')} - ${currentLanguage.name}`);
-  }
-}
 
 function initializeLanguage(): void {
-  // Initialize i18n manager
+  // Initialize i18n manager with browser locale only
   i18n.initialize().then(() => {
-    // Load saved language preference
-    i18n.loadSavedLanguage().then(() => {
-      // Update UI with current language
-      i18n.updateUI();
-      
-      // Update language button icon
-      updateLanguageButtonIcon();
-      
-      logToConsole(`🌐 Language system initialized: ${i18n.getCurrentLanguage()}`, 'info');
-    });
+    // Update UI with current language (browser locale)
+    i18n.updateUI();
+    
+    logToConsole(`🌐 Language system initialized: ${i18n.getCurrentLanguage()}`, 'info');
   }).catch(error => {
     logToConsole(`❌ Error initializing language system: ${error}`, 'error');
   });
@@ -206,9 +130,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   consoleOutput = document.getElementById("console-output") as HTMLElement;
   const clearConsoleBtn = document.getElementById("clear-console") as HTMLButtonElement;
   
-  // Theme toggle button
-  const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement;
-  
   // Validate console elements
   if (!consoleOutput) {
     console.error("Console output element not found!");
@@ -216,24 +137,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     logToConsole(i18n.getConsoleMessage('initialized'), "info");
   }
   
-  // Initialize theme system
+  // Initialize theme system (system theme only)
   initializeTheme();
   
-  // Set up theme toggle event listener
-  if (themeToggleBtn) {
-    themeToggleBtn.addEventListener('click', toggleTheme);
-    logToConsole(i18n.getConsoleMessage('themeToggleInitialized'), "info");
-  }
-
-  // Initialize language system
+  // Initialize language system (browser locale only)
   initializeLanguage();
-  
-  // Set up language toggle event listener
-  const languageToggleBtn = document.getElementById('language-toggle') as HTMLButtonElement;
-  if (languageToggleBtn) {
-    languageToggleBtn.addEventListener('click', toggleLanguageDropdown);
-    logToConsole(i18n.getConsoleMessage('languageToggleInitialized'), "info");
-  }
   
 
   

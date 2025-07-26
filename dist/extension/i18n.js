@@ -23,6 +23,8 @@ class I18nManager {
         }
         this.initializationPromise = this.loadAllTranslations();
         await this.initializationPromise;
+        // Detect browser language and set it
+        this.detectBrowserLanguage();
         this.isInitialized = true;
     }
     /**
@@ -98,26 +100,8 @@ class I18nManager {
             throw new Error(`Translation not loaded for language: ${lang}`);
         }
         this.currentLanguage = lang;
-        // Save language preference
-        chrome.storage.sync.set({ jobops_language: lang }, () => {
-            console.log(`Language preference saved: ${lang}`);
-        });
         // Trigger UI update
         this.updateUI();
-    }
-    /**
-     * Load saved language preference
-     */
-    async loadSavedLanguage() {
-        return new Promise((resolve) => {
-            chrome.storage.sync.get(['jobops_language'], (result) => {
-                const savedLang = result.jobops_language;
-                if (savedLang && this.isSupportedLanguage(savedLang)) {
-                    this.currentLanguage = savedLang;
-                }
-                resolve();
-            });
-        });
     }
     /**
      * Get translation for a key
@@ -337,8 +321,7 @@ class I18nManager {
         const actionButtons = [
             { id: 'copy-markdown', key: 'copy' },
             { id: 'generate-report', key: 'generateReport' },
-            { id: 'settings', key: 'settings' },
-            { id: 'language-toggle', key: 'languageSelector' }
+            { id: 'settings', key: 'settings' }
         ];
         // Control buttons can have text
         const controlButtons = [
@@ -370,7 +353,6 @@ class I18nManager {
         const ariaLabels = [
             { id: 'copy-markdown', key: 'copyToClipboard' },
             { id: 'generate-report', key: 'generateReport' },
-            { id: 'theme-toggle', key: 'toggleTheme' },
             { id: 'settings', key: 'settings' },
             { id: 'clear-console', key: 'clearConsole' }
         ];
