@@ -3,8 +3,8 @@
   "name": "JobOps Clipper",
   "version": "0.1.0",
   "description": "Clip web pages and send to JobOps app.",
-  "permissions": ["scripting", "activeTab", "notifications", "clipboardWrite", "storage"],
-  "host_permissions": ["http://localhost:8877/*"],
+  "permissions": ["scripting", "activeTab", "notifications", "clipboardWrite", "storage", "fileSystem"],
+  "host_permissions": ["http://localhost:8877/*", "https://api.groq.com/*"],
   "background": {
     "service_worker": "background.js"
   },

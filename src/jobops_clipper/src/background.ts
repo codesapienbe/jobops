@@ -72,6 +72,8 @@ function getBackendApiBase(): Promise<string | null> {
   });
 }
 
+
+
 // Compatibility and environment checks for Manifest V3 background service worker
 try {
   // Check for service worker context
@@ -97,6 +99,8 @@ try {
   } else {
     console.warn('[JobOps Clipper] Unable to access manifest metadata.');
   }
+
+
 
   // Defensive event registration
   if (chrome && chrome.action && chrome.action.onClicked) {

@@ -1,233 +1,177 @@
-# JobOps Clipper
+# JobOps Clipper Extension
 
-A secure, local-first Chrome extension and backend service for clipping web content and sending it to your JobOps desktop app.
+A Chrome extension for clipping job postings and generating comprehensive application tracking reports using AI.
 
----
+## Features
 
-## Overview
+### Core Functionality
 
-**JobOps Clipper** enables you to extract ("clip") content from any web page and send it as structured JSON (e.g., Markdown) to your locally running JobOps app. Inspired by Obsidian Web Clipper, this tool is designed for privacy, security, and seamless integration with your workflow.
+- **Web Page Clipping**: Extract job posting data from any webpage
+- **Metadata Extraction**: Automatically capture title, description, requirements, and other job details
+- **Markdown Generation**: Convert clipped content to structured markdown format
 
-- **Chrome Extension:** Written in TypeScript, extracts and serializes web content, then sends it to your local JobOps backend.
-- **Backend Service:** Python Flask app, receives clips and stores them securely for JobOps to process.
-- **Local-Only:** No data leaves your machine. No Chrome Store publishing required.
+### AI-Powered Report Generation
 
----
+- **Generate Report Button**: Creates comprehensive job application tracking reports
+- **PDF Resume Integration**: Upload and extract content from PDF resumes
+- **Dual LLM Support**:
+  - **Primary**: Groq API with qwen2.5-32b-instant model (free tier with high usage limits)
+  - **Fallback**: Local Ollama with qwen3:1.7b model
 
-## Architecture
+### Report Template
 
-```
-[Chrome Extension (TypeScript)]
-        │
-        ▼
-[Local Flask Backend (Python)]
-        │
-        ▼
-[JobOps App / File System]
-```
+The extension generates detailed job application tracking reports including:
 
-- **Content Script:** Extracts and serializes web page content.
-- **Background Script:** Handles user actions and communication with backend.
-- **Flask Backend:** Receives, validates, and stores clipped data.
+- Position details and requirements analysis
+- Company research and competitive analysis
+- Skills matrix and gap analysis
+- Application materials tracking
+- Interview scheduling and preparation
+- Communication logs
+- Performance assessment
+- Outcome analysis and lessons learned
 
----
+## Setup
 
-## Security & Privacy
+### 1. Install Dependencies
 
-- **Local Communication Only:** All data is sent to `http://localhost:<PORT>`.
-- **No Cloud, No Tracking:** Your data never leaves your device.
-- **Input Validation & Sanitization:** All incoming data is validated and sanitized before storage.
-- **Minimal Permissions:** Extension requests only the permissions it needs.
-- **No Sensitive Data in Logs:** All logs are sanitized and written to `application.log` in structured JSON format.
-
----
-
-## Prerequisites
-
-- **Node.js** (v16+ recommended)
-- **npm** (v8+ recommended)
-- **Python** (3.8+)
-- **pip**
-- **UV**
-- **Google Chrome** (latest)
-
----
-
-## Setup Instructions
-
-### 1. Clone the Repository
-
-```sh
-git clone <your-repo-url>
-cd jobops/src/jobops-clipper
-```
-
-### 2. Backend (Flask) Setup
-
-```sh
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-```
-
-- The backend will listen on `http://localhost:5000/clip` by default.
-- All received clips are stored in the `clips/` directory.
-
-#### Configuration
-
-- To change the port or storage directory, edit `backend/app.py`.
-
-### 3. Chrome Extension Setup
-
-```sh
-cd extension
+```bash
 npm install
+```
+
+### 2. Configure API Keys
+
+- **Groq API Key**: Click the ⚙️ settings button in the extension popup to configure your Groq API key
+- The extension will use Ollama as fallback if no Groq key is configured
+- API keys are stored securely in Chrome's sync storage
+
+### 3. Build Extension
+
+```bash
 npm run build
 ```
 
-> Note: TypeScript type support for Chrome APIs is provided by `@types/chrome`, which is installed automatically as a dev dependency.
+### 4. Load in Chrome
 
-#### Load Unpacked Extension
-
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable **Developer mode** (top right)
-3. Click **Load unpacked**
-4. Select the `extension/dist` directory
-
-#### Configuration
-
-- The extension is pre-configured to send data to `http://localhost:5000/clip`.
-- To change the endpoint, edit `src/config.ts` in the extension source.
-
----
+1. Open Chrome Extensions (chrome://extensions/)
+2. Enable "Developer mode"
+3. Click "Load unpacked"
+4. Select the `dist/extension` folder
 
 ## Usage
 
-1. Start the Flask backend (`python app.py`)
-2. Load the extension in Chrome
-3. Navigate to any web page
-4. Click the JobOps Clipper icon to clip the page
-5. The content will be sent to your JobOps app (or stored in `clips/`)
+### Basic Clipping
 
----
+1. Navigate to a job posting page
+2. Click the JobOps Clipper extension icon
+3. Review extracted data in the popup
+4. Use the 📋 button to copy markdown content
 
-## Best Practices
+### Generate Comprehensive Report
 
-- **Keep your backend running** while using the extension.
-- **Review and sanitize** all received data before further processing.
-- **Monitor `application.log`** for errors or warnings.
-- **Update dependencies** regularly for security.
+1. Click the 📊 "Generate Report" button
+2. Upload your PDF resume when prompted
+3. The extension will:
+   - Extract resume content from PDF
+   - Send job data + resume to Groq API (or Ollama fallback)
+   - Generate a comprehensive application tracking report
+   - Display the filled report in the markdown editor
 
----
 
-## Security Notes
 
-- The backend only accepts requests from `localhost`.
-- All input is validated and sanitized before file operations.
-- No authentication is required for local use, but you may add a token for extra protection.
-- Never expose the backend to the public internet without additional security measures.
+## Configuration
 
----
+### Environment Variables
 
-## Directory Structure
+- `BACKEND_API_BASE`: Backend API URL (default: <http://localhost:8877>)
+- `GROQ_API_KEY`: Groq API key (stored securely in Chrome sync storage)
+
+### Permissions
+
+- `scripting`: Execute content scripts
+- `activeTab`: Access current tab
+- `notifications`: Show status notifications
+- `clipboardWrite`: Copy content to clipboard
+- `storage`: Store API keys and settings
+- `fileSystem`: Access PDF files for resume upload
+
+### Host Permissions
+
+- `http://localhost:8877/*`: Backend API
+- `https://api.groq.com/*`: Groq API
+- `<all_urls>`: Content script injection
+
+## Technical Details
+
+### LLM Integration
+
+- **Groq API**: Primary LLM with qwen2.5-32b-instant model
+  - Free tier with generous usage limits (~20 jobs/day)
+  - Fast response times
+  - Structured output for report generation
+- **Ollama Fallback**: Local LLM with qwen3:1.7b model
+  - Runs locally for privacy
+  - No API key required
+  - Slower but more private
+
+### PDF Processing
+
+- Uses PDF.js library for text extraction
+- Dynamically loads PDF.js from CDN if not available
+- Extracts all text content from PDF resumes
+- Handles multi-page documents
+
+### Security
+
+- API keys stored securely in Chrome sync storage
+- No data sent to external services without user consent
+- Local fallback option for privacy-conscious users
+- PDF content processed locally before sending to LLM
+
+## Development
+
+### Project Structure
 
 ```
-jobops-clipper/
-  backend/           # Flask backend service
-    app.py
-    requirements.txt
-    application.log
-    clips/
-  extension/         # Chrome extension (TypeScript)
-    src/
-    dist/
-    manifest.json
-    package.json
-    tsconfig.json
-  README.md
+src/
+├── background.ts      # Service worker
+├── content.ts         # Content script
+├── popup.ts          # Popup logic
+├── popup.html        # Popup UI
+├── popup.css         # Popup styling
+└── icon.png          # Extension icon
 ```
 
----
+### Build Process
+
+1. TypeScript compilation
+2. ESBuild bundling with environment variables
+3. Asset copying (manifest, icons, HTML, CSS)
+4. Output to `dist/extension/`
+
+### Adding New Features
+
+1. Update TypeScript files in `src/`
+2. Modify HTML/CSS as needed
+3. Update manifest.json for new permissions
+4. Run `npm run build`
+5. Reload extension in Chrome
 
 ## Troubleshooting
 
-- **Extension not working?** Ensure the backend is running and accessible at the configured port.
-- **CORS errors?** The backend is configured to allow local extension requests.
-- **Permission issues?** Make sure Chrome has access to the extension and the backend can write to `clips/`.
+### Common Issues
 
----
+- **PDF extraction fails**: Ensure PDF is not password-protected
+- **Groq API errors**: Check API key in settings
+- **Ollama not working**: Ensure Ollama is running locally with correct model
+- **Build failures**: Check TypeScript compilation errors
 
-## Contributing
+### Logs
 
-- Follow secure coding practices (see [OWASP Top 10](https://owasp.org/www-project-top-ten/)).
-- Use structured logging and sanitize all logs.
-- Keep business logic and workflows intact.
-- Submit focused pull requests (one logical change at a time).
-
----
+- Build logs: `build.log`
+- Application logs: `application.log`
+- Chrome DevTools: Check console for runtime errors
 
 ## License
 
-MIT License. See [LICENSE](../LICENSE) for details.
-
----
-
-## Local Installation & Running
-
-### 1. Build and Install Dependencies
-
-From the project root, run:
-
-```sh
-./pyven.sh install
-```
-
-- This will sync Python dependencies, build the Python package, and install/build the Chrome extension.
-
-### 2. Start the Backend
-
-From the project root, run:
-
-```sh
-uv run jobops-clipper
-```
-
-- This starts the Flask backend on `http://localhost:5000`.
-
-### 3. Start the JobOps Desktop App
-
-From the project root, run:
-
-```sh
-uv run jobops
-```
-
-- This starts the main JobOps desktop application. Ensure both the backend and the desktop app are running for full integration.
-
-### 4. Load the Chrome Extension in Google Chrome
-
-1. Open Google Chrome.
-2. Go to `chrome://extensions/` in the address bar.
-3. Enable **Developer mode** (toggle in the top right).
-4. Click **Load unpacked**.
-5. Select the `src/jobops-clipper/extension/dist` directory.
-6. The JobOps Clipper extension should now appear in your extensions list.
-
-### 5. Using the Clipper
-
-1. Ensure both the JobOps desktop app and the backend are running.
-2. Navigate to any web page you want to clip.
-3. Click the **JobOps Clipper** extension icon in the Chrome toolbar.
-4. You should see a notification indicating success or error.
-5. Clipped content will be saved as a Markdown file in the `clips/` directory (where the backend is running), and can be processed by the JobOps app.
-
-### 6. Troubleshooting
-
-- If you see errors:
-  - Ensure both the backend and the JobOps desktop app are running and accessible.
-  - Check Chrome’s extension errors (click the “Errors” link in the extension card).
-  - Review `application.log` for backend issues.
-
----
+MIT License - see LICENSE file for details.

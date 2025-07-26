@@ -5,11 +5,21 @@
 // @ts-ignore
 declare const JOBOPS_BACKEND_URL: string | undefined;
 
+// LLM Configuration
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'qwen2.5-32b-instant'; // Free tier model with high usage limits
+const OLLAMA_URL = 'http://localhost:11434';
+const OLLAMA_MODEL = 'qwen3:1.7b';
+
 document.addEventListener("DOMContentLoaded", async () => {
   let jobData: Record<string, any> = {};
+  let resumeContent: string = '';
   const markdownEditor = document.getElementById("markdown-editor") as HTMLTextAreaElement;
   const copyBtn = document.getElementById("copy-markdown") as HTMLButtonElement;
+  const generateReportBtn = document.getElementById("generate-report") as HTMLButtonElement;
+  const settingsBtn = document.getElementById("settings") as HTMLButtonElement;
   const status = document.getElementById("clip-status") as HTMLElement;
+  const resumeUpload = document.getElementById("resume-upload") as HTMLInputElement;
   // Property fields
   const propTitle = document.getElementById("prop-title") as HTMLInputElement;
   const propUrl = document.getElementById("prop-url") as HTMLInputElement;
@@ -21,10 +31,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const propHeadings = document.getElementById("prop-headings") as HTMLDivElement;
   const propImages = document.getElementById("prop-images") as HTMLDivElement;
   const propLocation = document.getElementById("prop-location") as HTMLInputElement;
-  const autoMapBtn = document.getElementById("auto-map-ollama") as HTMLButtonElement;
   
   // Enable copy button by default - it should always be clickable
   copyBtn.disabled = false;
+  generateReportBtn.disabled = false;
 
   // Set up toggle functionality
   setupToggleHandlers();
@@ -43,8 +53,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       markdownEditor.value = generateMarkdown(jobData);
       // Copy button is always enabled
       copyBtn.disabled = false;
+      generateReportBtn.disabled = false;
     }
   });
+
+  // Set up resume upload handler
+  resumeUpload.addEventListener('change', handleResumeUpload);
+
+  // Set up generate report button handler
+  generateReportBtn.addEventListener('click', handleGenerateReport);
+
+  // Set up settings button handler
+  settingsBtn.addEventListener('click', handleSettings);
 
   function setupToggleHandlers() {
     // Add click event listeners to all toggle headers
@@ -207,26 +227,90 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  autoMapBtn.onclick = async () => {
-    autoMapBtn.disabled = true;
-    status.textContent = "Auto-mapping with Ollama...";
-    try {
-      const enhanced = await enhanceWithOllama(jobData);
-      jobData = enhanced;
-      populatePropertyFields(jobData);
-      markdownEditor.value = generateMarkdown(jobData);
-      status.textContent = "Fields auto-mapped!";
-      // Copy button remains enabled regardless of Ollama success
-      copyBtn.disabled = false;
-    } catch (e: any) {
-      status.textContent = "Ollama mapping failed: " + (e?.message || e);
-      // Copy button remains enabled even if Ollama fails
-      copyBtn.disabled = false;
-    } finally {
-      autoMapBtn.disabled = false;
-      setTimeout(() => status.textContent = '', 2000);
+
+
+  // Handle resume upload
+  async function handleResumeUpload(event: Event) {
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    
+    if (!file) {
+      showNotification("No file selected", true);
+      return;
     }
-  };
+
+    if (file.type !== 'application/pdf') {
+      showNotification("Please select a PDF file", true);
+      return;
+    }
+
+    try {
+      status.textContent = "Extracting resume content...";
+      resumeContent = await extractPdfContent(file);
+      showNotification("✅ Resume content extracted successfully!");
+      status.textContent = "Resume ready for report generation";
+    } catch (error) {
+      console.error("PDF extraction failed:", error);
+      showNotification("❌ Failed to extract PDF content", true);
+      status.textContent = "PDF extraction failed";
+    }
+  }
+
+  // Handle generate report
+  async function handleGenerateReport() {
+    if (!resumeContent) {
+      // Trigger file upload if no resume content
+      resumeUpload.click();
+      return;
+    }
+
+    generateReportBtn.disabled = true;
+    status.textContent = "Generating comprehensive report...";
+
+    try {
+      const report = await generateJobReport(jobData, resumeContent);
+      markdownEditor.value = report;
+      showNotification("✅ Report generated successfully!");
+      status.textContent = "Report generated and ready to copy";
+    } catch (error) {
+      console.error("Report generation failed:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('API key')) {
+        showNotification("❌ Groq API key not configured. Please set it in extension settings.", true);
+        status.textContent = "API key required - check extension settings";
+      } else {
+        showNotification("❌ Report generation failed", true);
+        status.textContent = "Report generation failed";
+      }
+    } finally {
+      generateReportBtn.disabled = false;
+      setTimeout(() => status.textContent = '', 3000);
+    }
+  }
+
+  // Handle settings
+  async function handleSettings() {
+    const apiKey = await getGroqApiKey();
+    const newApiKey = prompt('Enter your Groq API key (leave empty to remove):', apiKey || '');
+    
+    if (newApiKey !== null) {
+      if (newApiKey.trim()) {
+        await new Promise<void>((resolve) => {
+          chrome.storage.sync.set({ groq_api_key: newApiKey.trim() }, () => {
+            showNotification("✅ Groq API key saved!");
+            resolve();
+          });
+        });
+      } else {
+        await new Promise<void>((resolve) => {
+          chrome.storage.sync.remove(['groq_api_key'], () => {
+            showNotification("✅ Groq API key removed!");
+            resolve();
+          });
+        });
+      }
+    }
+  }
 });
 
 function generateMarkdown(jobData: Record<string, any>): string {
@@ -263,110 +347,177 @@ function escapeHtml(str: string): string {
   });
 }
 
-// Ollama enhancement helper
-const OLLAMA_URL = 'http://localhost:11434';
-const OLLAMA_MODEL = 'qwen3:1.7b';
-// Define the job schema for structured output
-const jobSchema = {
-  type: "object",
-  properties: {
-    title: { type: "string" },
-    url: { type: "string" },
-    body: { type: "string" },
-    metaDescription: { type: "string" },
-    metaKeywords: { type: "array", items: { type: "string" } },
-    ogType: { type: "string" },
-    ogSiteName: { type: "string" },
-    canonical: { type: "string" },
-    headings: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          tag: { type: "string" },
-          text: { type: "string" }
-        },
-        required: ["tag", "text"]
-      }
-    },
-    images: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          src: { type: "string" },
-          alt: { type: "string" }
-        },
-        required: ["src"]
-      }
-    },
-    selectedText: { type: "string" },
-    created_at: { type: "string" },
-    jobops_action: { type: "string" }
-  },
-  required: ["title", "url", "body", "created_at", "jobops_action"]
-};
-async function enhanceWithOllama(jobData: Record<string, any>): Promise<Record<string, any>> {
-  const prompt = `Extract and complete the following job data as JSON.`;
-  console.info('[JobOps Clipper] Sending prompt to Ollama:', prompt, jobData);
-  const response = await fetch(`${OLLAMA_URL}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt,
-      format: jobSchema,
-      stream: false,
-      data: jobData // Optionally send jobData as context
-    })
-  });
-  if (!response.ok) {
-    let errorMsg = 'Ollama API error';
-    try {
-      const err = await response.json();
-      errorMsg += `\nStatus: ${response.status} ${response.statusText}`;
-      errorMsg += `\nHeaders: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`;
-      errorMsg += `\nBody: ${JSON.stringify(err)}`;
-      console.error('[JobOps Clipper] Ollama API error:', errorMsg);
-    } catch (e) {
+// Extract PDF content using PDF.js
+async function extractPdfContent(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async function(e) {
       try {
-        const text = await response.text();
-        errorMsg += `\nStatus: ${response.status} ${response.statusText}`;
-        errorMsg += `\nHeaders: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`;
-        errorMsg += `\nBody: ${text}`;
-        console.error('[JobOps Clipper] Ollama API error:', errorMsg);
-      } catch {}
+        const typedarray = new Uint8Array(e.target?.result as ArrayBuffer);
+        
+        // Use PDF.js to extract text
+        const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
+        if (!pdfjsLib) {
+          // Fallback: try to load PDF.js dynamically
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+          script.onload = () => extractPdfWithLibrary(typedarray, resolve, reject);
+          script.onerror = () => reject(new Error('Failed to load PDF.js'));
+          document.head.appendChild(script);
+        } else {
+          extractPdfWithLibrary(typedarray, resolve, reject);
+        }
+      } catch (error) {
+        reject(error);
+      }
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function extractPdfWithLibrary(typedarray: Uint8Array, resolve: (text: string) => void, reject: (error: Error) => void) {
+  try {
+    const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
+    const loadingTask = pdfjsLib.getDocument({ data: typedarray });
+    const pdf = await loadingTask.promise;
+    
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += pageText + '\n';
     }
-    throw new Error(errorMsg);
+    
+    resolve(fullText.trim());
+  } catch (error) {
+    reject(new Error(`PDF extraction failed: ${error}`));
   }
-  const data = await response.json();
-  let completed;
-  try {
-    completed = JSON.parse(data.response);
-  } catch {
-    completed = jobData;
-  }
-  return { ...jobData, ...completed };
 }
 
-async function isOllamaModelAvailable(model: string): Promise<boolean> {
+// Generate comprehensive job report using LLM
+async function generateJobReport(jobData: Record<string, any>, resumeContent: string): Promise<string> {
+  const prompt = `You are an expert job application analyst. Based on the provided job posting data and resume content, generate a comprehensive job application tracking report.
+
+Job Posting Data:
+${JSON.stringify(jobData, null, 2)}
+
+Resume Content:
+${resumeContent}
+
+Please analyze this information and fill out the job application tracking report template. Extract all relevant information from both the job posting and resume to populate the template fields. Use your analysis to:
+
+1. Identify skills matches and gaps
+2. Suggest interview preparation strategies
+3. Provide actionable insights for the application process
+4. Create realistic timelines and goals
+5. Offer specific recommendations for improvement
+
+Fill in all template placeholders with concrete, actionable information based on the provided data.`;
+
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/tags`);
-    if (!response.ok) return false;
+    // Try Groq first
+    const groqResponse = await callGroqAPI(prompt);
+    if (groqResponse) {
+      return groqResponse;
+    }
+  } catch (error) {
+    console.warn('Groq API failed, falling back to Ollama:', error);
+  }
+
+  // Fallback to Ollama
+  try {
+    const ollamaResponse = await callOllamaAPI(prompt);
+    if (ollamaResponse) {
+      return ollamaResponse;
+    }
+  } catch (error) {
+    console.error('Ollama API also failed:', error);
+  }
+
+  throw new Error('Both Groq and Ollama APIs failed');
+}
+
+// Call Groq API
+async function callGroqAPI(prompt: string): Promise<string | null> {
+  try {
+    // Get API key from storage or environment
+    const apiKey = await getGroqApiKey();
+    if (!apiKey) {
+      console.warn('No Groq API key found');
+      throw new Error('Groq API key not configured');
+    }
+
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert job application analyst and career advisor. Provide comprehensive, actionable insights and fill out templates completely.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 4000,
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.status} ${response.statusText}`);
+    }
+
     const data = await response.json();
-    if (!data.models || !Array.isArray(data.models)) return false;
-    return data.models.some((m: any) => m.name === model);
-  } catch {
-    return false;
+    return data.choices?.[0]?.message?.content || null;
+  } catch (error) {
+    console.error('Groq API call failed:', error);
+    return null;
   }
 }
 
-async function isOllamaAvailable(): Promise<boolean> {
+// Call Ollama API (fallback)
+async function callOllamaAPI(prompt: string): Promise<string | null> {
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/tags`);
-    return response.ok;
-  } catch {
-    return false;
+    const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: prompt,
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.response || null;
+  } catch (error) {
+    console.error('Ollama API call failed:', error);
+    return null;
   }
 }
+
+// Get Groq API key from Chrome storage
+async function getGroqApiKey(): Promise<string | null> {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get(['groq_api_key'], (result) => {
+      resolve(result.groq_api_key || null);
+    });
+  });
+}
+
+
 

@@ -65,10 +65,14 @@
           </div>
         </div>
         <div class="action-buttons">
-          <button id="auto-map-ollama" class="action-button" aria-label="Auto-map with Ollama">🪄</button>
           <button id="copy-markdown" class="action-button" aria-label="Copy to Clipboard">📋</button>
         </div>
+        <div class="action-buttons" style="margin-top: 8px;">
+          <button id="generate-report" class="action-button" aria-label="Generate Report">📊</button>
+          <button id="settings" class="action-button" aria-label="Settings">⚙️</button>
+        </div>
       </form>
+      <input type="file" id="resume-upload" accept=".pdf" style="display: none;" />
       <div id="clip-status"></div>
     </div>
     <script src="popup.js"></script>
