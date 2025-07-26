@@ -59,6 +59,9 @@
     const propLocation = document.getElementById("prop-location");
     copyBtn.disabled = false;
     generateReportBtn.disabled = false;
+    logToConsole("\u2705 Generate Report button enabled and ready", "success");
+    generateReportBtn.style.opacity = "1";
+    generateReportBtn.style.cursor = "pointer";
     setupToggleHandlers();
     const backendUrl = typeof JOBOPS_BACKEND_URL !== "undefined" ? JOBOPS_BACKEND_URL : "http://localhost:8877";
     chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
@@ -82,7 +85,15 @@
     } else {
       console.error("Resume upload element not found!");
     }
-    generateReportBtn.addEventListener("click", handleGenerateReport);
+    generateReportBtn.addEventListener("click", (event) => {
+      console.log("\u{1F3AF} GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
+      logToConsole("\u{1F3AF} Generate Report button clicked - event handler triggered", "info");
+      generateReportBtn.style.transform = "scale(0.95)";
+      setTimeout(() => {
+        generateReportBtn.style.transform = "scale(1)";
+      }, 100);
+      handleGenerateReport();
+    });
     settingsBtn.addEventListener("click", handleSettings);
     settingsBtn.addEventListener("contextmenu", handleTestAPI);
     if (clearConsoleBtn) {
@@ -152,72 +163,12 @@
       }
       propImages.innerHTML = "";
       if (Array.isArray(data.images) && data.images.length > 0) {
-        logToConsole(`\u{1F5BC}\uFE0F Processing ${data.images.length} images...`, "debug");
-        for (const img of data.images) {
-          const thumb = document.createElement("img");
-          thumb.className = "property-image-thumb";
-          thumb.alt = img.alt || "";
-          thumb.title = img.alt || img.src;
-          thumb.onerror = () => {
-            const logEntry = {
-              timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-              level: "WARN",
-              component: "jobops_clipper.ui",
-              message: "Image loading failed - gracefully handled with placeholder",
-              correlation_id: null,
-              user_id: null,
-              request_id: null,
-              image_url: img.src,
-              image_alt: img.alt || null,
-              error_type: "CORS_or_network_error",
-              action_taken: "replaced_with_placeholder"
-            };
-            logToConsole(`\u26A0\uFE0F Image loading failed: ${img.src}`, "warning");
-            chrome.storage.sync.get(["jobops_backend_url"], (result) => {
-              const backendUrl2 = result.jobops_backend_url || "http://localhost:8877";
-              fetch(`${backendUrl2}/log`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(logEntry)
-              }).catch(() => {
-                console.warn("Image loading failed:", logEntry);
-              });
-            });
-            thumb.style.display = "none";
-            const placeholder = document.createElement("div");
-            placeholder.className = "property-image-placeholder";
-            placeholder.textContent = "\u{1F5BC}\uFE0F";
-            placeholder.title = img.alt || img.src;
-            thumb.parentNode?.replaceChild(placeholder, thumb);
-          };
-          thumb.onload = () => {
-            const logEntry = {
-              timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-              level: "INFO",
-              component: "jobops_clipper.ui",
-              message: "Image loaded successfully",
-              correlation_id: null,
-              user_id: null,
-              request_id: null,
-              image_url: img.src,
-              image_alt: img.alt || null,
-              status: "loaded_successfully"
-            };
-            logToConsole(`\u2705 Image loaded successfully: ${img.src}`, "debug");
-            chrome.storage.sync.get(["jobops_backend_url"], (result) => {
-              const backendUrl2 = result.jobops_backend_url || "http://localhost:8877";
-              fetch(`${backendUrl2}/log`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(logEntry)
-              }).catch(() => {
-                console.log("Image loaded successfully:", logEntry);
-              });
-            });
-          };
-          thumb.src = img.src;
-          propImages.appendChild(thumb);
-        }
+        const imageCount = document.createElement("div");
+        imageCount.className = "property-image-count";
+        imageCount.textContent = `\u{1F5BC}\uFE0F ${data.images.length} images (not loaded)`;
+        imageCount.title = "Images skipped for performance";
+        propImages.appendChild(imageCount);
+        logToConsole(`\u{1F5BC}\uFE0F Skipped loading ${data.images.length} images for generate-report workflow`, "info");
       }
     }
     function updateJobDataFromFields() {
@@ -818,10 +769,14 @@ ${value}
     }
   }
   async function generateJobReportStreaming(jobData, resumeContent, onChunk) {
+    const cleanJobData = { ...jobData };
+    if (cleanJobData.images) {
+      delete cleanJobData.images;
+    }
     const prompt2 = `You are an expert job application analyst. Based on the provided job posting data and resume content, generate a comprehensive job application tracking report.
 
 Job Posting Data:
-${JSON.stringify(jobData, null, 2)}
+${JSON.stringify(cleanJobData, null, 2)}
 
 Resume Content:
 ${resumeContent}
@@ -862,10 +817,14 @@ Fill in all template placeholders with concrete, actionable information based on
     throw new Error("Both Groq and Ollama APIs failed");
   }
   async function generateJobReportWithOllama(jobData, resumeContent) {
+    const cleanJobData = { ...jobData };
+    if (cleanJobData.images) {
+      delete cleanJobData.images;
+    }
     const prompt2 = `You are an expert job application analyst. Based on the provided job posting data and resume content, generate a comprehensive job application tracking report.
 
 Job Posting Data:
-${JSON.stringify(jobData, null, 2)}
+${JSON.stringify(cleanJobData, null, 2)}
 
 Resume Content:
 ${resumeContent}

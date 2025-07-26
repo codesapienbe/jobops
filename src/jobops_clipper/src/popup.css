@@ -98,6 +98,9 @@ textarea {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
 }
 
 .action-button::before {
@@ -620,6 +623,18 @@ body {
   margin-right: 2px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.10);
 }
+
+.property-image-count {
+  display: inline-block;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: #aaa;
+  margin: 2px;
+  font-style: italic;
+}
 .property-input {
   flex: 1;
   background: rgba(24,24,32,0.85);
@@ -753,11 +768,12 @@ body {
 
 .properties-content, .markdown-content {
   max-height: 500px;
-  overflow: hidden;
+  overflow-y: auto;
   transition: max-height 0.3s ease, opacity 0.3s ease;
   opacity: 1;
   background: rgba(255,255,255,0.02);
   border-radius: 0 0 8px 8px;
+  padding: 12px;
 }
 
 .properties-content.collapsed, .markdown-content.collapsed {
@@ -777,6 +793,7 @@ body {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-height: 600px;
 }
 
 /* Real-time Response Section Styles */

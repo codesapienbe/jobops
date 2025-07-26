@@ -80,9 +80,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const propImages = document.getElementById("prop-images") as HTMLDivElement;
   const propLocation = document.getElementById("prop-location") as HTMLInputElement;
   
-  // Enable copy button by default - it should always be clickable
+  // Enable buttons by default - they should always be clickable
   copyBtn.disabled = false;
   generateReportBtn.disabled = false;
+  
+  // Add visual feedback for button readiness
+  logToConsole("✅ Generate Report button enabled and ready", "success");
+  generateReportBtn.style.opacity = "1";
+  generateReportBtn.style.cursor = "pointer";
 
   // Set up toggle functionality
   setupToggleHandlers();
@@ -116,8 +121,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Resume upload element not found!");
   }
 
-  // Set up generate report button handler
-  generateReportBtn.addEventListener('click', handleGenerateReport);
+  // Set up generate report button handler with immediate feedback
+  generateReportBtn.addEventListener('click', (event) => {
+    console.log("🎯 GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
+    logToConsole("🎯 Generate Report button clicked - event handler triggered", "info");
+    
+    // Immediate visual feedback
+    generateReportBtn.style.transform = "scale(0.95)";
+    setTimeout(() => {
+      generateReportBtn.style.transform = "scale(1)";
+    }, 100);
+    
+    // Call the handler
+    handleGenerateReport();
+  });
 
   // Set up settings button handler
   settingsBtn.addEventListener('click', handleSettings);
@@ -203,94 +220,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         propHeadings.appendChild(tag);
       }
     }
-    // Images as thumbnails with CORS error handling
+    // Images as thumbnails with CORS error handling - SKIPPED for generate-report workflow
     propImages.innerHTML = '';
     if (Array.isArray(data.images) && data.images.length > 0) {
-      logToConsole(`🖼️ Processing ${data.images.length} images...`, "debug");
-      for (const img of data.images) {
-        const thumb = document.createElement('img');
-        thumb.className = 'property-image-thumb';
-        thumb.alt = img.alt || '';
-        thumb.title = img.alt || img.src;
-        
-        // Handle CORS errors gracefully
-        thumb.onerror = () => {
-          // Log image loading failure with structured logging
-          const logEntry = {
-            timestamp: new Date().toISOString(),
-            level: "WARN",
-            component: "jobops_clipper.ui",
-            message: "Image loading failed - gracefully handled with placeholder",
-            correlation_id: null,
-            user_id: null,
-            request_id: null,
-            image_url: img.src,
-            image_alt: img.alt || null,
-            error_type: "CORS_or_network_error",
-            action_taken: "replaced_with_placeholder"
-          };
-          
-          // Log to console for debugging
-          logToConsole(`⚠️ Image loading failed: ${img.src}`, "warning");
-          
-          // Write to application.log file via backend API
-          chrome.storage.sync.get(['jobops_backend_url'], (result) => {
-            const backendUrl = result.jobops_backend_url || 'http://localhost:8877';
-            fetch(`${backendUrl}/log`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(logEntry)
-            }).catch(() => {
-              // Fallback: write to console if API call fails
-              console.warn('Image loading failed:', logEntry);
-            });
-          });
-          
-          thumb.style.display = 'none';
-          // Create a placeholder instead
-          const placeholder = document.createElement('div');
-          placeholder.className = 'property-image-placeholder';
-          placeholder.textContent = '🖼️';
-          placeholder.title = img.alt || img.src;
-          thumb.parentNode?.replaceChild(placeholder, thumb);
-        };
-        
-        thumb.onload = () => {
-          // Log successful image loading with structured logging
-          const logEntry = {
-            timestamp: new Date().toISOString(),
-            level: "INFO",
-            component: "jobops_clipper.ui",
-            message: "Image loaded successfully",
-            correlation_id: null,
-            user_id: null,
-            request_id: null,
-            image_url: img.src,
-            image_alt: img.alt || null,
-            status: "loaded_successfully"
-          };
-          
-          // Log to console for debugging
-          logToConsole(`✅ Image loaded successfully: ${img.src}`, "debug");
-          
-          // Write to application.log file via backend API
-          chrome.storage.sync.get(['jobops_backend_url'], (result) => {
-            const backendUrl = result.jobops_backend_url || 'http://localhost:8877';
-            fetch(`${backendUrl}/log`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(logEntry)
-            }).catch(() => {
-              // Fallback: write to console if API call fails
-              console.log('Image loaded successfully:', logEntry);
-            });
-          });
-        };
-        
-        // Set src after setting up error handlers
-        thumb.src = img.src;
-        propImages.appendChild(thumb);
-      }
+      // Skip image loading entirely - just show count
+      const imageCount = document.createElement('div');
+      imageCount.className = 'property-image-count';
+      imageCount.textContent = `🖼️ ${data.images.length} images (not loaded)`;
+      imageCount.title = 'Images skipped for performance';
+      propImages.appendChild(imageCount);
+      
+      logToConsole(`🖼️ Skipped loading ${data.images.length} images for generate-report workflow`, "info");
     }
   }
 
@@ -1025,10 +965,16 @@ async function extractPdfWithLibrary(typedarray: Uint8Array, resolve: (text: str
 
 // Generate comprehensive job report using LLM with streaming
 async function generateJobReportStreaming(jobData: Record<string, any>, resumeContent: string, onChunk?: (chunk: string) => void): Promise<string> {
+  // Remove images from job data to avoid any image-related issues
+  const cleanJobData = { ...jobData };
+  if (cleanJobData.images) {
+    delete cleanJobData.images;
+  }
+  
   const prompt = `You are an expert job application analyst. Based on the provided job posting data and resume content, generate a comprehensive job application tracking report.
 
 Job Posting Data:
-${JSON.stringify(jobData, null, 2)}
+${JSON.stringify(cleanJobData, null, 2)}
 
 Resume Content:
 ${resumeContent}
@@ -1081,10 +1027,16 @@ async function generateJobReport(jobData: Record<string, any>, resumeContent: st
 
 // Generate report using only Ollama (for fallback)
 async function generateJobReportWithOllama(jobData: Record<string, any>, resumeContent: string): Promise<string> {
+  // Remove images from job data to avoid any image-related issues
+  const cleanJobData = { ...jobData };
+  if (cleanJobData.images) {
+    delete cleanJobData.images;
+  }
+  
   const prompt = `You are an expert job application analyst. Based on the provided job posting data and resume content, generate a comprehensive job application tracking report.
 
 Job Posting Data:
-${JSON.stringify(jobData, null, 2)}
+${JSON.stringify(cleanJobData, null, 2)}
 
 Resume Content:
 ${resumeContent}
