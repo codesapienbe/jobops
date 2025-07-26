@@ -12,7 +12,7 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  padding: 24px 18px 0 18px;
+  padding: 24px 18px 80px 18px; /* Added bottom padding for console and buttons */
   background: linear-gradient(135deg, rgba(24,24,32,0.85) 0%, rgba(24,24,32,0.85) 100%);
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.08);
   backdrop-filter: blur(18px) saturate(1.2);
@@ -76,10 +76,20 @@ textarea {
   display: flex;
   flex-direction: row;
   gap: 6px;
-  margin-top: 12px;
-  margin-bottom: 8px;
+  padding: 12px;
   justify-content: center;
   height: 36px;
+  position: absolute;
+  bottom: var(--button-bottom, 40px); /* Dynamic positioning */
+  left: 18px; /* Account for popup padding */
+  right: 18px; /* Account for popup padding */
+  z-index: 95;
+  background: rgba(255, 255, 255, 0.1);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin: 0;
+  transition: bottom 0.3s ease;
 }
 
 .action-button {
@@ -189,9 +199,12 @@ button:hover {
   50% { opacity: 0.7; }
 }
 
-/* Console Monitor Styles */
+/* Console Monitor Styles - Fixed to bottom of popup */
 .console-monitor {
-  position: relative;
+  position: absolute;
+  bottom: 0;
+  left: 18px; /* Account for popup padding */
+  right: 18px; /* Account for popup padding */
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   border-top: 2px solid #00d4ff;
   box-shadow: 0 -4px 20px rgba(0, 212, 255, 0.3);
@@ -395,19 +408,14 @@ button:hover {
   }
 }
 
-/* Main content area should scroll above the console */
+/* Main content area should scroll between fixed header and footer */
 .glassmorphic-popup > form#properties-form {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: 210px; /* Reserve space for console */
+  padding-top: 0;
+  padding-bottom: 0; /* No bottom padding needed since popup has padding */
   transition: padding-bottom 0.3s ease;
-}
-
-/* Adjust padding when console is collapsed */
-.console-monitor[data-collapsed="true"] ~ .glassmorphic-popup > form#properties-form,
-.glassmorphic-popup:has(.console-monitor[data-collapsed="true"]) > form#properties-form {
-  padding-bottom: 50px; /* Reduced space when console is collapsed */
 }
 
 /* Dock the console at the bottom of the popup */
@@ -837,7 +845,20 @@ button:hover {
 }
 
 /* Remove the old specific header background colors since we're using the job-section style */
-.properties-section, .markdown-section, .realtime-section {
+.properties-section {
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-height: 600px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.1);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.markdown-section, .realtime-section {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);

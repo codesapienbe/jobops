@@ -1151,6 +1151,7 @@
     }
     logToConsole("\u{1F680} JobOps Clipper initialized", "info");
     logToConsole("\u{1F4CB} Ready to process job postings and resumes", "success");
+    document.documentElement.style.setProperty("--button-bottom", "40px");
     const logToApplicationLog = (level, message, data) => {
       const logEntry = {
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -1662,6 +1663,7 @@
             const consoleMonitor = content.closest(".console-monitor");
             if (consoleMonitor) {
               consoleMonitor.setAttribute("data-collapsed", "false");
+              document.documentElement.style.setProperty("--button-bottom", "200px");
             }
             logToApplicationLog("INFO", "Debug console expanded", { section: sectionId });
           } else {
@@ -1676,6 +1678,7 @@
             const consoleMonitor = content.closest(".console-monitor");
             if (consoleMonitor) {
               consoleMonitor.setAttribute("data-collapsed", "true");
+              document.documentElement.style.setProperty("--button-bottom", "40px");
             }
             logToApplicationLog("INFO", "Debug console collapsed", { section: sectionId });
           } else {

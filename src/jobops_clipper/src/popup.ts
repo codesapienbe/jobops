@@ -198,6 +198,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Initialize console
   logToConsole("🚀 JobOps Clipper initialized", "info");
   logToConsole("📋 Ready to process job postings and resumes", "success");
+  
+  // Initialize button position for collapsed console
+  document.documentElement.style.setProperty('--button-bottom', '40px');
 
   // Log to application.log as required by rules
   const logToApplicationLog = (level: string, message: string, data?: any) => {
@@ -814,6 +817,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           const consoleMonitor = content.closest('.console-monitor');
           if (consoleMonitor) {
             consoleMonitor.setAttribute('data-collapsed', 'false');
+            // Update button position
+            document.documentElement.style.setProperty('--button-bottom', '200px');
           }
           logToApplicationLog('INFO', 'Debug console expanded', { section: sectionId });
         } else {
@@ -829,6 +834,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           const consoleMonitor = content.closest('.console-monitor');
           if (consoleMonitor) {
             consoleMonitor.setAttribute('data-collapsed', 'true');
+            // Update button position
+            document.documentElement.style.setProperty('--button-bottom', '40px');
           }
           logToApplicationLog('INFO', 'Debug console collapsed', { section: sectionId });
         } else {
