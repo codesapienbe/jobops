@@ -356,7 +356,7 @@ button:hover {
 
 /* Adjust main content to make room for console */
 body {
-  padding-bottom: 240px;
+  padding-bottom: 4px;
 }
 
 /* Override any default white backgrounds in console */

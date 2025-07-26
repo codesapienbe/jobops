@@ -567,62 +567,137 @@ Fill in all template placeholders with concrete, actionable information based on
   }
   async function callGroqAPI(prompt2) {
     try {
+      logToConsole("\u{1F511} Retrieving Groq API key from storage...", "debug");
       const apiKey = await getGroqApiKey();
       if (!apiKey) {
-        console.warn("No Groq API key found");
+        logToConsole("\u274C No Groq API key found in storage", "error");
         throw new Error("Groq API key not configured");
       }
+      logToConsole("\u2705 Groq API key retrieved successfully", "debug");
+      logToConsole(`\u{1F310} Preparing request to Groq API: ${GROQ_API_URL}`, "debug");
+      logToConsole(`\u{1F916} Using model: ${GROQ_MODEL}`, "debug");
+      logToConsole(`\u{1F4DD} Prompt length: ${prompt2.length} characters`, "debug");
+      const requestBody = {
+        model: GROQ_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert job application analyst and career advisor. Provide comprehensive, actionable insights and fill out templates completely."
+          },
+          {
+            role: "user",
+            content: prompt2
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 4e3,
+        stream: false
+      };
+      logToConsole("\u{1F4E4} Sending request to Groq API...", "debug");
+      logToConsole(`\u{1F4CA} Request payload size: ${JSON.stringify(requestBody).length} characters`, "debug");
+      const startTime = Date.now();
       const response = await fetch(GROQ_API_URL, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          model: GROQ_MODEL,
-          messages: [
-            {
-              role: "system",
-              content: "You are an expert job application analyst and career advisor. Provide comprehensive, actionable insights and fill out templates completely."
-            },
-            {
-              role: "user",
-              content: prompt2
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 4e3,
-          stream: false
-        })
+        body: JSON.stringify(requestBody)
       });
+      const endTime = Date.now();
+      const responseTime = endTime - startTime;
+      logToConsole(`\u23F1\uFE0F Response received in ${responseTime}ms`, "debug");
+      logToConsole(`\u{1F4E1} HTTP Status: ${response.status} ${response.statusText}`, "debug");
+      logToConsole(`\u{1F4CB} Response headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`, "debug");
       if (!response.ok) {
-        throw new Error(`Groq API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        logToConsole(`\u274C Groq API error response: ${errorText}`, "error");
+        throw new Error(`Groq API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
+      logToConsole("\u{1F4E5} Parsing JSON response...", "debug");
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || null;
+      logToConsole(`\u{1F4CA} Response data keys: ${Object.keys(data).join(", ")}`, "debug");
+      logToConsole(`\u{1F3AF} Choices count: ${data.choices?.length || 0}`, "debug");
+      if (data.choices && data.choices.length > 0) {
+        const content = data.choices[0]?.message?.content;
+        if (content) {
+          logToConsole(`\u2705 Successfully extracted response content (${content.length} characters)`, "success");
+          logToConsole(`\u{1F4DD} Response preview: ${content.substring(0, 200)}${content.length > 200 ? "..." : ""}`, "debug");
+          return content;
+        } else {
+          logToConsole("\u26A0\uFE0F Response content is empty or undefined", "warning");
+          logToConsole(`\u{1F50D} Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
+          return null;
+        }
+      } else {
+        logToConsole("\u26A0\uFE0F No choices found in response", "warning");
+        logToConsole(`\u{1F50D} Full response structure: ${JSON.stringify(data, null, 2)}`, "debug");
+        return null;
+      }
     } catch (error) {
-      console.error("Groq API call failed:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : "No stack trace available";
+      logToConsole(`\u274C Groq API call failed: ${errorMessage}`, "error");
+      logToConsole(`\u{1F50D} Error stack trace: ${errorStack}`, "debug");
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        logToConsole("\u{1F310} Network error detected - check internet connection", "error");
+      } else if (error instanceof SyntaxError) {
+        logToConsole("\u{1F4DD} JSON parsing error - invalid response format", "error");
+      }
       return null;
     }
   }
   async function callOllamaAPI(prompt2) {
     try {
+      logToConsole("\u{1F504} Preparing Ollama API fallback request...", "debug");
+      logToConsole(`\u{1F310} Ollama URL: ${OLLAMA_URL}/api/generate`, "debug");
+      logToConsole(`\u{1F916} Using model: ${OLLAMA_MODEL}`, "debug");
+      logToConsole(`\u{1F4DD} Prompt length: ${prompt2.length} characters`, "debug");
+      const requestBody = {
+        model: OLLAMA_MODEL,
+        prompt: prompt2,
+        stream: false
+      };
+      logToConsole("\u{1F4E4} Sending request to Ollama API...", "debug");
+      logToConsole(`\u{1F4CA} Request payload size: ${JSON.stringify(requestBody).length} characters`, "debug");
+      const startTime = Date.now();
       const response = await fetch(`${OLLAMA_URL}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          prompt: prompt2,
-          stream: false
-        })
+        body: JSON.stringify(requestBody)
       });
+      const endTime = Date.now();
+      const responseTime = endTime - startTime;
+      logToConsole(`\u23F1\uFE0F Ollama response received in ${responseTime}ms`, "debug");
+      logToConsole(`\u{1F4E1} HTTP Status: ${response.status} ${response.statusText}`, "debug");
+      logToConsole(`\u{1F4CB} Response headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`, "debug");
       if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        logToConsole(`\u274C Ollama API error response: ${errorText}`, "error");
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
+      logToConsole("\u{1F4E5} Parsing Ollama JSON response...", "debug");
       const data = await response.json();
-      return data.response || null;
+      logToConsole(`\u{1F4CA} Ollama response data keys: ${Object.keys(data).join(", ")}`, "debug");
+      if (data.response) {
+        logToConsole(`\u2705 Successfully extracted Ollama response content (${data.response.length} characters)`, "success");
+        logToConsole(`\u{1F4DD} Ollama response preview: ${data.response.substring(0, 200)}${data.response.length > 200 ? "..." : ""}`, "debug");
+        return data.response;
+      } else {
+        logToConsole("\u26A0\uFE0F Ollama response content is empty or undefined", "warning");
+        logToConsole(`\u{1F50D} Full Ollama response structure: ${JSON.stringify(data, null, 2)}`, "debug");
+        return null;
+      }
     } catch (error) {
-      console.error("Ollama API call failed:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : "No stack trace available";
+      logToConsole(`\u274C Ollama API call failed: ${errorMessage}`, "error");
+      logToConsole(`\u{1F50D} Ollama error stack trace: ${errorStack}`, "debug");
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        logToConsole("\u{1F310} Ollama network error detected - check if Ollama is running locally", "error");
+      } else if (error instanceof SyntaxError) {
+        logToConsole("\u{1F4DD} Ollama JSON parsing error - invalid response format", "error");
+      }
       return null;
     }
   }
