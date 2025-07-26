@@ -201,6 +201,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   
   // Initialize button position for collapsed console
   document.documentElement.style.setProperty('--button-bottom', '48px');
+  
+  // Initialize form padding for collapsed console
+  const form = document.querySelector('#properties-form');
+  if (form) {
+    (form as HTMLElement).style.paddingBottom = '80px';
+  }
 
   // Log to application.log as required by rules
   const logToApplicationLog = (level: string, message: string, data?: any) => {
@@ -819,6 +825,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             consoleMonitor.setAttribute('data-collapsed', 'false');
             // Update button position
             document.documentElement.style.setProperty('--button-bottom', '208px');
+            // Update form padding
+            const form = document.querySelector('#properties-form');
+            if (form) {
+              (form as HTMLElement).style.paddingBottom = '120px';
+            }
           }
           logToApplicationLog('INFO', 'Debug console expanded', { section: sectionId });
         } else {
@@ -836,6 +847,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             consoleMonitor.setAttribute('data-collapsed', 'true');
             // Update button position
             document.documentElement.style.setProperty('--button-bottom', '48px');
+            // Update form padding
+            const form = document.querySelector('#properties-form');
+            if (form) {
+              (form as HTMLElement).style.paddingBottom = '80px';
+            }
           }
           logToApplicationLog('INFO', 'Debug console collapsed', { section: sectionId });
         } else {

@@ -417,8 +417,14 @@ button:hover {
   min-height: 0;
   overflow-y: auto;
   padding-top: 0;
-  padding-bottom: 0; /* No bottom padding needed since popup has padding */
+  padding-bottom: 120px; /* Reserve space for footer components */
   transition: padding-bottom 0.3s ease;
+}
+
+/* Adjust padding when console is collapsed */
+.console-monitor[data-collapsed="true"] ~ .glassmorphic-popup > form#properties-form,
+.glassmorphic-popup:has(.console-monitor[data-collapsed="true"]) > form#properties-form {
+  padding-bottom: 80px; /* Reduced space when console is collapsed */
 }
 
 /* Dock the console at the bottom of the popup */

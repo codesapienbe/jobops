@@ -1152,6 +1152,10 @@
     logToConsole("\u{1F680} JobOps Clipper initialized", "info");
     logToConsole("\u{1F4CB} Ready to process job postings and resumes", "success");
     document.documentElement.style.setProperty("--button-bottom", "48px");
+    const form = document.querySelector("#properties-form");
+    if (form) {
+      form.style.paddingBottom = "80px";
+    }
     const logToApplicationLog = (level, message, data) => {
       const logEntry = {
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -1664,6 +1668,10 @@
             if (consoleMonitor) {
               consoleMonitor.setAttribute("data-collapsed", "false");
               document.documentElement.style.setProperty("--button-bottom", "208px");
+              const form2 = document.querySelector("#properties-form");
+              if (form2) {
+                form2.style.paddingBottom = "120px";
+              }
             }
             logToApplicationLog("INFO", "Debug console expanded", { section: sectionId });
           } else {
@@ -1679,6 +1687,10 @@
             if (consoleMonitor) {
               consoleMonitor.setAttribute("data-collapsed", "true");
               document.documentElement.style.setProperty("--button-bottom", "48px");
+              const form2 = document.querySelector("#properties-form");
+              if (form2) {
+                form2.style.paddingBottom = "80px";
+              }
             }
             logToApplicationLog("INFO", "Debug console collapsed", { section: sectionId });
           } else {
