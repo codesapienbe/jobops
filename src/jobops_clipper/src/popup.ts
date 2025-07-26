@@ -8,6 +8,9 @@ declare const JOBOPS_BACKEND_URL: string | undefined;
 // Import database and data manager
 import { jobOpsDataManager } from './repository';
 
+// Import i18n manager
+import { i18n, SupportedLanguage } from './i18n';
+
 // LLM Configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'qwen2.5-32b-instant'; // Free tier model with high usage limits
@@ -56,7 +59,7 @@ function applyTheme(theme: ThemeMode): void {
   updateThemeIcon();
   
   // Log theme change
-  logToConsole(`🎨 Theme switched to ${theme} mode`, 'info');
+  logToConsole(`${i18n.getConsoleMessage('themeSwitched')} ${theme} ${i18n.getConsoleMessage('mode')}`, 'info');
 }
 
 function initializeTheme(): void {
@@ -83,9 +86,85 @@ function toggleTheme(): void {
   
   // Save theme preference
   chrome.storage.sync.set({ jobops_theme: newTheme }, () => {
-    logToConsole(`💾 Theme preference saved: ${newTheme}`, 'success');
+    logToConsole(`${i18n.getConsoleMessage('themePreferenceSaved')}: ${newTheme}`, 'success');
   });
 }
+
+
+function toggleLanguageDropdown(): void {
+  // Get current language and cycle to next alphabetically
+  const currentLang = i18n.getCurrentLanguage();
+  const supportedLanguages: SupportedLanguage[] = ['en', 'fr', 'nl', 'tr']; // Alphabetical order
+  
+  // Find current index and get next language
+  const currentIndex = supportedLanguages.indexOf(currentLang);
+  const nextIndex = (currentIndex + 1) % supportedLanguages.length;
+  const nextLanguage = supportedLanguages[nextIndex];
+  
+  // Switch to next language
+  handleLanguageChange(nextLanguage);
+}
+
+
+
+async function handleLanguageChange(langCode: SupportedLanguage): Promise<void> {
+  try {
+    logToConsole(`🌐 Changing language to ${langCode}...`, 'info');
+    
+    // Change language
+    await i18n.setLanguage(langCode);
+    
+    // Update UI with new language
+    i18n.updateUI();
+    
+    // Translate dynamic content
+    await i18n.translateDynamicContent();
+    
+    // Update language button icon
+    updateLanguageButtonIcon();
+    
+    logToConsole(`✅ Language changed to ${langCode}`, 'success');
+    showNotification(i18n.getNotificationMessage('languageChanged'));
+    
+  } catch (error) {
+    logToConsole(`❌ Error changing language: ${error}`, 'error');
+    showNotification('Error changing language', true);
+  }
+}
+
+function updateLanguageButtonIcon(): void {
+  const languageButton = document.getElementById('language-toggle') as HTMLButtonElement;
+  if (!languageButton) return;
+  
+  const currentLang = i18n.getCurrentLanguage();
+  const supportedLanguages = i18n.getSupportedLanguages();
+  const currentLanguage = supportedLanguages.find(lang => lang.code === currentLang);
+  
+  if (currentLanguage) {
+    languageButton.textContent = currentLanguage.flag;
+    languageButton.setAttribute('aria-label', `${i18n.t('languageSelector', 'ariaLabels')} - ${currentLanguage.name}`);
+  }
+}
+
+function initializeLanguage(): void {
+  // Initialize i18n manager
+  i18n.initialize().then(() => {
+    // Load saved language preference
+    i18n.loadSavedLanguage().then(() => {
+      // Update UI with current language
+      i18n.updateUI();
+      
+      // Update language button icon
+      updateLanguageButtonIcon();
+      
+      logToConsole(`🌐 Language system initialized: ${i18n.getCurrentLanguage()}`, 'info');
+    });
+  }).catch(error => {
+    logToConsole(`❌ Error initializing language system: ${error}`, 'error');
+  });
+}
+
+
 
 function logToConsole(message: string, level: 'info' | 'success' | 'warning' | 'error' | 'debug' | 'progress' = 'info') {
   if (!consoleOutput) return;
@@ -105,7 +184,7 @@ function logToConsole(message: string, level: 'info' | 'success' | 'warning' | '
 function clearConsole() {
   if (consoleOutput) {
     consoleOutput.innerHTML = '';
-    logToConsole("🧹 Console cleared", "info");
+    logToConsole(i18n.getConsoleMessage('consoleCleared'), "info");
   }
 }
 
@@ -134,7 +213,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!consoleOutput) {
     console.error("Console output element not found!");
   } else {
-    logToConsole("🔍 Console monitor initialized", "info");
+    logToConsole(i18n.getConsoleMessage('initialized'), "info");
   }
   
   // Initialize theme system
@@ -143,7 +222,57 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Set up theme toggle event listener
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener('click', toggleTheme);
-    logToConsole("🎨 Theme toggle button initialized", "info");
+    logToConsole(i18n.getConsoleMessage('themeToggleInitialized'), "info");
+  }
+
+  // Initialize language system
+  initializeLanguage();
+  
+  // Set up language toggle event listener
+  const languageToggleBtn = document.getElementById('language-toggle') as HTMLButtonElement;
+  if (languageToggleBtn) {
+    languageToggleBtn.addEventListener('click', toggleLanguageDropdown);
+    logToConsole(i18n.getConsoleMessage('languageToggleInitialized'), "info");
+  }
+  
+
+  
+  // Set up button event listeners
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(markdownEditor.value);
+        logToConsole(i18n.getConsoleMessage('markdownCopied'), "success");
+        showNotification(i18n.getNotificationMessage('copied'));
+      } catch (error) {
+        logToConsole(`${i18n.getConsoleMessage('markdownCopyFailed')}: ${error}`, "error");
+        showNotification(i18n.getNotificationMessage('copyFailed'), true);
+      }
+    });
+  }
+  
+  if (generateReportBtn) {
+    generateReportBtn.addEventListener('click', handleGenerateReport);
+  }
+  
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', handleSettings);
+  }
+  
+  if (stopGenerationBtn) {
+    stopGenerationBtn.addEventListener('click', handleStopGeneration);
+  }
+  
+  if (copyRealtimeBtn) {
+    copyRealtimeBtn.addEventListener('click', handleCopyRealtime);
+  }
+  
+  if (clearConsoleBtn) {
+    clearConsoleBtn.addEventListener('click', clearConsole);
+  }
+  
+  if (resumeUpload) {
+    resumeUpload.addEventListener('change', handleResumeUpload);
   }
   
   // Property fields
@@ -163,7 +292,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   generateReportBtn.disabled = false;
   
   // Add visual feedback for button readiness
-  logToConsole("✅ Generate Report button enabled and ready", "success");
+  logToConsole(i18n.getConsoleMessage('generateReportReady'), "success");
   generateReportBtn.style.opacity = "1";
   generateReportBtn.style.cursor = "pointer";
 
@@ -183,30 +312,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Listen for preview data from content script
   chrome.runtime.onMessage.addListener(async (msg, _sender, _sendResponse) => {
     if (msg.action === "show_preview" && msg.jobData) {
-      logToConsole("📨 Received preview data from content script", "info");
-      logToConsole(`📊 Job title: ${msg.jobData.title || 'N/A'}`, "info");
+      logToConsole(i18n.getConsoleMessage('previewDataReceived'), "info");
+      logToConsole(`${i18n.getConsoleMessage('jobTitle')}: ${msg.jobData.title || 'N/A'}`, "info");
       jobData = msg.jobData;
       
                       // Check if job application already exists
                 const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
                 if (jobExists) {
-                  logToConsole("🔄 Existing job application found and loaded", "info");
-                  showNotification("🔄 Existing job application loaded");
+                  logToConsole(i18n.getConsoleMessage('existingJobFound'), "info");
+                  showNotification(i18n.getNotificationMessage('existingJobLoaded'));
                 } else {
                   // Check if we have sufficient content to create a database record
                   const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
                   
                   if (hasContent) {
-                    logToConsole(`🆕 Creating new job application (Quality: ${contentQuality})`, "info");
+                    logToConsole(`${i18n.getConsoleMessage('newJobCreated')} (${i18n.getConsoleMessage('contentQuality')}: ${contentQuality})`, "info");
                     try {
                       await jobOpsDataManager.createNewJobApplication(jobData);
-                      showNotification(`🆕 New job application created (${contentQuality} content)`);
+                      showNotification(`${i18n.getNotificationMessage('newJobCreated')} (${contentQuality} content)`);
                       
                       // Provide enhanced guidance for content improvement
                       validateAndProvideFeedback(contentQuality, missingSections);
                     } catch (error) {
-                      logToConsole(`❌ Error creating job application: ${error}`, "error");
-                      showNotification("❌ Error creating job application", true);
+                      logToConsole(`${i18n.getConsoleMessage('errorCreatingJob')}: ${error}`, "error");
+                      showNotification(i18n.getNotificationMessage('jobCreationError'), true);
                     }
                   } else {
                     const minRequirements = missingSections.map(section => {
@@ -228,7 +357,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Copy button is always enabled
       copyBtn.disabled = false;
       generateReportBtn.disabled = false;
-      logToConsole("✅ Preview data processed successfully", "success");
+      logToConsole(i18n.getConsoleMessage('previewDataProcessed'), "success");
     }
   });
 
@@ -243,7 +372,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Set up generate report button handler with immediate feedback
   generateReportBtn.addEventListener('click', (event) => {
     console.log("🎯 GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
-    logToConsole("🎯 Generate Report button clicked - event handler triggered", "info");
+    logToConsole(i18n.getConsoleMessage('generateReportClicked'), "info");
     
     // Immediate visual feedback
     generateReportBtn.style.transform = "scale(0.95)";
@@ -278,7 +407,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener('jobDataLoaded', function(event: Event) {
     const customEvent = event as CustomEvent;
     const loadedData = customEvent.detail;
-    logToConsole("📥 Job data loaded from database, updating properties", "info");
+    logToConsole(i18n.getConsoleMessage('jobDataLoaded'), "info");
     
     // Populate properties with loaded data instead of scraped data
     if (loadedData && loadedData.jobApplication) {
@@ -308,13 +437,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (locationInput) locationInput.value = posDetails.location || '';
       }
       
-      logToConsole("✅ Properties updated with loaded job data", "success");
+      logToConsole(i18n.getConsoleMessage('propertiesUpdated'), "success");
     }
   });
 
   // Initialize console
-  logToConsole("🚀 JobOps Clipper initialized", "info");
-  logToConsole("📋 Ready to process job postings and resumes", "success");
+  logToConsole(i18n.getConsoleMessage('jobOpsInitialized'), "info");
+  logToConsole(i18n.getConsoleMessage('readyToProcess'), "success");
   
   // Initialize button position for collapsed console
   document.documentElement.style.setProperty('--button-bottom', '48px');
@@ -446,7 +575,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         job_application_id: jobInfo.id
       });
       
-      logToConsole(`✅ ${sectionName} data saved successfully`, "success");
+      logToConsole(`${i18n.getConsoleMessage('sectionSaved')}: ${sectionName}`, "success");
       showNotification(`✅ ${sectionName} saved`);
     } catch (error) {
       const jobInfo = getCurrentJobInfo();
@@ -456,7 +585,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         error: error instanceof Error ? error.message : String(error)
       });
       
-      logToConsole(`❌ Error saving ${sectionName}: ${error}`, "error");
+      logToConsole(`${i18n.getConsoleMessage('sectionSaveFailed')} ${sectionName}: ${error}`, "error");
       showNotification(`❌ Error saving ${sectionName}`, true);
       throw error;
     }
@@ -690,9 +819,9 @@ document.addEventListener("DOMContentLoaded", async () => {
                 });
               }
               
-              logToConsole("💾 Auto-saved job data to database", "debug");
+              logToConsole(i18n.getConsoleMessage('autoSaved'), "debug");
             } else {
-              logToConsole(`⚠️ Insufficient content for database save. Missing: ${missingSections.join(', ')}`, "debug");
+              logToConsole(`${i18n.getConsoleMessage('insufficientContent')}. Missing: ${missingSections.join(', ')}`, "debug");
             }
           } catch (error) {
             logToConsole(`❌ Auto-save failed: ${error}`, "error");
@@ -767,7 +896,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       if (!hasSectionContent) {
         // Section is empty, no need to save or validate
-        logToConsole(`💾 ${sectionName} is empty - no save needed`, "debug");
+        logToConsole(`${i18n.getConsoleMessage('sectionEmpty')}: ${sectionName}`, "debug");
         return;
       }
       
@@ -787,7 +916,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           return `${section} (${req?.minLength || 50}+ chars)`;
         }).join(', ');
         
-        logToConsole(`⚠️ Cannot save - insufficient content. Missing: ${missingSections.join(', ')}`, "warning");
+        logToConsole(`${i18n.getConsoleMessage('cannotSave')}. Missing: ${missingSections.join(', ')}`, "warning");
         return;
       }
       
@@ -795,7 +924,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         await saveSectionData(sectionName.replace('-', '_'), sectionData);
         logToConsole(`✅ ${sectionName} saved successfully`, "success");
       } else {
-        logToConsole(`⚠️ No data to save for ${sectionName}`, "warning");
+        logToConsole(`${i18n.getConsoleMessage('noDataToSave')}: ${sectionName}`, "warning");
       }
     } catch (error) {
       logToConsole(`❌ Failed to save ${sectionName}: ${error}`, "error");
@@ -1020,15 +1149,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   async function requestJobData() {
-    logToConsole("🌐 Requesting job data from current page...", "info");
+      logToConsole(i18n.getConsoleMessage('requestingJobData'), "info");
     
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) {
-        logToConsole("❌ No active tab found", "error");
+        logToConsole(i18n.getConsoleMessage('noActiveTab'), "error");
         return;
       }
       
-      logToConsole("🔍 Checking content script availability...", "debug");
+      logToConsole(i18n.getConsoleMessage('checkingContentScript'), "debug");
       chrome.scripting.executeScript(
         {
           target: { tabId: tabs[0].id },
@@ -1036,28 +1165,28 @@ document.addEventListener("DOMContentLoaded", async () => {
         },
         async (results) => {
           if (chrome.runtime.lastError || !results || !results[0].result) {
-            logToConsole("❌ Content script not loaded. Please refresh the page and try again.", "error");
+            logToConsole(i18n.getConsoleMessage('contentScriptNotLoaded'), "error");
             return;
           }
           
-          logToConsole("✅ Content script available, requesting page data...", "success");
+          logToConsole(i18n.getConsoleMessage('contentScriptAvailable'), "success");
           chrome.tabs.sendMessage(
             tabs[0].id!,
             { action: "clip_page" },
             async (response) => {
               if (chrome.runtime.lastError) {
-                logToConsole("❌ Could not connect to content script. Try refreshing the page.", "error");
+                logToConsole(i18n.getConsoleMessage('cannotConnectToContentScript'), "error");
                 return;
               }
               if (response && response.jobData) {
-                logToConsole("✅ Job data received successfully!", "success");
+                logToConsole(i18n.getConsoleMessage('jobDataReceived'), "success");
                 logToConsole(`📊 Job title: ${response.jobData.title || 'N/A'}`, "info");
-                logToConsole(`📋 Job data keys: ${Object.keys(response.jobData).join(', ')}`, "debug");
+                                  logToConsole(`${i18n.getConsoleMessage('jobDataKeys')}: ${Object.keys(response.jobData).join(', ')}`, "debug");
                 
                 // Ensure we have the essential data
                 if (!response.jobData.title && !response.jobData.body) {
-                  logToConsole("⚠️ Job data missing essential fields (title/body)", "warning");
-                  showNotification("⚠️ Job data incomplete. Please refresh the page and try again.", true);
+                  logToConsole(i18n.getConsoleMessage('jobDataMissingFields'), "warning");
+                                      showNotification(i18n.getNotificationMessage('jobDataIncomplete'), true);
                   return;
                 }
                 
@@ -1066,8 +1195,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                 // Check if job application already exists
                 const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
                 if (jobExists) {
-                  logToConsole("🔄 Existing job application found and loaded", "info");
-                  showNotification("🔄 Existing job application loaded");
+                  logToConsole(i18n.getConsoleMessage('existingJobFoundAndLoaded'), "info");
+                                      showNotification(i18n.getNotificationMessage('existingJobLoaded'));
                   // The populateUIWithData method will dispatch a 'jobDataLoaded' event
                   // which we'll handle below to populate the properties with loaded data
                 } else {
@@ -1075,7 +1204,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
                   
                   if (hasContent) {
-                    logToConsole(`🆕 Creating new job application (Quality: ${contentQuality})`, "info");
+                    logToConsole(`${i18n.getConsoleMessage('creatingNewJobApplication')} (${i18n.getConsoleMessage('contentQuality')}: ${contentQuality})`, "info");
                     try {
                       await jobOpsDataManager.createNewJobApplication(jobData);
                       showNotification(`🆕 New job application created (${contentQuality} content)`);
@@ -1107,10 +1236,10 @@ document.addEventListener("DOMContentLoaded", async () => {
                 // Copy button is always enabled
                 copyBtn.disabled = false;
                 
-                logToConsole("✅ Job data populated successfully", "success");
+                                      logToConsole(i18n.getConsoleMessage('jobDataPopulated'), "success");
               } else {
-                logToConsole("⚠️ No job data received from content script", "warning");
-                showNotification("⚠️ No job data found. Please refresh the page and try again.", true);
+                logToConsole(i18n.getConsoleMessage('noJobDataReceived'), "warning");
+                                  showNotification(i18n.getNotificationMessage('noJobDataFound'), true);
               }
             }
           );
@@ -1121,7 +1250,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Enhanced copy function with notification - now exports all form data as JSON
   copyBtn.onclick = async () => {
-    logToConsole("📋 Copy to clipboard triggered", "info");
+    logToConsole(i18n.getConsoleMessage('copyToClipboardTriggered'), "info");
     
     try {
       // Collect all form data as JSON
@@ -1145,24 +1274,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       
       if (!hasContent) {
-        logToConsole("❌ No content to copy", "error");
-        showNotification("No content to copy!", true);
+        logToConsole(i18n.getConsoleMessage('noContentToCopy'), "error");
+        showNotification(i18n.getNotificationMessage('noContentToCopy'), true);
         return;
       }
 
       // Convert to formatted JSON
       const jsonContent = JSON.stringify(allFormData, null, 2);
       
-      logToConsole(`📋 Copying JSON data (${jsonContent.length} characters) to clipboard...`, "progress");
+              logToConsole(`${i18n.getConsoleMessage('copyingJsonData')} (${jsonContent.length} characters)...`, "progress");
       await navigator.clipboard.writeText(jsonContent);
       
       // Show success notification
-      logToConsole("✅ All form data copied to clipboard as JSON!", "success");
-      showNotification("✅ All form data copied as JSON!");
+      logToConsole(i18n.getConsoleMessage('allFormDataCopiedSuccess'), "success");
+      showNotification(i18n.getNotificationMessage('allFormDataCopied'));
       
     } catch (e) {
-      logToConsole(`❌ Copy failed: ${e}`, "error");
-      showNotification("❌ Failed to copy to clipboard", true);
+      logToConsole(`${i18n.getConsoleMessage('copyFailedWithError')}: ${e}`, "error");
+      showNotification(i18n.getNotificationMessage('copyFailed'), true);
     }
   };
 
@@ -1187,19 +1316,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Handle resume upload
   async function handleResumeUpload(event: Event) {
     console.log("🎯 RESUME UPLOAD TRIGGERED - DIRECT CONSOLE LOG");
-    logToConsole("📁 Resume upload triggered", "info");
+    logToConsole(i18n.getConsoleMessage('resumeUploadTriggered'), "info");
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
     
     if (!file) {
-      logToConsole("❌ No file selected", "error");
-      showNotification("No file selected", true);
+      logToConsole(i18n.getConsoleMessage('noFileSelected'), "error");
+      showNotification(i18n.getNotificationMessage('noFileSelected'), true);
       return;
     }
 
     if (file.type !== 'application/pdf') {
-      logToConsole("❌ Invalid file type - PDF required", "error");
-      showNotification("Please select a PDF file", true);
+      logToConsole(i18n.getConsoleMessage('invalidFileType'), "error");
+      showNotification(i18n.getNotificationMessage('invalidFileType'), true);
       return;
     }
 
@@ -1225,12 +1354,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       logToConsole(`📄 Resume content stored in variable: ${resumeContent ? 'YES' : 'NO'}`, "debug");
       
       // Step 3: Success
-      logToConsole("✅ Resume content extracted successfully!", "success");
-      logToConsole("📋 Resume ready for report generation", "success");
+      logToConsole(i18n.getConsoleMessage('resumeContentExtracted'), "success");
+      logToConsole(i18n.getConsoleMessage('resumeReady'), "success");
       
       // Step 4: Ready for generation
       setTimeout(() => {
-        logToConsole("📋 Resume ready for report generation", "success");
+        logToConsole(i18n.getConsoleMessage('resumeReady'), "success");
       }, 2000);
       
     } catch (error) {
@@ -1243,12 +1372,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Handle generate report
   async function handleGenerateReport() {
     console.log("🎯 GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
-    logToConsole("🚀 Generate Report button clicked", "info");
+    logToConsole(i18n.getConsoleMessage('generateReportClicked'), "info");
     logToConsole(`📊 Current resumeContent length: ${resumeContent.length}`, "debug");
     logToConsole(`📋 Current jobData keys: ${Object.keys(jobData).join(', ')}`, "debug");
     
     if (!resumeContent) {
-      logToConsole("📁 No resume content found, triggering file upload", "warning");
+      logToConsole(i18n.getConsoleMessage('noResumeContent'), "warning");
       // Trigger file upload if no resume content
       resumeUpload.click();
       return;
@@ -1256,7 +1385,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Also check if we have job data
     if (!jobData || Object.keys(jobData).length === 0) {
-      logToConsole("📋 No job data found, requesting from current page", "warning");
+      logToConsole(i18n.getConsoleMessage('noJobData'), "warning");
       // Wait for job data to be loaded
       await new Promise<void>((resolve) => {
         requestJobData();
@@ -1271,20 +1400,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       // Check again after waiting
       if (!jobData || Object.keys(jobData).length === 0) {
-        logToConsole("❌ Still no job data after request, cannot proceed", "error");
-        showNotification("❌ No job data available. Please refresh the page and try again.", true);
+        logToConsole(i18n.getConsoleMessage('stillNoJobData'), "error");
+        showNotification(i18n.getNotificationMessage('noJobDataAvailable'), true);
         return;
       }
     }
     
     // Verify we have essential data
     if (!jobData.title && !jobData.body) {
-      logToConsole("❌ Job data missing essential fields (title/body)", "error");
-      showNotification("❌ Job data incomplete. Please refresh the page and try again.", true);
+      logToConsole(i18n.getConsoleMessage('jobDataIncomplete'), "error");
+              showNotification(i18n.getNotificationMessage('jobDataIncomplete'), true);
       return;
     }
 
-    logToConsole("🚀 Starting report generation process", "info");
+    logToConsole(i18n.getConsoleMessage('reportGenerationStarted'), "info");
     generateReportBtn.disabled = true;
     logToConsole("🔄 Starting report generation...", "info");
     showNotification("🔄 Starting report generation...");
@@ -2108,7 +2237,7 @@ function handleStopGeneration() {
     }
     
     logToConsole("✅ Generation stopped", "info");
-    showNotification("Generation stopped");
+    showNotification(i18n.getNotificationMessage('generationStopped'));
   }
 }
 
@@ -2118,16 +2247,16 @@ async function handleCopyRealtime() {
   
   if (!realtimeResponse || !realtimeResponse.textContent) {
     logToConsole("❌ No real-time content to copy", "error");
-    showNotification("No content to copy!", true);
+    showNotification(i18n.getNotificationMessage('noContentToCopy'), true);
     return;
   }
 
   try {
     await navigator.clipboard.writeText(realtimeResponse.textContent);
     logToConsole("✅ Real-time response copied to clipboard", "success");
-    showNotification("Real-time response copied!");
+    showNotification(i18n.getNotificationMessage('copied'));
   } catch (error) {
     logToConsole(`❌ Failed to copy real-time response: ${error}`, "error");
-    showNotification("Failed to copy real-time response", true);
+    showNotification(i18n.getNotificationMessage('copyFailed'), true);
   }
 }

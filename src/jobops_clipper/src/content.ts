@@ -42,8 +42,8 @@ chrome.runtime.onMessage.addListener((msg: { action: string }, sender: chrome.ru
       // Full HTML (optional, for advanced use)
       // const html = document.documentElement.outerHTML;
       if (!title && !body) {
-        console.warn("[JobOps Clipper] No title or body extracted.");
-        sendResponse({ error: "No content extracted" });
+        console.warn("[JobOps Clipper] No title or body extracted from page.");
+        sendResponse({ error: "No content extracted from page" });
         return;
       }
       if (!title || !body) {

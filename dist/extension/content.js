@@ -34,8 +34,8 @@
         } catch {
         }
         if (!title && !body) {
-          console.warn("[JobOps Clipper] No title or body extracted.");
-          sendResponse({ error: "No content extracted" });
+          console.warn("[JobOps Clipper] No title or body extracted from page.");
+          sendResponse({ error: "No content extracted from page" });
           return;
         }
         if (!title || !body) {

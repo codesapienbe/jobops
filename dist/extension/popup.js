@@ -497,7 +497,7 @@
     async initializeDataManager() {
       try {
         await new Promise((resolve) => setTimeout(resolve, 100));
-        console.log("JobOps Data Manager initialized");
+        console.log("[JobOps Clipper] Data Manager initialized successfully");
       } catch (error) {
         console.error("Failed to initialize data manager:", error);
       }
@@ -532,7 +532,7 @@
           status: "draft"
         };
         this.currentJobApplicationId = await jobOpsDatabase.createJobApplication(jobApplicationData);
-        console.log("New job application created:", this.currentJobApplicationId);
+        console.log("[JobOps Clipper] New job application created:", this.currentJobApplicationId);
         return this.currentJobApplicationId;
       } catch (error) {
         console.error("Error creating new job application:", error);
@@ -957,7 +957,7 @@
     }
     // Populate UI with loaded data
     populateUIWithData(data) {
-      console.log("Populating UI with loaded data:", data);
+      console.log("[JobOps Clipper] Populating UI with loaded data:", data);
       if (typeof window !== "undefined") {
         const event = new CustomEvent("jobDataLoaded", { detail: data });
         window.dispatchEvent(event);
@@ -1021,6 +1021,411 @@
   };
   var jobOpsDataManager = new JobOpsDataManager();
 
+  // src/i18n.ts
+  var I18nManager = class {
+    constructor() {
+      this.currentLanguage = "en";
+      this.translations = /* @__PURE__ */ new Map();
+      this.isInitialized = false;
+      this.initializationPromise = null;
+      // Free translation API endpoints (using LibreTranslate as it's free and open source)
+      this.TRANSLATION_API_URL = "https://libretranslate.de/translate";
+      this.FALLBACK_API_URL = "https://translate.argosopentech.com/translate";
+      this.detectBrowserLanguage();
+    }
+    /**
+     * Initialize the i18n manager by loading all translation files
+     */
+    async initialize() {
+      if (this.isInitialized) {
+        return;
+      }
+      if (this.initializationPromise) {
+        return this.initializationPromise;
+      }
+      this.initializationPromise = this.loadAllTranslations();
+      await this.initializationPromise;
+      this.isInitialized = true;
+    }
+    /**
+     * Detect browser language and set initial language
+     */
+    detectBrowserLanguage() {
+      const browserLang = navigator.language.toLowerCase();
+      const langCode = browserLang.split("-")[0];
+      if (this.isSupportedLanguage(langCode)) {
+        this.currentLanguage = langCode;
+      } else {
+        this.currentLanguage = "en";
+      }
+    }
+    /**
+     * Check if a language code is supported
+     */
+    isSupportedLanguage(lang) {
+      return ["en", "nl", "fr", "tr"].includes(lang);
+    }
+    /**
+     * Load all translation files
+     */
+    async loadAllTranslations() {
+      const languages = ["en", "nl", "fr", "tr"];
+      const loadPromises = languages.map(async (lang) => {
+        try {
+          const response = await fetch(chrome.runtime.getURL(`src/locales/${lang}.json`));
+          if (!response.ok) {
+            throw new Error(`Failed to load ${lang} translation: ${response.statusText}`);
+          }
+          const translationData = await response.json();
+          this.translations.set(lang, translationData);
+        } catch (error) {
+          console.error(`Error loading ${lang} translation:`, error);
+          if (lang !== "en") {
+            const englishData = this.translations.get("en");
+            if (englishData) {
+              this.translations.set(lang, englishData);
+            }
+          }
+        }
+      });
+      await Promise.all(loadPromises);
+    }
+    /**
+     * Get current language
+     */
+    getCurrentLanguage() {
+      return this.currentLanguage;
+    }
+    /**
+     * Get supported languages
+     */
+    getSupportedLanguages() {
+      const languages = [];
+      this.translations.forEach((data, code) => {
+        languages.push(data.language);
+      });
+      return languages;
+    }
+    /**
+     * Change the current language
+     */
+    async setLanguage(lang) {
+      if (!this.isSupportedLanguage(lang)) {
+        throw new Error(`Unsupported language: ${lang}`);
+      }
+      if (!this.translations.has(lang)) {
+        throw new Error(`Translation not loaded for language: ${lang}`);
+      }
+      this.currentLanguage = lang;
+      chrome.storage.sync.set({ jobops_language: lang }, () => {
+        console.log(`Language preference saved: ${lang}`);
+      });
+      this.updateUI();
+    }
+    /**
+     * Load saved language preference
+     */
+    async loadSavedLanguage() {
+      return new Promise((resolve) => {
+        chrome.storage.sync.get(["jobops_language"], (result) => {
+          const savedLang = result.jobops_language;
+          if (savedLang && this.isSupportedLanguage(savedLang)) {
+            this.currentLanguage = savedLang;
+          }
+          resolve();
+        });
+      });
+    }
+    /**
+     * Get translation for a key
+     */
+    t(key, section = "ui") {
+      const translation = this.translations.get(this.currentLanguage);
+      if (!translation) {
+        console.warn(`Translation not found for language: ${this.currentLanguage}`);
+        return key;
+      }
+      const sectionData = translation[section];
+      if (!sectionData || typeof sectionData !== "object") {
+        console.warn(`Translation section not found: ${section}`);
+        return key;
+      }
+      if (section === "language") {
+        console.warn(`Cannot access language config with t() method`);
+        return key;
+      }
+      const recordData = sectionData;
+      const value = recordData[key];
+      if (!value) {
+        console.warn(`Translation key not found: ${section}.${key}`);
+        return key;
+      }
+      return value;
+    }
+    /**
+     * Translate dynamic content using free translation API
+     */
+    async translateContent(text, targetLang) {
+      if (!text || text.trim() === "") {
+        return text;
+      }
+      const targetLanguage = targetLang || this.currentLanguage;
+      if (targetLanguage === "en") {
+        return text;
+      }
+      try {
+        const translatedText = await this.callTranslationAPI(text, targetLanguage);
+        if (translatedText) {
+          return translatedText;
+        }
+      } catch (error) {
+        console.warn("Primary translation API failed, trying fallback:", error);
+      }
+      try {
+        const translatedText = await this.callTranslationAPI(text, targetLanguage, true);
+        if (translatedText) {
+          return translatedText;
+        }
+      } catch (error) {
+        console.error("All translation APIs failed:", error);
+      }
+      return text;
+    }
+    /**
+     * Call translation API
+     */
+    async callTranslationAPI(text, targetLang, useFallback = false) {
+      const apiUrl = useFallback ? this.FALLBACK_API_URL : this.TRANSLATION_API_URL;
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          q: text,
+          source: "en",
+          target: targetLang,
+          format: "text"
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Translation API error: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      return data.translatedText || text;
+    }
+    /**
+     * Update all UI elements with current language
+     */
+    updateUI() {
+      this.updateSectionHeaders();
+      this.updatePlaceholders();
+      this.updateLabels();
+      this.updateButtons();
+      this.updateAriaLabels();
+      this.updateConsoleMessages();
+    }
+    /**
+     * Update section headers
+     */
+    updateSectionHeaders() {
+      const sections = [
+        { selector: '[data-toggle="properties-content"] .section-title', key: "properties" },
+        { selector: '[data-section="position-details"] .section-title', key: "positionDetails" },
+        { selector: '[data-section="job-requirements"] .section-title', key: "jobRequirements" },
+        { selector: '[data-section="company-information"] .section-title', key: "companyInformation" },
+        { selector: '[data-section="skills-matrix"] .section-title', key: "skillsMatrix" },
+        { selector: '[data-section="application-materials"] .section-title', key: "applicationMaterials" },
+        { selector: '[data-section="interview-schedule"] .section-title', key: "interviewSchedule" },
+        { selector: '[data-section="interview-preparation"] .section-title', key: "interviewPreparation" },
+        { selector: '[data-section="communication-log"] .section-title', key: "communicationLog" },
+        { selector: '[data-section="key-contacts"] .section-title', key: "keyContacts" },
+        { selector: '[data-section="interview-feedback"] .section-title', key: "interviewFeedback" },
+        { selector: '[data-section="offer-details"] .section-title', key: "offerDetails" },
+        { selector: '[data-section="rejection-analysis"] .section-title', key: "rejectionAnalysis" },
+        { selector: '[data-section="privacy-policy"] .section-title', key: "privacyPolicy" },
+        { selector: '[data-section="lessons-learned"] .section-title', key: "lessonsLearned" },
+        { selector: '[data-section="performance-metrics"] .section-title', key: "performanceMetrics" },
+        { selector: '[data-section="advisor-review"] .section-title', key: "advisorReview" },
+        { selector: '[data-section="application-summary"] .section-title', key: "applicationSummary" },
+        { selector: '[data-toggle="markdown-content"] .section-title', key: "markdownPreview" },
+        { selector: '[data-toggle="realtime-content"] .section-title', key: "realtimeResponse" },
+        { selector: ".console-title .section-title", key: "debugConsole" }
+      ];
+      sections.forEach(({ selector, key }) => {
+        const element = document.querySelector(selector);
+        if (element && element.textContent !== null) {
+          element.textContent = this.t(key);
+        }
+      });
+    }
+    /**
+     * Update input placeholders
+     */
+    updatePlaceholders() {
+      const placeholders = [
+        { id: "prop-title", key: "title" },
+        { id: "prop-url", key: "sourceUrl" },
+        { id: "prop-author", key: "author" },
+        { id: "prop-published", key: "published" },
+        { id: "prop-created", key: "created" },
+        { id: "prop-description", key: "description" },
+        { id: "prop-tags", key: "tags" },
+        { id: "prop-location", key: "location" },
+        { id: "position-summary", key: "positionSummary" },
+        { id: "requirements-summary", key: "requirementsSummary" },
+        { id: "company-summary", key: "companySummary" },
+        { id: "skills-assessment", key: "skillsAssessment" },
+        { id: "materials-summary", key: "materialsSummary" },
+        { id: "interview-details", key: "interviewDetails" },
+        { id: "preparation-summary", key: "preparationSummary" },
+        { id: "communication-summary", key: "communicationSummary" },
+        { id: "contacts-summary", key: "contactsSummary" },
+        { id: "feedback-summary", key: "feedbackSummary" },
+        { id: "offer-summary", key: "offerSummary" },
+        { id: "rejection-summary", key: "rejectionSummary" },
+        { id: "privacy-summary", key: "privacySummary" },
+        { id: "lessons-summary", key: "lessonsSummary" },
+        { id: "metrics-summary", key: "metricsSummary" },
+        { id: "advisor-summary", key: "advisorSummary" },
+        { id: "overall-summary", key: "overallSummary" },
+        { id: "markdown-editor", key: "markdownEditor" }
+      ];
+      placeholders.forEach(({ id, key }) => {
+        const element = document.getElementById(id);
+        if (element) {
+          element.placeholder = this.t(key, "placeholders");
+        }
+      });
+      const realtimeResponse = document.getElementById("realtime-response");
+      if (realtimeResponse) {
+        realtimeResponse.setAttribute("placeholder", this.t("aiResponse", "placeholders"));
+      }
+    }
+    /**
+     * Update labels
+     */
+    updateLabels() {
+      const labels = [
+        { selector: 'label[for="position-summary"]', key: "positionSummary" },
+        { selector: 'label[for="requirements-summary"]', key: "requirementsSummary" },
+        { selector: 'label[for="company-summary"]', key: "companySummary" },
+        { selector: 'label[for="skills-assessment"]', key: "skillsAssessment" },
+        { selector: 'label[for="materials-summary"]', key: "materialsSummary" },
+        { selector: 'label[for="interview-details"]', key: "interviewDetails" },
+        { selector: 'label[for="preparation-summary"]', key: "preparationSummary" },
+        { selector: 'label[for="communication-summary"]', key: "communicationSummary" },
+        { selector: 'label[for="contacts-summary"]', key: "contactsSummary" },
+        { selector: 'label[for="feedback-summary"]', key: "feedbackSummary" },
+        { selector: 'label[for="offer-summary"]', key: "offerSummary" },
+        { selector: 'label[for="rejection-summary"]', key: "rejectionSummary" },
+        { selector: 'label[for="privacy-summary"]', key: "privacySummary" },
+        { selector: 'label[for="lessons-summary"]', key: "lessonsSummary" },
+        { selector: 'label[for="metrics-summary"]', key: "metricsSummary" },
+        { selector: 'label[for="advisor-summary"]', key: "advisorSummary" },
+        { selector: 'label[for="overall-summary"]', key: "overallSummary" }
+      ];
+      labels.forEach(({ selector, key }) => {
+        const element = document.querySelector(selector);
+        if (element) {
+          element.textContent = this.t(key, "labels");
+        }
+      });
+    }
+    /**
+     * Update button text
+     */
+    updateButtons() {
+      const actionButtons = [
+        { id: "copy-markdown", key: "copy" },
+        { id: "generate-report", key: "generateReport" },
+        { id: "settings", key: "settings" },
+        { id: "language-toggle", key: "languageSelector" }
+      ];
+      const controlButtons = [
+        { id: "stop-generation", key: "stop" },
+        { id: "copy-realtime", key: "copy" },
+        { id: "clear-console", key: "clear" }
+      ];
+      actionButtons.forEach(({ id, key }) => {
+        const element = document.getElementById(id);
+        if (element && element.textContent) {
+          const icon = element.textContent.match(/[^\u0000-\u007F]/g)?.join("") || "";
+          element.textContent = icon;
+        }
+      });
+      controlButtons.forEach(({ id, key }) => {
+        const element = document.getElementById(id);
+        if (element && element.textContent) {
+          const icon = element.textContent.match(/[^\u0000-\u007F]/g)?.join("") || "";
+          element.textContent = `${icon} ${this.t(key, "buttons")}`.trim();
+        }
+      });
+    }
+    /**
+     * Update aria labels
+     */
+    updateAriaLabels() {
+      const ariaLabels = [
+        { id: "copy-markdown", key: "copyToClipboard" },
+        { id: "generate-report", key: "generateReport" },
+        { id: "theme-toggle", key: "toggleTheme" },
+        { id: "settings", key: "settings" },
+        { id: "clear-console", key: "clearConsole" }
+      ];
+      ariaLabels.forEach(({ id, key }) => {
+        const element = document.getElementById(id);
+        if (element) {
+          element.setAttribute("aria-label", this.t(key, "ariaLabels"));
+        }
+      });
+    }
+    /**
+     * Update console messages (this would be called when logging)
+     */
+    updateConsoleMessages() {
+    }
+    /**
+     * Get notification message
+     */
+    getNotificationMessage(key) {
+      return this.t(key, "notifications");
+    }
+    /**
+     * Get console message
+     */
+    getConsoleMessage(key) {
+      return this.t(key, "console");
+    }
+    /**
+     * Translate dynamic content in real-time
+     */
+    async translateDynamicContent() {
+      const textElements = document.querySelectorAll('textarea, input[type="text"]');
+      for (const element of textElements) {
+        const textElement = element;
+        if (textElement.value && textElement.value.trim() !== "") {
+          const originalText = textElement.value;
+          const translatedText = await this.translateContent(originalText);
+          if (translatedText !== originalText) {
+            textElement.value = translatedText;
+          }
+        }
+      }
+      const dynamicAreas = document.querySelectorAll(".realtime-response, .markdown-editor");
+      for (const area of dynamicAreas) {
+        if (area.textContent && area.textContent.trim() !== "") {
+          const originalText = area.textContent;
+          const translatedText = await this.translateContent(originalText);
+          if (translatedText !== originalText) {
+            area.textContent = translatedText;
+          }
+        }
+      }
+    }
+  };
+  var i18n = new I18nManager();
+
   // src/popup.ts
   var GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
   var GROQ_MODEL = "qwen2.5-32b-instant";
@@ -1054,7 +1459,7 @@
     }
     currentTheme = theme;
     updateThemeIcon();
-    logToConsole(`\u{1F3A8} Theme switched to ${theme} mode`, "info");
+    logToConsole(`${i18n.getConsoleMessage("themeSwitched")} ${theme} ${i18n.getConsoleMessage("mode")}`, "info");
   }
   function initializeTheme() {
     chrome.storage.sync.get(["jobops_theme"], (result) => {
@@ -1072,7 +1477,52 @@
     const newTheme = currentTheme === "light" ? "dark" : currentTheme === "dark" ? "system" : "light";
     applyTheme(newTheme);
     chrome.storage.sync.set({ jobops_theme: newTheme }, () => {
-      logToConsole(`\u{1F4BE} Theme preference saved: ${newTheme}`, "success");
+      logToConsole(`${i18n.getConsoleMessage("themePreferenceSaved")}: ${newTheme}`, "success");
+    });
+  }
+  function toggleLanguageDropdown() {
+    const currentLang = i18n.getCurrentLanguage();
+    const supportedLanguages = ["en", "fr", "nl", "tr"];
+    const currentIndex = supportedLanguages.indexOf(currentLang);
+    const nextIndex = (currentIndex + 1) % supportedLanguages.length;
+    const nextLanguage = supportedLanguages[nextIndex];
+    handleLanguageChange(nextLanguage);
+  }
+  async function handleLanguageChange(langCode) {
+    try {
+      logToConsole(`\u{1F310} Changing language to ${langCode}...`, "info");
+      await i18n.setLanguage(langCode);
+      i18n.updateUI();
+      await i18n.translateDynamicContent();
+      updateLanguageButtonIcon();
+      logToConsole(`\u2705 Language changed to ${langCode}`, "success");
+      showNotification(i18n.getNotificationMessage("languageChanged"));
+    } catch (error) {
+      logToConsole(`\u274C Error changing language: ${error}`, "error");
+      showNotification("Error changing language", true);
+    }
+  }
+  function updateLanguageButtonIcon() {
+    const languageButton = document.getElementById("language-toggle");
+    if (!languageButton)
+      return;
+    const currentLang = i18n.getCurrentLanguage();
+    const supportedLanguages = i18n.getSupportedLanguages();
+    const currentLanguage = supportedLanguages.find((lang) => lang.code === currentLang);
+    if (currentLanguage) {
+      languageButton.textContent = currentLanguage.flag;
+      languageButton.setAttribute("aria-label", `${i18n.t("languageSelector", "ariaLabels")} - ${currentLanguage.name}`);
+    }
+  }
+  function initializeLanguage() {
+    i18n.initialize().then(() => {
+      i18n.loadSavedLanguage().then(() => {
+        i18n.updateUI();
+        updateLanguageButtonIcon();
+        logToConsole(`\u{1F310} Language system initialized: ${i18n.getCurrentLanguage()}`, "info");
+      });
+    }).catch((error) => {
+      logToConsole(`\u274C Error initializing language system: ${error}`, "error");
     });
   }
   function logToConsole(message, level = "info") {
@@ -1089,7 +1539,7 @@
   function clearConsole() {
     if (consoleOutput) {
       consoleOutput.innerHTML = "";
-      logToConsole("\u{1F9F9} Console cleared", "info");
+      logToConsole(i18n.getConsoleMessage("consoleCleared"), "info");
     }
   }
   document.addEventListener("DOMContentLoaded", async () => {
@@ -1109,12 +1559,48 @@
     if (!consoleOutput) {
       console.error("Console output element not found!");
     } else {
-      logToConsole("\u{1F50D} Console monitor initialized", "info");
+      logToConsole(i18n.getConsoleMessage("initialized"), "info");
     }
     initializeTheme();
     if (themeToggleBtn) {
       themeToggleBtn.addEventListener("click", toggleTheme);
-      logToConsole("\u{1F3A8} Theme toggle button initialized", "info");
+      logToConsole(i18n.getConsoleMessage("themeToggleInitialized"), "info");
+    }
+    initializeLanguage();
+    const languageToggleBtn = document.getElementById("language-toggle");
+    if (languageToggleBtn) {
+      languageToggleBtn.addEventListener("click", toggleLanguageDropdown);
+      logToConsole(i18n.getConsoleMessage("languageToggleInitialized"), "info");
+    }
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(markdownEditor.value);
+          logToConsole(i18n.getConsoleMessage("markdownCopied"), "success");
+          showNotification2(i18n.getNotificationMessage("copied"));
+        } catch (error) {
+          logToConsole(`${i18n.getConsoleMessage("markdownCopyFailed")}: ${error}`, "error");
+          showNotification2(i18n.getNotificationMessage("copyFailed"), true);
+        }
+      });
+    }
+    if (generateReportBtn) {
+      generateReportBtn.addEventListener("click", handleGenerateReport);
+    }
+    if (settingsBtn) {
+      settingsBtn.addEventListener("click", handleSettings);
+    }
+    if (stopGenerationBtn) {
+      stopGenerationBtn.addEventListener("click", handleStopGeneration);
+    }
+    if (copyRealtimeBtn) {
+      copyRealtimeBtn.addEventListener("click", handleCopyRealtime);
+    }
+    if (clearConsoleBtn) {
+      clearConsoleBtn.addEventListener("click", clearConsole);
+    }
+    if (resumeUpload) {
+      resumeUpload.addEventListener("change", handleResumeUpload);
     }
     const propTitle = document.getElementById("prop-title");
     const propUrl = document.getElementById("prop-url");
@@ -1128,7 +1614,7 @@
     const propLocation = document.getElementById("prop-location");
     copyBtn.disabled = false;
     generateReportBtn.disabled = false;
-    logToConsole("\u2705 Generate Report button enabled and ready", "success");
+    logToConsole(i18n.getConsoleMessage("generateReportReady"), "success");
     generateReportBtn.style.opacity = "1";
     generateReportBtn.style.cursor = "pointer";
     setupToggleHandlers();
@@ -1140,24 +1626,24 @@
     });
     chrome.runtime.onMessage.addListener(async (msg, _sender, _sendResponse) => {
       if (msg.action === "show_preview" && msg.jobData) {
-        logToConsole("\u{1F4E8} Received preview data from content script", "info");
-        logToConsole(`\u{1F4CA} Job title: ${msg.jobData.title || "N/A"}`, "info");
+        logToConsole(i18n.getConsoleMessage("previewDataReceived"), "info");
+        logToConsole(`${i18n.getConsoleMessage("jobTitle")}: ${msg.jobData.title || "N/A"}`, "info");
         jobData = msg.jobData;
         const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
         if (jobExists) {
-          logToConsole("\u{1F504} Existing job application found and loaded", "info");
-          showNotification2("\u{1F504} Existing job application loaded");
+          logToConsole(i18n.getConsoleMessage("existingJobFound"), "info");
+          showNotification2(i18n.getNotificationMessage("existingJobLoaded"));
         } else {
           const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
           if (hasContent) {
-            logToConsole(`\u{1F195} Creating new job application (Quality: ${contentQuality})`, "info");
+            logToConsole(`${i18n.getConsoleMessage("newJobCreated")} (${i18n.getConsoleMessage("contentQuality")}: ${contentQuality})`, "info");
             try {
               await jobOpsDataManager.createNewJobApplication(jobData);
-              showNotification2(`\u{1F195} New job application created (${contentQuality} content)`);
+              showNotification2(`${i18n.getNotificationMessage("newJobCreated")} (${contentQuality} content)`);
               validateAndProvideFeedback(contentQuality, missingSections);
             } catch (error) {
-              logToConsole(`\u274C Error creating job application: ${error}`, "error");
-              showNotification2("\u274C Error creating job application", true);
+              logToConsole(`${i18n.getConsoleMessage("errorCreatingJob")}: ${error}`, "error");
+              showNotification2(i18n.getNotificationMessage("jobCreationError"), true);
             }
           } else {
             const minRequirements = missingSections.map((section) => {
@@ -1176,7 +1662,7 @@
         markdownEditor.value = generateMarkdown(jobData);
         copyBtn.disabled = false;
         generateReportBtn.disabled = false;
-        logToConsole("\u2705 Preview data processed successfully", "success");
+        logToConsole(i18n.getConsoleMessage("previewDataProcessed"), "success");
       }
     });
     if (resumeUpload) {
@@ -1187,7 +1673,7 @@
     }
     generateReportBtn.addEventListener("click", (event) => {
       console.log("\u{1F3AF} GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
-      logToConsole("\u{1F3AF} Generate Report button clicked - event handler triggered", "info");
+      logToConsole(i18n.getConsoleMessage("generateReportClicked"), "info");
       generateReportBtn.style.transform = "scale(0.95)";
       setTimeout(() => {
         generateReportBtn.style.transform = "scale(1)";
@@ -1208,7 +1694,7 @@
     window.addEventListener("jobDataLoaded", function(event) {
       const customEvent = event;
       const loadedData = customEvent.detail;
-      logToConsole("\u{1F4E5} Job data loaded from database, updating properties", "info");
+      logToConsole(i18n.getConsoleMessage("jobDataLoaded"), "info");
       if (loadedData && loadedData.jobApplication) {
         const jobApp = loadedData.jobApplication;
         populatePropertyFields({
@@ -1234,11 +1720,11 @@
           if (locationInput)
             locationInput.value = posDetails.location || "";
         }
-        logToConsole("\u2705 Properties updated with loaded job data", "success");
+        logToConsole(i18n.getConsoleMessage("propertiesUpdated"), "success");
       }
     });
-    logToConsole("\u{1F680} JobOps Clipper initialized", "info");
-    logToConsole("\u{1F4CB} Ready to process job postings and resumes", "success");
+    logToConsole(i18n.getConsoleMessage("jobOpsInitialized"), "info");
+    logToConsole(i18n.getConsoleMessage("readyToProcess"), "success");
     document.documentElement.style.setProperty("--button-bottom", "48px");
     const form = document.querySelector("#properties-form");
     if (form) {
@@ -1346,7 +1832,7 @@
           section: sectionName,
           job_application_id: jobInfo.id
         });
-        logToConsole(`\u2705 ${sectionName} data saved successfully`, "success");
+        logToConsole(`${i18n.getConsoleMessage("sectionSaved")}: ${sectionName}`, "success");
         showNotification2(`\u2705 ${sectionName} saved`);
       } catch (error) {
         const jobInfo = getCurrentJobInfo();
@@ -1355,7 +1841,7 @@
           job_application_id: jobInfo.id,
           error: error instanceof Error ? error.message : String(error)
         });
-        logToConsole(`\u274C Error saving ${sectionName}: ${error}`, "error");
+        logToConsole(`${i18n.getConsoleMessage("sectionSaveFailed")} ${sectionName}: ${error}`, "error");
         showNotification2(`\u274C Error saving ${sectionName}`, true);
         throw error;
       }
@@ -1545,9 +2031,9 @@
                     remote_work_policy: ""
                   });
                 }
-                logToConsole("\u{1F4BE} Auto-saved job data to database", "debug");
+                logToConsole(i18n.getConsoleMessage("autoSaved"), "debug");
               } else {
-                logToConsole(`\u26A0\uFE0F Insufficient content for database save. Missing: ${missingSections.join(", ")}`, "debug");
+                logToConsole(`${i18n.getConsoleMessage("insufficientContent")}. Missing: ${missingSections.join(", ")}`, "debug");
               }
             } catch (error) {
               logToConsole(`\u274C Auto-save failed: ${error}`, "error");
@@ -1603,7 +2089,7 @@
           (value) => typeof value === "string" && value.trim().length > 0
         );
         if (!hasSectionContent) {
-          logToConsole(`\u{1F4BE} ${sectionName} is empty - no save needed`, "debug");
+          logToConsole(`${i18n.getConsoleMessage("sectionEmpty")}: ${sectionName}`, "debug");
           return;
         }
         logToConsole(`\u{1F4BE} Saving ${sectionName}...`, "info");
@@ -1618,14 +2104,14 @@
             ].find((s) => s.name === section);
             return `${section} (${req?.minLength || 50}+ chars)`;
           }).join(", ");
-          logToConsole(`\u26A0\uFE0F Cannot save - insufficient content. Missing: ${missingSections.join(", ")}`, "warning");
+          logToConsole(`${i18n.getConsoleMessage("cannotSave")}. Missing: ${missingSections.join(", ")}`, "warning");
           return;
         }
         if (sectionData && Object.keys(sectionData).length > 0) {
           await saveSectionData(sectionName.replace("-", "_"), sectionData);
           logToConsole(`\u2705 ${sectionName} saved successfully`, "success");
         } else {
-          logToConsole(`\u26A0\uFE0F No data to save for ${sectionName}`, "warning");
+          logToConsole(`${i18n.getConsoleMessage("noDataToSave")}: ${sectionName}`, "warning");
         }
       } catch (error) {
         logToConsole(`\u274C Failed to save ${sectionName}: ${error}`, "error");
@@ -1823,13 +2309,13 @@
       input.addEventListener("input", updateJobDataFromFields);
     });
     async function requestJobData() {
-      logToConsole("\u{1F310} Requesting job data from current page...", "info");
+      logToConsole(i18n.getConsoleMessage("requestingJobData"), "info");
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs[0]?.id) {
-          logToConsole("\u274C No active tab found", "error");
+          logToConsole(i18n.getConsoleMessage("noActiveTab"), "error");
           return;
         }
-        logToConsole("\u{1F50D} Checking content script availability...", "debug");
+        logToConsole(i18n.getConsoleMessage("checkingContentScript"), "debug");
         chrome.scripting.executeScript(
           {
             target: { tabId: tabs[0].id },
@@ -1837,36 +2323,36 @@
           },
           async (results) => {
             if (chrome.runtime.lastError || !results || !results[0].result) {
-              logToConsole("\u274C Content script not loaded. Please refresh the page and try again.", "error");
+              logToConsole(i18n.getConsoleMessage("contentScriptNotLoaded"), "error");
               return;
             }
-            logToConsole("\u2705 Content script available, requesting page data...", "success");
+            logToConsole(i18n.getConsoleMessage("contentScriptAvailable"), "success");
             chrome.tabs.sendMessage(
               tabs[0].id,
               { action: "clip_page" },
               async (response) => {
                 if (chrome.runtime.lastError) {
-                  logToConsole("\u274C Could not connect to content script. Try refreshing the page.", "error");
+                  logToConsole(i18n.getConsoleMessage("cannotConnectToContentScript"), "error");
                   return;
                 }
                 if (response && response.jobData) {
-                  logToConsole("\u2705 Job data received successfully!", "success");
+                  logToConsole(i18n.getConsoleMessage("jobDataReceived"), "success");
                   logToConsole(`\u{1F4CA} Job title: ${response.jobData.title || "N/A"}`, "info");
-                  logToConsole(`\u{1F4CB} Job data keys: ${Object.keys(response.jobData).join(", ")}`, "debug");
+                  logToConsole(`${i18n.getConsoleMessage("jobDataKeys")}: ${Object.keys(response.jobData).join(", ")}`, "debug");
                   if (!response.jobData.title && !response.jobData.body) {
-                    logToConsole("\u26A0\uFE0F Job data missing essential fields (title/body)", "warning");
-                    showNotification2("\u26A0\uFE0F Job data incomplete. Please refresh the page and try again.", true);
+                    logToConsole(i18n.getConsoleMessage("jobDataMissingFields"), "warning");
+                    showNotification2(i18n.getNotificationMessage("jobDataIncomplete"), true);
                     return;
                   }
                   jobData = response.jobData;
                   const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
                   if (jobExists) {
-                    logToConsole("\u{1F504} Existing job application found and loaded", "info");
-                    showNotification2("\u{1F504} Existing job application loaded");
+                    logToConsole(i18n.getConsoleMessage("existingJobFoundAndLoaded"), "info");
+                    showNotification2(i18n.getNotificationMessage("existingJobLoaded"));
                   } else {
                     const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
                     if (hasContent) {
-                      logToConsole(`\u{1F195} Creating new job application (Quality: ${contentQuality})`, "info");
+                      logToConsole(`${i18n.getConsoleMessage("creatingNewJobApplication")} (${i18n.getConsoleMessage("contentQuality")}: ${contentQuality})`, "info");
                       try {
                         await jobOpsDataManager.createNewJobApplication(jobData);
                         showNotification2(`\u{1F195} New job application created (${contentQuality} content)`);
@@ -1891,10 +2377,10 @@
                   populatePropertyFields(jobData);
                   markdownEditor.value = generateMarkdown(jobData);
                   copyBtn.disabled = false;
-                  logToConsole("\u2705 Job data populated successfully", "success");
+                  logToConsole(i18n.getConsoleMessage("jobDataPopulated"), "success");
                 } else {
-                  logToConsole("\u26A0\uFE0F No job data received from content script", "warning");
-                  showNotification2("\u26A0\uFE0F No job data found. Please refresh the page and try again.", true);
+                  logToConsole(i18n.getConsoleMessage("noJobDataReceived"), "warning");
+                  showNotification2(i18n.getNotificationMessage("noJobDataFound"), true);
                 }
               }
             );
@@ -1903,7 +2389,7 @@
       });
     }
     copyBtn.onclick = async () => {
-      logToConsole("\u{1F4CB} Copy to clipboard triggered", "info");
+      logToConsole(i18n.getConsoleMessage("copyToClipboardTriggered"), "info");
       try {
         const allFormData = collectAllFormData();
         const hasContent = Object.values(allFormData).some((section) => {
@@ -1922,18 +2408,18 @@
           return false;
         });
         if (!hasContent) {
-          logToConsole("\u274C No content to copy", "error");
-          showNotification2("No content to copy!", true);
+          logToConsole(i18n.getConsoleMessage("noContentToCopy"), "error");
+          showNotification2(i18n.getNotificationMessage("noContentToCopy"), true);
           return;
         }
         const jsonContent = JSON.stringify(allFormData, null, 2);
-        logToConsole(`\u{1F4CB} Copying JSON data (${jsonContent.length} characters) to clipboard...`, "progress");
+        logToConsole(`${i18n.getConsoleMessage("copyingJsonData")} (${jsonContent.length} characters)...`, "progress");
         await navigator.clipboard.writeText(jsonContent);
-        logToConsole("\u2705 All form data copied to clipboard as JSON!", "success");
-        showNotification2("\u2705 All form data copied as JSON!");
+        logToConsole(i18n.getConsoleMessage("allFormDataCopiedSuccess"), "success");
+        showNotification2(i18n.getNotificationMessage("allFormDataCopied"));
       } catch (e) {
-        logToConsole(`\u274C Copy failed: ${e}`, "error");
-        showNotification2("\u274C Failed to copy to clipboard", true);
+        logToConsole(`${i18n.getConsoleMessage("copyFailedWithError")}: ${e}`, "error");
+        showNotification2(i18n.getNotificationMessage("copyFailed"), true);
       }
     };
     function showNotification2(message, isError = false) {
@@ -1951,17 +2437,17 @@
     }
     async function handleResumeUpload(event) {
       console.log("\u{1F3AF} RESUME UPLOAD TRIGGERED - DIRECT CONSOLE LOG");
-      logToConsole("\u{1F4C1} Resume upload triggered", "info");
+      logToConsole(i18n.getConsoleMessage("resumeUploadTriggered"), "info");
       const target = event.target;
       const file = target.files?.[0];
       if (!file) {
-        logToConsole("\u274C No file selected", "error");
-        showNotification2("No file selected", true);
+        logToConsole(i18n.getConsoleMessage("noFileSelected"), "error");
+        showNotification2(i18n.getNotificationMessage("noFileSelected"), true);
         return;
       }
       if (file.type !== "application/pdf") {
-        logToConsole("\u274C Invalid file type - PDF required", "error");
-        showNotification2("Please select a PDF file", true);
+        logToConsole(i18n.getConsoleMessage("invalidFileType"), "error");
+        showNotification2(i18n.getNotificationMessage("invalidFileType"), true);
         return;
       }
       logToConsole(`\u{1F4C4} Starting PDF extraction: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, "progress");
@@ -1978,10 +2464,10 @@
         logToConsole(`\u2705 PDF extraction completed! Content length: ${resumeContent.length} characters`, "success");
         logToConsole(`\u{1F4C4} Resume content preview: ${resumeContent.substring(0, 200)}${resumeContent.length > 200 ? "..." : ""}`, "debug");
         logToConsole(`\u{1F4C4} Resume content stored in variable: ${resumeContent ? "YES" : "NO"}`, "debug");
-        logToConsole("\u2705 Resume content extracted successfully!", "success");
-        logToConsole("\u{1F4CB} Resume ready for report generation", "success");
+        logToConsole(i18n.getConsoleMessage("resumeContentExtracted"), "success");
+        logToConsole(i18n.getConsoleMessage("resumeReady"), "success");
         setTimeout(() => {
-          logToConsole("\u{1F4CB} Resume ready for report generation", "success");
+          logToConsole(i18n.getConsoleMessage("resumeReady"), "success");
         }, 2e3);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1991,16 +2477,16 @@
     }
     async function handleGenerateReport() {
       console.log("\u{1F3AF} GENERATE REPORT BUTTON CLICKED - DIRECT CONSOLE LOG");
-      logToConsole("\u{1F680} Generate Report button clicked", "info");
+      logToConsole(i18n.getConsoleMessage("generateReportClicked"), "info");
       logToConsole(`\u{1F4CA} Current resumeContent length: ${resumeContent.length}`, "debug");
       logToConsole(`\u{1F4CB} Current jobData keys: ${Object.keys(jobData).join(", ")}`, "debug");
       if (!resumeContent) {
-        logToConsole("\u{1F4C1} No resume content found, triggering file upload", "warning");
+        logToConsole(i18n.getConsoleMessage("noResumeContent"), "warning");
         resumeUpload.click();
         return;
       }
       if (!jobData || Object.keys(jobData).length === 0) {
-        logToConsole("\u{1F4CB} No job data found, requesting from current page", "warning");
+        logToConsole(i18n.getConsoleMessage("noJobData"), "warning");
         await new Promise((resolve) => {
           requestJobData();
           setTimeout(() => {
@@ -2011,17 +2497,17 @@
           }, 1e3);
         });
         if (!jobData || Object.keys(jobData).length === 0) {
-          logToConsole("\u274C Still no job data after request, cannot proceed", "error");
-          showNotification2("\u274C No job data available. Please refresh the page and try again.", true);
+          logToConsole(i18n.getConsoleMessage("stillNoJobData"), "error");
+          showNotification2(i18n.getNotificationMessage("noJobDataAvailable"), true);
           return;
         }
       }
       if (!jobData.title && !jobData.body) {
-        logToConsole("\u274C Job data missing essential fields (title/body)", "error");
-        showNotification2("\u274C Job data incomplete. Please refresh the page and try again.", true);
+        logToConsole(i18n.getConsoleMessage("jobDataIncomplete"), "error");
+        showNotification2(i18n.getNotificationMessage("jobDataIncomplete"), true);
         return;
       }
-      logToConsole("\u{1F680} Starting report generation process", "info");
+      logToConsole(i18n.getConsoleMessage("reportGenerationStarted"), "info");
       generateReportBtn.disabled = true;
       logToConsole("\u{1F504} Starting report generation...", "info");
       showNotification2("\u{1F504} Starting report generation...");
@@ -2701,23 +3187,23 @@ Fill in all template placeholders with concrete, actionable information based on
         realtimeResponse.classList.remove("typing");
       }
       logToConsole("\u2705 Generation stopped", "info");
-      showNotification("Generation stopped");
+      showNotification(i18n.getNotificationMessage("generationStopped"));
     }
   }
   async function handleCopyRealtime() {
     const realtimeResponse = document.getElementById("realtime-response");
     if (!realtimeResponse || !realtimeResponse.textContent) {
       logToConsole("\u274C No real-time content to copy", "error");
-      showNotification("No content to copy!", true);
+      showNotification(i18n.getNotificationMessage("noContentToCopy"), true);
       return;
     }
     try {
       await navigator.clipboard.writeText(realtimeResponse.textContent);
       logToConsole("\u2705 Real-time response copied to clipboard", "success");
-      showNotification("Real-time response copied!");
+      showNotification(i18n.getNotificationMessage("copied"));
     } catch (error) {
       logToConsole(`\u274C Failed to copy real-time response: ${error}`, "error");
-      showNotification("Failed to copy real-time response", true);
+      showNotification(i18n.getNotificationMessage("copyFailed"), true);
     }
   }
 })();

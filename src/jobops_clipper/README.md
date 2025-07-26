@@ -9,6 +9,7 @@ A Chrome extension for clipping job postings and generating comprehensive applic
 - **Web Page Clipping**: Extract job posting data from any webpage
 - **Metadata Extraction**: Automatically capture title, description, requirements, and other job details
 - **Markdown Generation**: Convert clipped content to structured markdown format
+- **Multi-Language Support**: Full internationalization with 4 supported languages (EN, NL, FR, TR)
 
 ### AI-Powered Report Generation
 
@@ -263,6 +264,8 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
 
 - `http://localhost:8877/*`: Backend API
 - `https://api.groq.com/*`: Groq API
+- `https://libretranslate.de/*`: Translation API (primary)
+- `https://translate.argosopentech.com/*`: Translation API (fallback)
 - `<all_urls>`: Content script injection
 
 ## Technical Details
@@ -292,6 +295,19 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
 - Local fallback option for privacy-conscious users
 - PDF content processed locally before sending to LLM
 
+### Internationalization (i18n)
+
+The extension supports multiple languages with automatic language detection and dynamic content translation:
+
+- **Supported Languages**: English (US), Dutch (Belgium), French (Belgium), Turkish (Turkey)
+- **Language Detection**: Automatically detects browser language on first use
+- **Language Switching**: Click the 🌐 button to change language in real-time
+- **Dynamic Translation**: Existing content is automatically translated when switching languages
+- **Free Translation APIs**: Uses LibreTranslate and Argos Translate for dynamic content translation
+- **Persistent Preferences**: Language choice is saved and persists across sessions
+
+See `src/locales/README.md` for detailed documentation on the i18n system.
+
 ## Development
 
 ### Project Structure
@@ -303,6 +319,12 @@ src/
 ├── popup.ts          # Popup logic
 ├── popup.html        # Popup UI
 ├── popup.css         # Popup styling
+├── i18n.ts           # Internationalization manager
+├── locales/          # Language files
+│   ├── en.json       # English translations
+│   ├── nl.json       # Dutch translations
+│   ├── fr.json       # French translations
+│   └── tr.json       # Turkish translations
 └── icon.png          # Extension icon
 ```
 

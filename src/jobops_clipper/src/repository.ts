@@ -35,7 +35,7 @@ export class JobOpsDataManager {
     try {
       // Wait for database to be ready
       await new Promise(resolve => setTimeout(resolve, 100));
-      console.log('JobOps Data Manager initialized');
+      console.log('[JobOps Clipper] Data Manager initialized successfully');
     } catch (error) {
       console.error('Failed to initialize data manager:', error);
     }
@@ -75,7 +75,7 @@ export class JobOpsDataManager {
       };
 
       this.currentJobApplicationId = await jobOpsDatabase.createJobApplication(jobApplicationData);
-      console.log('New job application created:', this.currentJobApplicationId);
+      console.log('[JobOps Clipper] New job application created:', this.currentJobApplicationId);
       return this.currentJobApplicationId;
     } catch (error) {
       console.error('Error creating new job application:', error);
@@ -560,7 +560,7 @@ export class JobOpsDataManager {
 
   // Populate UI with loaded data
   private populateUIWithData(data: any): void {
-    console.log('Populating UI with loaded data:', data);
+    console.log('[JobOps Clipper] Populating UI with loaded data:', data);
     
     // Dispatch a custom event to notify the popup that data has been loaded
     // This allows the popup to update its UI with the loaded data

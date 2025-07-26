@@ -26,7 +26,7 @@
               tryClipPage(tabId, attempt + 1, maxAttempts).then(resolve).catch(reject);
             }, 500);
           } else {
-            showNotification("Failed to extract content from page after multiple attempts.", true);
+            showNotification("Failed to extract content from page after multiple attempts. Please refresh the page and try again.", true);
             reject(chrome.runtime.lastError);
           }
           return;
@@ -38,7 +38,7 @@
               tryClipPage(tabId, attempt + 1, maxAttempts).then(resolve).catch(reject);
             }, 500);
           } else {
-            showNotification("No content extracted or malformed response after multiple attempts.", true);
+            showNotification("No content extracted or malformed response after multiple attempts. Please refresh the page and try again.", true);
             reject(response && response.error ? response.error : "Malformed response");
           }
           return;
@@ -52,7 +52,7 @@
           if (attempt < maxAttempts) {
             tryClipPage(tabId, attempt + 1, maxAttempts).then(resolve).catch(reject);
           } else {
-            showNotification("Content script did not respond after multiple attempts.", true);
+            showNotification("Content script did not respond after multiple attempts. Please refresh the page and try again.", true);
             reject("Timeout waiting for content script response");
           }
         }
@@ -91,7 +91,7 @@
               try {
                 const backendApiBase = await getBackendApiBase();
                 if (!backendApiBase) {
-                  showNotification("Backend URL not set.", true);
+                  showNotification("Backend URL not configured. Please check settings.", true);
                   return;
                 }
                 const clipRes = await fetch(`${backendApiBase}/clip`, {
@@ -117,7 +117,7 @@
                 showNotification("Clip saved successfully!");
               } catch (e) {
                 log("Fetch to backend failed:", e);
-                showNotification("Failed to communicate with backend.", true);
+                showNotification("Failed to communicate with backend. Please check your connection.", true);
               }
             }).catch((err) => {
               log("Final failure after retries:", err);
@@ -128,7 +128,7 @@
           }
         } else {
           log("No active tab found.");
-          showNotification("No active tab found.", true);
+          showNotification("No active tab found. Please open a webpage and try again.", true);
         }
       });
     } else {
