@@ -122,6 +122,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Set up settings button handler
   settingsBtn.addEventListener('click', handleSettings);
 
+  // Add test API functionality
+  settingsBtn.addEventListener('contextmenu', handleTestAPI);
+
   // Set up console clear button handler
   if (clearConsoleBtn) {
     clearConsoleBtn.addEventListener('click', clearConsole);
@@ -357,6 +360,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       resumeContent = await extractPdfContent(file);
       
       logToConsole(`✅ PDF extraction completed! Content length: ${resumeContent.length} characters`, "success");
+      logToConsole(`📄 Resume content preview: ${resumeContent.substring(0, 200)}${resumeContent.length > 200 ? '...' : ''}`, "debug");
       
       // Step 3: Success
       status.textContent = "✅ Resume content extracted successfully!";
@@ -388,6 +392,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    // Also check if we have job data
+    if (!jobData || Object.keys(jobData).length === 0) {
+      logToConsole("📋 No job data found, requesting from current page", "warning");
+      requestJobData();
+      return;
+    }
+
     logToConsole("🚀 Starting report generation process", "info");
     generateReportBtn.disabled = true;
     status.textContent = "🔄 Starting report generation...";
@@ -408,6 +419,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Step 2: Prepare data
       logToConsole("📊 Preparing job data and resume content...", "progress");
+      logToConsole(`📋 Job data keys: ${Object.keys(jobData).join(', ')}`, "debug");
+      logToConsole(`📄 Resume content length: ${resumeContent.length} characters`, "debug");
       status.textContent = "📊 Preparing job data and resume content...";
       status.className = "loading";
       showNotification("📊 Preparing data for analysis...");
@@ -422,9 +435,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (realtimeResponse) {
         realtimeResponse.innerHTML = '';
         realtimeResponse.classList.add('typing');
+        logToConsole("✅ Real-time response element initialized", "debug");
+      } else {
+        logToConsole("❌ Real-time response element not found", "error");
       }
       if (stopGenerationBtn) {
         stopGenerationBtn.style.display = 'inline-block';
+        logToConsole("✅ Stop generation button shown", "debug");
+      } else {
+        logToConsole("❌ Stop generation button not found", "error");
+      }
+      
+      // Ensure real-time section is expanded
+      const realtimeContent = document.getElementById("realtime-content");
+      if (realtimeContent && realtimeContent.classList.contains('collapsed')) {
+        toggleSection('realtime-content');
+        logToConsole("✅ Real-time section expanded", "debug");
+      } else if (realtimeContent) {
+        logToConsole("✅ Real-time section already expanded", "debug");
+      } else {
+        logToConsole("❌ Real-time content element not found", "error");
       }
       
       isGenerating = true;
@@ -437,8 +467,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           span.textContent = chunk;
           realtimeResponse.appendChild(span);
           realtimeResponse.scrollTop = realtimeResponse.scrollHeight;
+          logToConsole(`📝 Real-time chunk received: ${chunk.length} characters`, "debug");
         }
       });
+      
+      if (!report) {
+        throw new Error('No report generated - API returned empty response');
+      }
       
       // Step 4: Success
       logToConsole("✅ Report generated successfully!", "success");
@@ -446,6 +481,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       status.className = "success";
       showNotification("✅ Report generated successfully!");
       markdownEditor.value = report;
+      
+      // Also update real-time response with final content
+      if (realtimeResponse) {
+        realtimeResponse.classList.remove('typing');
+        logToConsole("✅ Real-time response completed", "success");
+      }
       
       // Keep success message visible longer
       setTimeout(() => {
@@ -543,6 +584,38 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } else {
       logToConsole("❌ Settings dialog cancelled", "info");
+    }
+  }
+
+  // Handle test API (right-click on settings button)
+  async function handleTestAPI(event: Event) {
+    event.preventDefault();
+    logToConsole("🧪 Testing API connectivity...", "info");
+    
+    try {
+      const apiKey = await getGroqApiKey();
+      if (!apiKey) {
+        logToConsole("❌ No API key configured", "error");
+        showNotification("❌ No API key configured", true);
+        return;
+      }
+      
+      logToConsole("🔑 API key found, testing Groq API...", "progress");
+      const testResponse = await callGroqAPI("Say 'Hello, API test successful!'", (chunk) => {
+        logToConsole(`🧪 Test chunk: ${chunk}`, "debug");
+      });
+      
+      if (testResponse) {
+        logToConsole("✅ API test successful!", "success");
+        showNotification("✅ API test successful!");
+      } else {
+        logToConsole("❌ API test failed - no response", "error");
+        showNotification("❌ API test failed", true);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logToConsole(`❌ API test failed: ${errorMessage}`, "error");
+      showNotification(`❌ API test failed: ${errorMessage}`, true);
     }
   }
 });
@@ -706,15 +779,32 @@ Fill in all template placeholders with concrete, actionable information based on
 
   try {
     // Try Groq first with streaming
+    logToConsole("🤖 Attempting Groq API with streaming...", "progress");
     const groqResponse = await callGroqAPI(prompt, onChunk);
     if (groqResponse) {
+      logToConsole("✅ Groq API succeeded with streaming", "success");
       return groqResponse;
     }
   } catch (error) {
-    console.warn('Groq API failed, falling back to Ollama:', error);
-    throw new Error('Groq API failed');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logToConsole(`⚠️ Groq API failed: ${errorMessage}`, "warning");
+    logToConsole("🔄 Falling back to Ollama...", "progress");
+    
+    try {
+      // Try Ollama as fallback
+      logToConsole("🤖 Attempting Ollama API fallback...", "progress");
+      const ollamaResponse = await callOllamaAPI(prompt);
+      if (ollamaResponse) {
+        logToConsole("✅ Ollama API succeeded", "success");
+        return ollamaResponse;
+      }
+    } catch (ollamaError) {
+      const ollamaErrorMessage = ollamaError instanceof Error ? ollamaError.message : String(ollamaError);
+      logToConsole(`❌ Ollama API also failed: ${ollamaErrorMessage}`, "error");
+    }
   }
 
+  logToConsole("❌ Both Groq and Ollama APIs failed", "error");
   throw new Error('Both Groq and Ollama APIs failed');
 }
 
@@ -850,6 +940,7 @@ async function callGroqAPI(prompt: string, onChunk?: (chunk: string) => void): P
                 }
               } catch (e) {
                 // Ignore parsing errors for incomplete chunks
+                logToConsole(`⚠️ Ignoring malformed chunk: ${e}`, "debug");
               }
             }
           }
@@ -862,7 +953,7 @@ async function callGroqAPI(prompt: string, onChunk?: (chunk: string) => void): P
       }
     } else {
       // Handle non-streaming response
-      logToConsole("📥 Parsing JSON response...", "debug");
+      logToConsole("📥 Processing non-streaming response...", "debug");
       const data = await response.json();
       
       logToConsole(`📊 Response data keys: ${Object.keys(data).join(', ')}`, "debug");

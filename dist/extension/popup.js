@@ -84,6 +84,7 @@
     }
     generateReportBtn.addEventListener("click", handleGenerateReport);
     settingsBtn.addEventListener("click", handleSettings);
+    settingsBtn.addEventListener("contextmenu", handleTestAPI);
     if (clearConsoleBtn) {
       clearConsoleBtn.addEventListener("click", clearConsole);
     }
@@ -273,6 +274,7 @@
         logToConsole("\u{1F50D} Extracting text content from PDF...", "progress");
         resumeContent = await extractPdfContent(file);
         logToConsole(`\u2705 PDF extraction completed! Content length: ${resumeContent.length} characters`, "success");
+        logToConsole(`\u{1F4C4} Resume content preview: ${resumeContent.substring(0, 200)}${resumeContent.length > 200 ? "..." : ""}`, "debug");
         status.textContent = "\u2705 Resume content extracted successfully!";
         status.className = "success";
         showNotification2("\u2705 Resume content extracted successfully!");
@@ -295,6 +297,11 @@
         resumeUpload.click();
         return;
       }
+      if (!jobData || Object.keys(jobData).length === 0) {
+        logToConsole("\u{1F4CB} No job data found, requesting from current page", "warning");
+        requestJobData();
+        return;
+      }
       logToConsole("\u{1F680} Starting report generation process", "info");
       generateReportBtn.disabled = true;
       status.textContent = "\u{1F504} Starting report generation...";
@@ -311,6 +318,8 @@
         logToConsole("\u2705 API key found, proceeding with report generation", "success");
         showNotification2("\u2705 API key found, proceeding...");
         logToConsole("\u{1F4CA} Preparing job data and resume content...", "progress");
+        logToConsole(`\u{1F4CB} Job data keys: ${Object.keys(jobData).join(", ")}`, "debug");
+        logToConsole(`\u{1F4C4} Resume content length: ${resumeContent.length} characters`, "debug");
         status.textContent = "\u{1F4CA} Preparing job data and resume content...";
         status.className = "loading";
         showNotification2("\u{1F4CA} Preparing data for analysis...");
@@ -321,9 +330,24 @@
         if (realtimeResponse) {
           realtimeResponse.innerHTML = "";
           realtimeResponse.classList.add("typing");
+          logToConsole("\u2705 Real-time response element initialized", "debug");
+        } else {
+          logToConsole("\u274C Real-time response element not found", "error");
         }
         if (stopGenerationBtn) {
           stopGenerationBtn.style.display = "inline-block";
+          logToConsole("\u2705 Stop generation button shown", "debug");
+        } else {
+          logToConsole("\u274C Stop generation button not found", "error");
+        }
+        const realtimeContent = document.getElementById("realtime-content");
+        if (realtimeContent && realtimeContent.classList.contains("collapsed")) {
+          toggleSection("realtime-content");
+          logToConsole("\u2705 Real-time section expanded", "debug");
+        } else if (realtimeContent) {
+          logToConsole("\u2705 Real-time section already expanded", "debug");
+        } else {
+          logToConsole("\u274C Real-time content element not found", "error");
         }
         isGenerating = true;
         abortController = new AbortController();
@@ -334,13 +358,21 @@
             span.textContent = chunk;
             realtimeResponse.appendChild(span);
             realtimeResponse.scrollTop = realtimeResponse.scrollHeight;
+            logToConsole(`\u{1F4DD} Real-time chunk received: ${chunk.length} characters`, "debug");
           }
         });
+        if (!report) {
+          throw new Error("No report generated - API returned empty response");
+        }
         logToConsole("\u2705 Report generated successfully!", "success");
         status.textContent = "\u2705 Report generated successfully!";
         status.className = "success";
         showNotification2("\u2705 Report generated successfully!");
         markdownEditor.value = report;
+        if (realtimeResponse) {
+          realtimeResponse.classList.remove("typing");
+          logToConsole("\u2705 Real-time response completed", "success");
+        }
         setTimeout(() => {
           status.textContent = "\u{1F4CB} Report ready - use Copy button to copy content";
           status.className = "success";
@@ -427,6 +459,33 @@
         }
       } else {
         logToConsole("\u274C Settings dialog cancelled", "info");
+      }
+    }
+    async function handleTestAPI(event) {
+      event.preventDefault();
+      logToConsole("\u{1F9EA} Testing API connectivity...", "info");
+      try {
+        const apiKey = await getGroqApiKey();
+        if (!apiKey) {
+          logToConsole("\u274C No API key configured", "error");
+          showNotification2("\u274C No API key configured", true);
+          return;
+        }
+        logToConsole("\u{1F511} API key found, testing Groq API...", "progress");
+        const testResponse = await callGroqAPI("Say 'Hello, API test successful!'", (chunk) => {
+          logToConsole(`\u{1F9EA} Test chunk: ${chunk}`, "debug");
+        });
+        if (testResponse) {
+          logToConsole("\u2705 API test successful!", "success");
+          showNotification2("\u2705 API test successful!");
+        } else {
+          logToConsole("\u274C API test failed - no response", "error");
+          showNotification2("\u274C API test failed", true);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logToConsole(`\u274C API test failed: ${errorMessage}`, "error");
+        showNotification2(`\u274C API test failed: ${errorMessage}`, true);
       }
     }
   });
@@ -575,14 +634,29 @@ Please analyze this information and fill out the job application tracking report
 
 Fill in all template placeholders with concrete, actionable information based on the provided data.`;
     try {
+      logToConsole("\u{1F916} Attempting Groq API with streaming...", "progress");
       const groqResponse = await callGroqAPI(prompt2, onChunk);
       if (groqResponse) {
+        logToConsole("\u2705 Groq API succeeded with streaming", "success");
         return groqResponse;
       }
     } catch (error) {
-      console.warn("Groq API failed, falling back to Ollama:", error);
-      throw new Error("Groq API failed");
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logToConsole(`\u26A0\uFE0F Groq API failed: ${errorMessage}`, "warning");
+      logToConsole("\u{1F504} Falling back to Ollama...", "progress");
+      try {
+        logToConsole("\u{1F916} Attempting Ollama API fallback...", "progress");
+        const ollamaResponse = await callOllamaAPI(prompt2);
+        if (ollamaResponse) {
+          logToConsole("\u2705 Ollama API succeeded", "success");
+          return ollamaResponse;
+        }
+      } catch (ollamaError) {
+        const ollamaErrorMessage = ollamaError instanceof Error ? ollamaError.message : String(ollamaError);
+        logToConsole(`\u274C Ollama API also failed: ${ollamaErrorMessage}`, "error");
+      }
     }
+    logToConsole("\u274C Both Groq and Ollama APIs failed", "error");
     throw new Error("Both Groq and Ollama APIs failed");
   }
   async function generateJobReportWithOllama(jobData, resumeContent) {
@@ -691,6 +765,7 @@ Fill in all template placeholders with concrete, actionable information based on
                     logToConsole(`\u{1F4DD} Streamed chunk: ${content.length} characters`, "debug");
                   }
                 } catch (e) {
+                  logToConsole(`\u26A0\uFE0F Ignoring malformed chunk: ${e}`, "debug");
                 }
               }
             }
@@ -701,7 +776,7 @@ Fill in all template placeholders with concrete, actionable information based on
           reader.releaseLock();
         }
       } else {
-        logToConsole("\u{1F4E5} Parsing JSON response...", "debug");
+        logToConsole("\u{1F4E5} Processing non-streaming response...", "debug");
         const data = await response.json();
         logToConsole(`\u{1F4CA} Response data keys: ${Object.keys(data).join(", ")}`, "debug");
         logToConsole(`\u{1F3AF} Choices count: ${data.choices?.length || 0}`, "debug");
