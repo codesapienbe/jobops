@@ -5,6 +5,9 @@
 // @ts-ignore
 declare const JOBOPS_BACKEND_URL: string | undefined;
 
+// Import database and data manager
+import { jobOpsDataManager } from './repository';
+
 // LLM Configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'qwen2.5-32b-instant'; // Free tier model with high usage limits
@@ -92,6 +95,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Set up toggle functionality
   setupToggleHandlers();
 
+  // Set up auto-save and section save buttons
+  setupAutoSave();
+  setupSectionSaveButtons();
+
   // Set backendUrl from env or fallback, then store in chrome.storage.sync
   const backendUrl: string = (typeof JOBOPS_BACKEND_URL !== 'undefined' ? JOBOPS_BACKEND_URL : 'http://localhost:8877');
   chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
@@ -99,11 +106,28 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // Listen for preview data from content script
-  chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
+  chrome.runtime.onMessage.addListener(async (msg, _sender, _sendResponse) => {
     if (msg.action === "show_preview" && msg.jobData) {
       logToConsole("📨 Received preview data from content script", "info");
       logToConsole(`📊 Job title: ${msg.jobData.title || 'N/A'}`, "info");
       jobData = msg.jobData;
+      
+      // Check if job application already exists
+      const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
+      if (jobExists) {
+        logToConsole("🔄 Existing job application found and loaded", "info");
+        showNotification("🔄 Existing job application loaded");
+      } else {
+        logToConsole("🆕 Creating new job application", "info");
+        try {
+          await jobOpsDataManager.createNewJobApplication(jobData);
+          showNotification("🆕 New job application created");
+        } catch (error) {
+          logToConsole(`❌ Error creating job application: ${error}`, "error");
+          showNotification("❌ Error creating job application", true);
+        }
+      }
+      
       populatePropertyFields(jobData);
       markdownEditor.value = generateMarkdown(jobData);
       // Copy button is always enabled
@@ -159,9 +183,293 @@ document.addEventListener("DOMContentLoaded", async () => {
   logToConsole("🚀 JobOps Clipper initialized", "info");
   logToConsole("📋 Ready to process job postings and resumes", "success");
 
+  // Log to application.log as required by rules
+  const logToApplicationLog = (level: string, message: string, data?: any) => {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      component: 'JobOpsClipper',
+      message,
+      correlation_id: `jobops_${Date.now()}`,
+      user_id: 'extension_user',
+      request_id: `req_${Date.now()}`,
+      ...(data && { data })
+    };
+    
+    // In a real extension, this would write to a file
+    // For now, we'll use console.log for the structured log
+    console.log('APPLICATION_LOG:', JSON.stringify(logEntry));
+  };
+
+  logToApplicationLog('INFO', 'JobOps Clipper extension initialized', {
+    version: '1.0.0',
+    database_ready: true,
+    features: ['job_tracking', 'database_storage', 'ai_analysis']
+  });
+
+  // Database utility functions
+  async function saveSectionData(sectionName: string, data: any): Promise<void> {
+    try {
+      const jobInfo = getCurrentJobInfo();
+      logToApplicationLog('INFO', `Saving section data`, {
+        section: sectionName,
+        job_application_id: jobInfo.id,
+        canonical_url: jobInfo.url,
+        data_keys: Object.keys(data)
+      });
+
+      switch (sectionName) {
+        case 'position_details':
+          await jobOpsDataManager.savePositionDetails(data);
+          break;
+        case 'job_requirements':
+          await jobOpsDataManager.saveJobRequirements(data);
+          break;
+        case 'company_information':
+          await jobOpsDataManager.saveCompanyInformation(data);
+          break;
+        case 'skills_matrix':
+          await jobOpsDataManager.saveSkillsMatrix(data);
+          break;
+        case 'application_materials':
+          await jobOpsDataManager.saveApplicationMaterials(data);
+          break;
+        case 'interview_schedule':
+          await jobOpsDataManager.saveInterviewSchedule(data);
+          break;
+        case 'interview_preparation':
+          await jobOpsDataManager.saveInterviewPreparation(data);
+          break;
+        case 'communication_log':
+          await jobOpsDataManager.saveCommunicationLog(data);
+          break;
+        case 'key_contacts':
+          await jobOpsDataManager.saveKeyContacts(data);
+          break;
+        case 'interview_feedback':
+          await jobOpsDataManager.saveInterviewFeedback(data);
+          break;
+        case 'offer_details':
+          await jobOpsDataManager.saveOfferDetails(data);
+          break;
+        case 'rejection_analysis':
+          await jobOpsDataManager.saveRejectionAnalysis(data);
+          break;
+        case 'privacy_policy':
+          await jobOpsDataManager.savePrivacyPolicy(data);
+          break;
+        case 'lessons_learned':
+          await jobOpsDataManager.saveLessonsLearned(data);
+          break;
+        case 'performance_metrics':
+          await jobOpsDataManager.savePerformanceMetrics(data);
+          break;
+        case 'advisor_review':
+          await jobOpsDataManager.saveAdvisorReview(data);
+          break;
+        default:
+          throw new Error(`Unknown section: ${sectionName}`);
+      }
+      
+      logToApplicationLog('INFO', `Section data saved successfully`, {
+        section: sectionName,
+        job_application_id: jobInfo.id
+      });
+      
+      logToConsole(`✅ ${sectionName} data saved successfully`, "success");
+      showNotification(`✅ ${sectionName} saved`);
+    } catch (error) {
+      const jobInfo = getCurrentJobInfo();
+      logToApplicationLog('ERROR', `Failed to save section data`, {
+        section: sectionName,
+        job_application_id: jobInfo.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      logToConsole(`❌ Error saving ${sectionName}: ${error}`, "error");
+      showNotification(`❌ Error saving ${sectionName}`, true);
+      throw error;
+    }
+  }
+
+  // Auto-save functionality for form fields
+  function setupAutoSave() {
+    // Auto-save job data when property fields change
+    const autoSaveFields = [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation];
+    
+    autoSaveFields.forEach(field => {
+      let saveTimeout: number;
+      
+      field.addEventListener('input', () => {
+        // Clear existing timeout
+        clearTimeout(saveTimeout);
+        
+        // Set new timeout for auto-save (2 seconds after user stops typing)
+        saveTimeout = setTimeout(async () => {
+          try {
+            updateJobDataFromFields();
+            
+            // Save position details with updated job data
+            if (jobData.title || jobData.description || jobData.location) {
+              await saveSectionData('position_details', {
+                job_title: jobData.title,
+                job_description: jobData.description,
+                location: jobData.location,
+                source_url: jobData.url,
+                company_name: jobData.company || '',
+                salary_range: '',
+                employment_type: '',
+                experience_level: '',
+                remote_work_policy: ''
+              });
+            }
+            
+            logToConsole("💾 Auto-saved job data", "debug");
+          } catch (error) {
+            logToConsole(`❌ Auto-save failed: ${error}`, "error");
+          }
+        }, 2000);
+      });
+    });
+  }
+
+  // Setup save buttons for each section (when UI is implemented)
+  function setupSectionSaveButtons() {
+    const sections = [
+      'position-details',
+      'job-requirements', 
+      'company-information',
+      'skills-matrix',
+      'application-materials',
+      'interview-schedule',
+      'interview-preparation',
+      'communication-log',
+      'key-contacts',
+      'interview-feedback',
+      'offer-details',
+      'rejection-analysis',
+      'privacy-policy',
+      'lessons-learned',
+      'performance-metrics',
+      'advisor-review'
+    ];
+
+    sections.forEach(sectionName => {
+      const sectionElement = document.querySelector(`[data-section="${sectionName}"]`);
+      if (sectionElement) {
+        // Add save button to each section header
+        const header = sectionElement.querySelector('.job-header');
+        if (header) {
+          const saveButton = document.createElement('button');
+          saveButton.className = 'section-save-btn';
+          saveButton.innerHTML = '💾';
+          saveButton.title = `Save ${sectionName.replace('-', ' ')}`;
+          saveButton.style.cssText = `
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 8px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+          `;
+          
+          saveButton.addEventListener('mouseenter', () => {
+            saveButton.style.opacity = '1';
+          });
+          
+          saveButton.addEventListener('mouseleave', () => {
+            saveButton.style.opacity = '0.7';
+          });
+          
+          saveButton.addEventListener('click', async (e) => {
+            e.stopPropagation(); // Prevent section toggle
+            await handleSectionSave(sectionName);
+          });
+          
+          header.appendChild(saveButton);
+        }
+      }
+    });
+  }
+
+  // Handle section save button clicks
+  async function handleSectionSave(sectionName: string) {
+    try {
+      logToConsole(`💾 Saving ${sectionName}...`, "info");
+      
+      // Get data from the section (this would need to be implemented based on actual form fields)
+      const sectionData = getSectionData(sectionName);
+      
+      if (sectionData && Object.keys(sectionData).length > 0) {
+        await saveSectionData(sectionName.replace('-', '_'), sectionData);
+        logToConsole(`✅ ${sectionName} saved successfully`, "success");
+      } else {
+        logToConsole(`⚠️ No data to save for ${sectionName}`, "warning");
+        showNotification(`⚠️ No data to save for ${sectionName}`, true);
+      }
+    } catch (error) {
+      logToConsole(`❌ Failed to save ${sectionName}: ${error}`, "error");
+      showNotification(`❌ Failed to save ${sectionName}`, true);
+    }
+  }
+
+  // Get data from a specific section (placeholder - needs implementation based on actual form fields)
+  function getSectionData(sectionName: string): any {
+    // This is a placeholder - in a real implementation, you would collect data from form fields
+    // based on the section name and return the appropriate data structure
+    
+    switch (sectionName) {
+      case 'position-details':
+        return {
+          job_title: jobData.title || '',
+          job_description: jobData.description || '',
+          location: jobData.location || '',
+          source_url: jobData.url || '',
+          company_name: jobData.company || '',
+          salary_range: '',
+          employment_type: '',
+          experience_level: '',
+          remote_work_policy: ''
+        };
+      case 'job-requirements':
+        return {
+          required_skills: [],
+          preferred_skills: [],
+          experience_years: '',
+          education_requirements: '',
+          certifications: [],
+          technical_requirements: []
+        };
+      // Add more cases for other sections as form fields are implemented
+      default:
+        return {};
+    }
+  }
+
+  // Function to get current job application info
+  function getCurrentJobInfo(): { id: string | null; url: string | null } {
+    return {
+      id: jobOpsDataManager.getCurrentJobApplicationId(),
+      url: jobOpsDataManager.getCurrentCanonicalUrl()
+    };
+  }
+
+  // Function to update job status
+  async function updateJobStatus(status: string): Promise<void> {
+    try {
+      await jobOpsDataManager.updateJobStatus(status);
+      logToConsole(`✅ Job status updated to: ${status}`, "success");
+      showNotification(`✅ Status updated to: ${status}`);
+    } catch (error) {
+      logToConsole(`❌ Error updating job status: ${error}`, "error");
+      showNotification(`❌ Error updating status`, true);
+    }
+  }
+
   function setupToggleHandlers() {
     // Add click event listeners to all toggle headers
-    const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header, .realtime-header');
+    const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header, .realtime-header, .job-header');
     toggleHeaders.forEach(header => {
       header.addEventListener('click', () => {
         const toggleTarget = header.getAttribute('data-toggle');
@@ -250,7 +558,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     input.addEventListener('input', updateJobDataFromFields);
   });
 
-  function requestJobData() {
+  async function requestJobData() {
     logToConsole("🌐 Requesting job data from current page...", "info");
     
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -265,7 +573,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           target: { tabId: tabs[0].id },
           func: () => !!window && !!window.document && !!window.document.body,
         },
-        (results) => {
+        async (results) => {
           if (chrome.runtime.lastError || !results || !results[0].result) {
             logToConsole("❌ Content script not loaded. Please refresh the page and try again.", "error");
             status.textContent = "Content script not loaded. Please refresh the page and try again.";
@@ -276,7 +584,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           chrome.tabs.sendMessage(
             tabs[0].id!,
             { action: "clip_page" },
-            (response) => {
+            async (response) => {
               if (chrome.runtime.lastError) {
                 logToConsole("❌ Could not connect to content script. Try refreshing the page.", "error");
                 status.textContent = "Could not connect to content script. Try refreshing the page.";
@@ -295,6 +603,23 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
                 
                 jobData = response.jobData;
+                
+                // Check if job application already exists
+                const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
+                if (jobExists) {
+                  logToConsole("🔄 Existing job application found and loaded", "info");
+                  showNotification("🔄 Existing job application loaded");
+                } else {
+                  logToConsole("🆕 Creating new job application", "info");
+                  try {
+                    await jobOpsDataManager.createNewJobApplication(jobData);
+                    showNotification("🆕 New job application created");
+                  } catch (error) {
+                    logToConsole(`❌ Error creating job application: ${error}`, "error");
+                    showNotification("❌ Error creating job application", true);
+                  }
+                }
+                
                 populatePropertyFields(jobData);
                 markdownEditor.value = generateMarkdown(jobData);
                 // Copy button is always enabled

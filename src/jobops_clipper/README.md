@@ -77,7 +77,172 @@ npm run build
    - Generate a comprehensive application tracking report
    - Display the filled report in the markdown editor
 
+## Database Overview
 
+The JobOps Clipper extension uses IndexedDB (a local browser database) to store job application data with proper table relationships. The system prevents duplicate applications by using canonical URLs as unique identifiers.
+
+### Database Architecture
+
+#### Main Tables
+
+1. **job_applications** - Main table containing basic job application information
+   - `id` (Primary Key)
+   - `canonical_url` (Unique Index) - Prevents duplicate applications
+   - `job_title`
+   - `company_name`
+   - `application_date`
+   - `status`
+   - `created_at`
+   - `updated_at`
+
+#### Section Tables
+
+All section tables have a foreign key relationship to `job_applications` via `job_application_id`:
+
+2. **position_details** - Job position information
+3. **job_requirements** - Required skills and qualifications
+4. **company_information** - Company details and research
+5. **skills_matrix** - Skills assessment framework
+6. **skill_assessments** - Individual skill assessments (linked to skills_matrix)
+7. **application_materials** - Resume, cover letter, and documents
+8. **interview_schedule** - Interview appointments and details
+9. **interview_preparation** - Preparation checklist and notes
+10. **communication_log** - All communications with the company
+11. **key_contacts** - Important contact information
+12. **interview_feedback** - Interview performance and feedback
+13. **offer_details** - Job offer information
+14. **rejection_analysis** - Rejection reasons and lessons
+15. **privacy_policy** - Privacy and consent tracking
+16. **lessons_learned** - Insights and improvements
+17. **performance_metrics** - Application success metrics
+18. **advisor_review** - Professional advisor feedback
+
+### Database - Key Features
+
+#### URL-Based Uniqueness
+
+- Uses canonical URLs (without query parameters or fragments) to prevent duplicate applications
+- Automatically detects existing applications when visiting the same job posting
+- Loads existing data if found, creates new record if not
+
+#### Data Relationships
+
+- All section data is linked to the main job application via `job_application_id`
+- Hierarchical relationships (e.g., skill_assessments linked to skills_matrix)
+- Maintains referential integrity
+
+#### Data Persistence
+
+- All data is stored locally in the browser using IndexedDB
+- No external dependencies or network requirements
+- Automatic backup and restore capabilities
+
+### Repository Usage
+
+#### Creating a New Job Application
+
+```typescript
+// Check if job already exists
+const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(url);
+if (!jobExists) {
+  // Create new job application
+  const jobId = await jobOpsDataManager.createNewJobApplication(jobData);
+}
+```
+
+#### Saving Section Data
+
+```typescript
+// Save position details
+await jobOpsDataManager.savePositionDetails({
+  jobTitle: "Software Engineer",
+  companyName: "Tech Corp",
+  location: "San Francisco, CA",
+  // ... other fields
+});
+
+// Save job requirements
+await jobOpsDataManager.saveJobRequirements({
+  requiredSkills: ["JavaScript", "React", "Node.js"],
+  preferredSkills: ["TypeScript", "AWS"],
+  // ... other fields
+});
+```
+
+#### Loading Complete Application
+
+```typescript
+// Load all data for a job application
+const completeData = await jobOpsDataManager.getCompleteJobApplication(jobId);
+```
+
+#### Updating Job Status
+
+```typescript
+// Update application status
+await jobOpsDataManager.updateJobStatus('interview_scheduled');
+```
+
+### Database Operations
+
+#### Core Operations
+
+- **Create**: `createJobApplication()`
+- **Read**: `getJobApplication()`, `getCompleteJobApplication()`
+- **Update**: `updateJobApplication()`, `updateSectionData()`
+- **Delete**: `deleteJobApplication()`
+
+#### Section Operations
+
+- **Save**: `saveSectionData()` for each section type
+- **Load**: `getSectionDataByJobId()` for each section type
+- **Update**: `updateSectionData()` for existing records
+
+#### Utility Operations
+
+- **Check Existence**: `checkJobApplicationExists()`
+- **Export**: `exportDatabase()` for backup
+- **Import**: `importDatabase()` for restore
+- **Clear**: `clearDatabase()` for reset
+
+### Data Flow
+
+1. **Page Load**: Extension checks if job application exists for current URL
+2. **Existing Job**: Loads all section data and populates UI
+3. **New Job**: Creates new job application record
+4. **Data Entry**: User fills out sections, data is saved automatically
+5. **Status Updates**: Job status is updated as application progresses
+6. **Export/Import**: Data can be backed up and restored
+
+### Security & Privacy
+
+- All data is stored locally in the browser
+- No data is transmitted to external servers (except for AI analysis)
+- User has full control over their data
+- Privacy policy tracking for compliance
+
+### Performance
+
+- IndexedDB provides fast local storage
+- Efficient queries using indexes on `canonical_url` and `job_application_id`
+- Minimal memory footprint
+- Automatic cleanup of old data
+
+### Error Handling
+
+- Comprehensive error logging to application.log
+- Graceful fallbacks for database operations
+- User-friendly error messages
+- Data validation before saving
+
+### Future Enhancements
+
+- Cloud sync capabilities
+- Advanced search and filtering
+- Data analytics and insights
+- Integration with external job platforms
+- Multi-user support
+- Advanced backup strategies
 
 ## Configuration
 

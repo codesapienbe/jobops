@@ -915,3 +915,295 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* Job Application Sections Styles */
+.job-section {
+  margin-bottom: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-height: 600px;
+}
+
+.job-header {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  color: white;
+  padding: 10px 14px;
+  border-radius: 8px 8px 0 0;
+  font-weight: 600;
+  font-size: 1em;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: all 0.3s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 40px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.job-header:hover {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.job-content {
+  max-height: 500px;
+  overflow-y: auto;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 1;
+  background: rgba(255,255,255,0.02);
+  border-radius: 0 0 8px 8px;
+  padding: 12px;
+}
+
+.job-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.job-content.expanded .toggle-icon {
+  transform: rotate(90deg);
+}
+
+/* Job-specific input styles */
+.job-input {
+  flex: 1;
+  background: rgba(24,24,32,0.85);
+  border: 1.2px solid rgba(74, 222, 128, 0.13);
+  color: #fff;
+  font-size: 1em;
+  font-family: inherit;
+  padding: 6px 10px;
+  margin-left: 2px;
+  outline: none;
+  transition: border 0.2s;
+  border-radius: 4px;
+}
+
+.job-input:focus {
+  border: 1.2px solid #4ade80;
+}
+
+.job-textarea {
+  width: 100%;
+  min-height: 80px;
+  background: rgba(24,24,32,0.85);
+  border: 1.2px solid rgba(74, 222, 128, 0.13);
+  color: #fff;
+  font-size: 1em;
+  font-family: inherit;
+  padding: 8px 10px;
+  outline: none;
+  transition: border 0.2s;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.job-textarea:focus {
+  border: 1.2px solid #4ade80;
+}
+
+.job-select {
+  flex: 1;
+  background: rgba(24,24,32,0.85);
+  border: 1.2px solid rgba(74, 222, 128, 0.13);
+  color: #fff;
+  font-size: 1em;
+  font-family: inherit;
+  padding: 6px 10px;
+  margin-left: 2px;
+  outline: none;
+  transition: border 0.2s;
+  border-radius: 4px;
+}
+
+.job-select:focus {
+  border: 1.2px solid #4ade80;
+}
+
+.job-checkbox {
+  margin-right: 8px;
+  accent-color: #4ade80;
+}
+
+.job-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.job-row-textarea {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+
+.job-label {
+  min-width: 120px;
+  font-weight: 600;
+  color: #4ade80;
+  margin-right: 8px;
+  text-align: left;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.job-label-textarea {
+  font-weight: 600;
+  color: #4ade80;
+  margin-bottom: 4px;
+  text-align: left;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.job-icon {
+  font-size: 1.1em;
+  margin-right: 8px;
+  color: #4ade80;
+  min-width: 1.5em;
+  text-align: center;
+}
+
+/* Job section specific colors */
+.job-section[data-section="position-details"] .job-header {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+}
+
+.job-section[data-section="position-details"] .job-header:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+}
+
+.job-section[data-section="job-requirements"] .job-header {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.job-section[data-section="job-requirements"] .job-header:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+}
+
+.job-section[data-section="company-information"] .job-header {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.job-section[data-section="company-information"] .job-header:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+}
+
+.job-section[data-section="skills-matrix"] .job-header {
+  background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+}
+
+.job-section[data-section="skills-matrix"] .job-header:hover {
+  background: linear-gradient(135deg, #db2777 0%, #be185d 100%);
+}
+
+.job-section[data-section="application-materials"] .job-header {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.job-section[data-section="application-materials"] .job-header:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.job-section[data-section="interview-schedule"] .job-header {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+}
+
+.job-section[data-section="interview-schedule"] .job-header:hover {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+}
+
+.job-section[data-section="interview-preparation"] .job-header {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+}
+
+.job-section[data-section="interview-preparation"] .job-header:hover {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+}
+
+.job-section[data-section="communication-log"] .job-header {
+  background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%);
+}
+
+.job-section[data-section="communication-log"] .job-header:hover {
+  background: linear-gradient(135deg, #65a30d 0%, #4d7c0f 100%);
+}
+
+.job-section[data-section="key-contacts"] .job-header {
+  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
+}
+
+.job-section[data-section="key-contacts"] .job-header:hover {
+  background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%);
+}
+
+.job-section[data-section="interview-feedback"] .job-header {
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+}
+
+.job-section[data-section="interview-feedback"] .job-header:hover {
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+}
+
+.job-section[data-section="offer-details"] .job-header {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+}
+
+.job-section[data-section="offer-details"] .job-header:hover {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.job-section[data-section="rejection-analysis"] .job-header {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.job-section[data-section="rejection-analysis"] .job-header:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.job-section[data-section="privacy-policy"] .job-header {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+}
+
+.job-section[data-section="privacy-policy"] .job-header:hover {
+  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+}
+
+.job-section[data-section="lessons-learned"] .job-header {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.job-section[data-section="lessons-learned"] .job-header:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+}
+
+.job-section[data-section="performance-metrics"] .job-header {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.job-section[data-section="performance-metrics"] .job-header:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.job-section[data-section="advisor-review"] .job-header {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.job-section[data-section="advisor-review"] .job-header:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+}
+
+.job-section[data-section="application-summary"] .job-header {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+}
+
+.job-section[data-section="application-summary"] .job-header:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+}

@@ -1,5 +1,1022 @@
 "use strict";
 (() => {
+  // src/database.ts
+  var JobOpsDatabase = class {
+    constructor() {
+      this.db = null;
+      this.dbName = "JobOpsDatabase";
+      this.dbVersion = 1;
+      this.initializeDatabase();
+    }
+    async initializeDatabase() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(this.dbName, this.dbVersion);
+        request.onerror = () => {
+          console.error("Failed to open database:", request.error);
+          reject(request.error);
+        };
+        request.onsuccess = () => {
+          this.db = request.result;
+          console.log("Database opened successfully");
+          resolve();
+        };
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          this.createTables(db);
+        };
+      });
+    }
+    createTables(db) {
+      if (!db.objectStoreNames.contains("job_applications")) {
+        const jobApplicationsStore = db.createObjectStore("job_applications", { keyPath: "id" });
+        jobApplicationsStore.createIndex("canonical_url", "canonical_url", { unique: true });
+        jobApplicationsStore.createIndex("status", "status", { unique: false });
+        jobApplicationsStore.createIndex("created_at", "created_at", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("position_details")) {
+        const positionDetailsStore = db.createObjectStore("position_details", { keyPath: "id" });
+        positionDetailsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("job_requirements")) {
+        const jobRequirementsStore = db.createObjectStore("job_requirements", { keyPath: "id" });
+        jobRequirementsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("company_information")) {
+        const companyInformationStore = db.createObjectStore("company_information", { keyPath: "id" });
+        companyInformationStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("skills_matrix")) {
+        const skillsMatrixStore = db.createObjectStore("skills_matrix", { keyPath: "id" });
+        skillsMatrixStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("skill_assessments")) {
+        const skillAssessmentsStore = db.createObjectStore("skill_assessments", { keyPath: "id" });
+        skillAssessmentsStore.createIndex("skills_matrix_id", "skills_matrix_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("application_materials")) {
+        const applicationMaterialsStore = db.createObjectStore("application_materials", { keyPath: "id" });
+        applicationMaterialsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("interview_schedule")) {
+        const interviewScheduleStore = db.createObjectStore("interview_schedule", { keyPath: "id" });
+        interviewScheduleStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("interview_preparation")) {
+        const interviewPreparationStore = db.createObjectStore("interview_preparation", { keyPath: "id" });
+        interviewPreparationStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("communication_log")) {
+        const communicationLogStore = db.createObjectStore("communication_log", { keyPath: "id" });
+        communicationLogStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("key_contacts")) {
+        const keyContactsStore = db.createObjectStore("key_contacts", { keyPath: "id" });
+        keyContactsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("interview_feedback")) {
+        const interviewFeedbackStore = db.createObjectStore("interview_feedback", { keyPath: "id" });
+        interviewFeedbackStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("offer_details")) {
+        const offerDetailsStore = db.createObjectStore("offer_details", { keyPath: "id" });
+        offerDetailsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("rejection_analysis")) {
+        const rejectionAnalysisStore = db.createObjectStore("rejection_analysis", { keyPath: "id" });
+        rejectionAnalysisStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("privacy_policy")) {
+        const privacyPolicyStore = db.createObjectStore("privacy_policy", { keyPath: "id" });
+        privacyPolicyStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("lessons_learned")) {
+        const lessonsLearnedStore = db.createObjectStore("lessons_learned", { keyPath: "id" });
+        lessonsLearnedStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("performance_metrics")) {
+        const performanceMetricsStore = db.createObjectStore("performance_metrics", { keyPath: "id" });
+        performanceMetricsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("advisor_review")) {
+        const advisorReviewStore = db.createObjectStore("advisor_review", { keyPath: "id" });
+        advisorReviewStore.createIndex("job_application_id", "job_application_id", { unique: false });
+      }
+    }
+    // Check if job application exists by canonical URL
+    async checkJobApplicationExists(canonicalUrl) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const transaction = this.db.transaction(["job_applications"], "readonly");
+        const store = transaction.objectStore("job_applications");
+        const index = store.index("canonical_url");
+        const request = index.get(canonicalUrl);
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+        request.onerror = () => {
+          reject(request.error);
+        };
+      });
+    }
+    // Create new job application
+    async createJobApplication(data) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const id = this.generateId();
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const record = {
+          ...data,
+          id,
+          created_at: now,
+          updated_at: now
+        };
+        const transaction = this.db.transaction(["job_applications"], "readwrite");
+        const store = transaction.objectStore("job_applications");
+        const request = store.add(record);
+        request.onsuccess = () => {
+          resolve(id);
+        };
+        request.onerror = () => {
+          reject(request.error);
+        };
+      });
+    }
+    // Get job application by ID
+    async getJobApplication(id) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const transaction = this.db.transaction(["job_applications"], "readonly");
+        const store = transaction.objectStore("job_applications");
+        const request = store.get(id);
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+        request.onerror = () => {
+          reject(request.error);
+        };
+      });
+    }
+    // Update job application
+    async updateJobApplication(id, data) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const transaction = this.db.transaction(["job_applications"], "readwrite");
+        const store = transaction.objectStore("job_applications");
+        const getRequest = store.get(id);
+        getRequest.onsuccess = () => {
+          const existing = getRequest.result;
+          if (!existing) {
+            reject(new Error("Job application not found"));
+            return;
+          }
+          const updated = {
+            ...existing,
+            ...data,
+            updated_at: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          const putRequest = store.put(updated);
+          putRequest.onsuccess = () => resolve();
+          putRequest.onerror = () => reject(putRequest.error);
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+    }
+    // Get all job applications
+    async getAllJobApplications() {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const transaction = this.db.transaction(["job_applications"], "readonly");
+        const store = transaction.objectStore("job_applications");
+        const request = store.getAll();
+        request.onsuccess = () => {
+          resolve(request.result || []);
+        };
+        request.onerror = () => {
+          reject(request.error);
+        };
+      });
+    }
+    // Generic method to save section data
+    async saveSectionData(tableName, data) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const id = this.generateId();
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const record = {
+          ...data,
+          id,
+          created_at: now,
+          updated_at: now
+        };
+        const transaction = this.db.transaction([tableName], "readwrite");
+        const store = transaction.objectStore(tableName);
+        const request = store.add(record);
+        request.onsuccess = () => {
+          resolve(id);
+        };
+        request.onerror = () => {
+          reject(request.error);
+        };
+      });
+    }
+    // Generic method to get section data by job application ID
+    async getSectionDataByJobId(tableName, jobApplicationId) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const transaction = this.db.transaction([tableName], "readonly");
+        const store = transaction.objectStore(tableName);
+        const index = store.index("job_application_id");
+        const request = index.getAll(jobApplicationId);
+        request.onsuccess = () => {
+          resolve(request.result || []);
+        };
+        request.onerror = () => {
+          reject(request.error);
+        };
+      });
+    }
+    // Generic method to update section data
+    async updateSectionData(tableName, id, data) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const transaction = this.db.transaction([tableName], "readwrite");
+        const store = transaction.objectStore(tableName);
+        const getRequest = store.get(id);
+        getRequest.onsuccess = () => {
+          const existing = getRequest.result;
+          if (!existing) {
+            reject(new Error("Record not found"));
+            return;
+          }
+          const updated = {
+            ...existing,
+            ...data,
+            updated_at: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          const putRequest = store.put(updated);
+          putRequest.onsuccess = () => resolve();
+          putRequest.onerror = () => reject(putRequest.error);
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+    }
+    // Get complete job application with all sections
+    async getCompleteJobApplication(jobApplicationId) {
+      const jobApplication = await this.getJobApplication(jobApplicationId);
+      if (!jobApplication) {
+        throw new Error("Job application not found");
+      }
+      const [
+        positionDetails,
+        jobRequirements,
+        companyInformation,
+        skillsMatrix,
+        applicationMaterials,
+        interviewSchedule,
+        interviewPreparation,
+        communicationLog,
+        keyContacts,
+        interviewFeedback,
+        offerDetails,
+        rejectionAnalysis,
+        privacyPolicy,
+        lessonsLearned,
+        performanceMetrics,
+        advisorReview
+      ] = await Promise.all([
+        this.getSectionDataByJobId("position_details", jobApplicationId),
+        this.getSectionDataByJobId("job_requirements", jobApplicationId),
+        this.getSectionDataByJobId("company_information", jobApplicationId),
+        this.getSectionDataByJobId("skills_matrix", jobApplicationId),
+        this.getSectionDataByJobId("application_materials", jobApplicationId),
+        this.getSectionDataByJobId("interview_schedule", jobApplicationId),
+        this.getSectionDataByJobId("interview_preparation", jobApplicationId),
+        this.getSectionDataByJobId("communication_log", jobApplicationId),
+        this.getSectionDataByJobId("key_contacts", jobApplicationId),
+        this.getSectionDataByJobId("interview_feedback", jobApplicationId),
+        this.getSectionDataByJobId("offer_details", jobApplicationId),
+        this.getSectionDataByJobId("rejection_analysis", jobApplicationId),
+        this.getSectionDataByJobId("privacy_policy", jobApplicationId),
+        this.getSectionDataByJobId("lessons_learned", jobApplicationId),
+        this.getSectionDataByJobId("performance_metrics", jobApplicationId),
+        this.getSectionDataByJobId("advisor_review", jobApplicationId)
+      ]);
+      const skillAssessments = [];
+      for (const matrix of skillsMatrix) {
+        const assessments = await this.getSectionDataByJobId("skill_assessments", matrix.id);
+        skillAssessments.push(...assessments);
+      }
+      return {
+        jobApplication,
+        positionDetails,
+        jobRequirements,
+        companyInformation,
+        skillsMatrix,
+        skillAssessments,
+        applicationMaterials,
+        interviewSchedule,
+        interviewPreparation,
+        communicationLog,
+        keyContacts,
+        interviewFeedback,
+        offerDetails,
+        rejectionAnalysis,
+        privacyPolicy,
+        lessonsLearned,
+        performanceMetrics,
+        advisorReview
+      };
+    }
+    // Delete job application and all related data
+    async deleteJobApplication(jobApplicationId) {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const tables = [
+          "job_applications",
+          "position_details",
+          "job_requirements",
+          "company_information",
+          "skills_matrix",
+          "skill_assessments",
+          "application_materials",
+          "interview_schedule",
+          "interview_preparation",
+          "communication_log",
+          "key_contacts",
+          "interview_feedback",
+          "offer_details",
+          "rejection_analysis",
+          "privacy_policy",
+          "lessons_learned",
+          "performance_metrics",
+          "advisor_review"
+        ];
+        const transaction = this.db.transaction(tables, "readwrite");
+        const jobApplicationsStore = transaction.objectStore("job_applications");
+        const jobApplicationRequest = jobApplicationsStore.delete(jobApplicationId);
+        const deletePromises = tables.slice(1).map((tableName) => {
+          return new Promise((resolveDelete, rejectDelete) => {
+            const store = transaction.objectStore(tableName);
+            const index = store.index("job_application_id");
+            const request = index.getAllKeys(jobApplicationId);
+            request.onsuccess = () => {
+              const keys = request.result;
+              if (keys && keys.length > 0) {
+                keys.forEach((key) => {
+                  store.delete(key);
+                });
+              }
+              resolveDelete();
+            };
+            request.onerror = () => rejectDelete(request.error);
+          });
+        });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        Promise.all(deletePromises).catch(reject);
+      });
+    }
+    // Utility method to generate unique IDs
+    generateId() {
+      return `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    // Get canonical URL from any URL
+    getCanonicalUrl(url) {
+      try {
+        const urlObj = new URL(url);
+        return `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
+      } catch {
+        return url;
+      }
+    }
+    // Export database for backup
+    async exportDatabase() {
+      const jobApplications = await this.getAllJobApplications();
+      const exportData = {};
+      for (const jobApp of jobApplications) {
+        exportData[jobApp.id] = await this.getCompleteJobApplication(jobApp.id);
+      }
+      return exportData;
+    }
+    // Import database from backup
+    async importDatabase(data) {
+      await this.clearDatabase();
+      for (const originalJobAppId in data) {
+        const jobData = data[originalJobAppId];
+        const newJobAppId = await this.createJobApplication({
+          canonical_url: jobData.jobApplication.canonical_url,
+          job_title: jobData.jobApplication.job_title,
+          company_name: jobData.jobApplication.company_name,
+          application_date: jobData.jobApplication.application_date,
+          status: jobData.jobApplication.status
+        });
+        await Promise.all([
+          ...jobData.positionDetails.map(
+            (pd) => this.saveSectionData("position_details", { ...pd, job_application_id: newJobAppId })
+          ),
+          ...jobData.jobRequirements.map(
+            (jr) => this.saveSectionData("job_requirements", { ...jr, job_application_id: newJobAppId })
+          )
+          // Continue for all other sections...
+        ]);
+      }
+    }
+    // Clear all data
+    async clearDatabase() {
+      return new Promise((resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        const tables = [
+          "job_applications",
+          "position_details",
+          "job_requirements",
+          "company_information",
+          "skills_matrix",
+          "skill_assessments",
+          "application_materials",
+          "interview_schedule",
+          "interview_preparation",
+          "communication_log",
+          "key_contacts",
+          "interview_feedback",
+          "offer_details",
+          "rejection_analysis",
+          "privacy_policy",
+          "lessons_learned",
+          "performance_metrics",
+          "advisor_review"
+        ];
+        const transaction = this.db.transaction(tables, "readwrite");
+        tables.forEach((tableName) => {
+          const store = transaction.objectStore(tableName);
+          store.clear();
+        });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+  };
+  var jobOpsDatabase = new JobOpsDatabase();
+
+  // src/repository.ts
+  var JobOpsDataManager = class {
+    constructor() {
+      this.currentJobApplicationId = null;
+      this.currentCanonicalUrl = null;
+      this.initializeDataManager();
+    }
+    async initializeDataManager() {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        console.log("JobOps Data Manager initialized");
+      } catch (error) {
+        console.error("Failed to initialize data manager:", error);
+      }
+    }
+    // Check if job application exists and load it if it does
+    async checkAndLoadExistingJob(url) {
+      try {
+        const canonicalUrl = jobOpsDatabase.getCanonicalUrl(url);
+        this.currentCanonicalUrl = canonicalUrl;
+        const existingJob = await jobOpsDatabase.checkJobApplicationExists(canonicalUrl);
+        if (existingJob) {
+          this.currentJobApplicationId = existingJob.id;
+          await this.loadJobApplicationData(existingJob.id);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error("Error checking existing job:", error);
+        return false;
+      }
+    }
+    // Create new job application
+    async createNewJobApplication(jobData) {
+      try {
+        const canonicalUrl = jobOpsDatabase.getCanonicalUrl(jobData.url || "");
+        this.currentCanonicalUrl = canonicalUrl;
+        const jobApplicationData = {
+          canonical_url: canonicalUrl,
+          job_title: jobData.title || "",
+          company_name: jobData.company || "",
+          application_date: (/* @__PURE__ */ new Date()).toISOString(),
+          status: "draft"
+        };
+        this.currentJobApplicationId = await jobOpsDatabase.createJobApplication(jobApplicationData);
+        console.log("New job application created:", this.currentJobApplicationId);
+        return this.currentJobApplicationId;
+      } catch (error) {
+        console.error("Error creating new job application:", error);
+        throw error;
+      }
+    }
+    // Load all data for a job application
+    async loadJobApplicationData(jobApplicationId) {
+      try {
+        const completeData = await jobOpsDatabase.getCompleteJobApplication(jobApplicationId);
+        this.populateUIWithData(completeData);
+      } catch (error) {
+        console.error("Error loading job application data:", error);
+      }
+    }
+    // Save position details
+    async savePositionDetails(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const positionDetailsData = {
+          job_application_id: this.currentJobApplicationId,
+          job_title: data.jobTitle || "",
+          company_name: data.companyName || "",
+          application_date: data.applicationDate || (/* @__PURE__ */ new Date()).toISOString(),
+          source_platform: data.sourcePlatform || "",
+          job_posting_url: data.jobPostingUrl || "",
+          application_deadline: data.applicationDeadline || "",
+          location: data.location || "",
+          employment_type: data.employmentType || "",
+          salary_range: data.salaryRange || "",
+          job_description: data.jobDescription || ""
+        };
+        await jobOpsDatabase.saveSectionData("position_details", positionDetailsData);
+        console.log("Position details saved");
+      } catch (error) {
+        console.error("Error saving position details:", error);
+        throw error;
+      }
+    }
+    // Save job requirements
+    async saveJobRequirements(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const jobRequirementsData = {
+          job_application_id: this.currentJobApplicationId,
+          required_skills: JSON.stringify(data.requiredSkills || []),
+          preferred_skills: JSON.stringify(data.preferredSkills || []),
+          required_experience: data.requiredExperience || "",
+          education_requirements: JSON.stringify(data.educationRequirements || []),
+          technical_requirements: JSON.stringify(data.technicalRequirements || []),
+          industry_knowledge: JSON.stringify(data.industryKnowledge || [])
+        };
+        await jobOpsDatabase.saveSectionData("job_requirements", jobRequirementsData);
+        console.log("Job requirements saved");
+      } catch (error) {
+        console.error("Error saving job requirements:", error);
+        throw error;
+      }
+    }
+    // Save company information
+    async saveCompanyInformation(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const companyInformationData = {
+          job_application_id: this.currentJobApplicationId,
+          website: data.website || "",
+          headquarters: data.headquarters || "",
+          company_size: data.companySize || "",
+          annual_revenue: data.annualRevenue || "",
+          industry: data.industry || "",
+          company_type: data.companyType || "",
+          ceo_leadership: data.ceoLeadership || "",
+          mission_statement: data.missionStatement || "",
+          core_values: JSON.stringify(data.coreValues || []),
+          recent_news: JSON.stringify(data.recentNews || []),
+          social_media_presence: JSON.stringify(data.socialMediaPresence || {}),
+          employee_reviews: data.employeeReviews || "",
+          main_competitors: JSON.stringify(data.mainCompetitors || []),
+          market_position: data.marketPosition || "",
+          unique_selling_points: JSON.stringify(data.uniqueSellingPoints || [])
+        };
+        await jobOpsDatabase.saveSectionData("company_information", companyInformationData);
+        console.log("Company information saved");
+      } catch (error) {
+        console.error("Error saving company information:", error);
+        throw error;
+      }
+    }
+    // Save skills matrix
+    async saveSkillsMatrix(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const skillsMatrixData = {
+          job_application_id: this.currentJobApplicationId,
+          identified_gaps: JSON.stringify(data.identifiedGaps || []),
+          development_priority: data.developmentPriority || "medium",
+          learning_resources: JSON.stringify(data.learningResources || []),
+          improvement_timeline: data.improvementTimeline || ""
+        };
+        const skillsMatrixId = await jobOpsDatabase.saveSectionData("skills_matrix", skillsMatrixData);
+        if (data.assessments && Array.isArray(data.assessments)) {
+          for (const assessment of data.assessments) {
+            const skillAssessmentData = {
+              skills_matrix_id: skillsMatrixId,
+              skill_category: assessment.skillCategory || "",
+              required_by_job: assessment.requiredByJob || false,
+              current_level: assessment.currentLevel || 1,
+              match_status: assessment.matchStatus || "partial_match",
+              evidence_examples: JSON.stringify(assessment.evidenceExamples || [])
+            };
+            await jobOpsDatabase.saveSectionData("skill_assessments", skillAssessmentData);
+          }
+        }
+        console.log("Skills matrix saved");
+      } catch (error) {
+        console.error("Error saving skills matrix:", error);
+        throw error;
+      }
+    }
+    // Save application materials
+    async saveApplicationMaterials(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const applicationMaterialsData = {
+          job_application_id: this.currentJobApplicationId,
+          resume_version: data.resumeVersion || "",
+          tailoring_changes: JSON.stringify(data.tailoringChanges || []),
+          keywords_added: JSON.stringify(data.keywordsAdded || []),
+          sections_modified: JSON.stringify(data.sectionsModified || []),
+          file_name: data.fileName || "",
+          cover_letter_version: data.coverLetterVersion || "",
+          key_points_emphasized: JSON.stringify(data.keyPointsEmphasized || []),
+          company_specific_content: JSON.stringify(data.companySpecificContent || []),
+          call_to_action: data.callToAction || "",
+          portfolio_items: JSON.stringify(data.portfolioItems || []),
+          references_provided: JSON.stringify(data.referencesProvided || []),
+          additional_documents: JSON.stringify(data.additionalDocuments || [])
+        };
+        await jobOpsDatabase.saveSectionData("application_materials", applicationMaterialsData);
+        console.log("Application materials saved");
+      } catch (error) {
+        console.error("Error saving application materials:", error);
+        throw error;
+      }
+    }
+    // Save interview schedule
+    async saveInterviewSchedule(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const interviewScheduleData = {
+          job_application_id: this.currentJobApplicationId,
+          stage: data.stage || "",
+          date: data.date || "",
+          time: data.time || "",
+          duration: data.duration || 0,
+          format: data.format || "",
+          interviewers: JSON.stringify(data.interviewers || []),
+          location: data.location || "",
+          platform: data.platform || "",
+          notes: data.notes || ""
+        };
+        await jobOpsDatabase.saveSectionData("interview_schedule", interviewScheduleData);
+        console.log("Interview schedule saved");
+      } catch (error) {
+        console.error("Error saving interview schedule:", error);
+        throw error;
+      }
+    }
+    // Save interview preparation
+    async saveInterviewPreparation(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const interviewPreparationData = {
+          job_application_id: this.currentJobApplicationId,
+          company_research_completed: data.companyResearchCompleted || false,
+          questions_for_interviewer: JSON.stringify(data.questionsForInterviewer || []),
+          star_examples_ready: JSON.stringify(data.starExamplesReady || []),
+          technical_skills_reviewed: data.technicalSkillsReviewed || false,
+          portfolio_ready: data.portfolioReady || false,
+          attire_prepared: data.attirePrepared || false,
+          technology_tested: data.technologyTested || false,
+          additional_notes: data.additionalNotes || ""
+        };
+        await jobOpsDatabase.saveSectionData("interview_preparation", interviewPreparationData);
+        console.log("Interview preparation saved");
+      } catch (error) {
+        console.error("Error saving interview preparation:", error);
+        throw error;
+      }
+    }
+    // Save communication log
+    async saveCommunicationLog(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const communicationLogData = {
+          job_application_id: this.currentJobApplicationId,
+          date: data.date || (/* @__PURE__ */ new Date()).toISOString(),
+          type: data.type || "",
+          contact_person: data.contactPerson || "",
+          content_summary: data.contentSummary || "",
+          followup_required: data.followupRequired || false,
+          response_received: data.responseReceived || false,
+          attachments: JSON.stringify(data.attachments || [])
+        };
+        await jobOpsDatabase.saveSectionData("communication_log", communicationLogData);
+        console.log("Communication log saved");
+      } catch (error) {
+        console.error("Error saving communication log:", error);
+        throw error;
+      }
+    }
+    // Save key contacts
+    async saveKeyContacts(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const keyContactsData = {
+          job_application_id: this.currentJobApplicationId,
+          recruiter_name: data.recruiterName || "",
+          recruiter_contact: data.recruiterContact || "",
+          hiring_manager: data.hiringManager || "",
+          hr_contact: data.hrContact || "",
+          employee_referral: data.employeeReferral || "",
+          additional_contacts: JSON.stringify(data.additionalContacts || {})
+        };
+        await jobOpsDatabase.saveSectionData("key_contacts", keyContactsData);
+        console.log("Key contacts saved");
+      } catch (error) {
+        console.error("Error saving key contacts:", error);
+        throw error;
+      }
+    }
+    // Save interview feedback
+    async saveInterviewFeedback(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const interviewFeedbackData = {
+          job_application_id: this.currentJobApplicationId,
+          interview_stage: data.interviewStage || "",
+          date: data.date || (/* @__PURE__ */ new Date()).toISOString(),
+          duration: data.duration || 0,
+          self_assessment: JSON.stringify(data.selfAssessment || {}),
+          interviewer_feedback: JSON.stringify(data.interviewerFeedback || {}),
+          personal_reflection: JSON.stringify(data.personalReflection || {})
+        };
+        await jobOpsDatabase.saveSectionData("interview_feedback", interviewFeedbackData);
+        console.log("Interview feedback saved");
+      } catch (error) {
+        console.error("Error saving interview feedback:", error);
+        throw error;
+      }
+    }
+    // Save offer details
+    async saveOfferDetails(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const offerDetailsData = {
+          job_application_id: this.currentJobApplicationId,
+          position_title: data.positionTitle || "",
+          salary_offered: data.salaryOffered || "",
+          benefits_package: JSON.stringify(data.benefitsPackage || []),
+          start_date: data.startDate || "",
+          decision_deadline: data.decisionDeadline || "",
+          negotiation_items: JSON.stringify(data.negotiationItems || []),
+          counteroffers: JSON.stringify(data.counteroffers || []),
+          final_agreement: data.finalAgreement || ""
+        };
+        await jobOpsDatabase.saveSectionData("offer_details", offerDetailsData);
+        console.log("Offer details saved");
+      } catch (error) {
+        console.error("Error saving offer details:", error);
+        throw error;
+      }
+    }
+    // Save rejection analysis
+    async saveRejectionAnalysis(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const rejectionAnalysisData = {
+          job_application_id: this.currentJobApplicationId,
+          reason_for_rejection: data.reasonForRejection || "",
+          feedback_received: JSON.stringify(data.feedbackReceived || []),
+          areas_for_improvement: JSON.stringify(data.areasForImprovement || []),
+          skills_experience_gaps: JSON.stringify(data.skillsExperienceGaps || [])
+        };
+        await jobOpsDatabase.saveSectionData("rejection_analysis", rejectionAnalysisData);
+        console.log("Rejection analysis saved");
+      } catch (error) {
+        console.error("Error saving rejection analysis:", error);
+        throw error;
+      }
+    }
+    // Save privacy policy
+    async savePrivacyPolicy(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const privacyPolicyData = {
+          job_application_id: this.currentJobApplicationId,
+          privacy_policy_reviewed: data.privacyPolicyReviewed || false,
+          data_retention_period: data.dataRetentionPeriod || "",
+          data_usage_consent_given: data.dataUsageConsentGiven || false,
+          right_to_data_deletion_understood: data.rightToDataDeletionUnderstood || false,
+          personal_data_shared: JSON.stringify(data.personalDataShared || []),
+          background_checks_consented: data.backgroundChecksConsented || false,
+          reference_check_authorization: data.referenceCheckAuthorization || false
+        };
+        await jobOpsDatabase.saveSectionData("privacy_policy", privacyPolicyData);
+        console.log("Privacy policy saved");
+      } catch (error) {
+        console.error("Error saving privacy policy:", error);
+        throw error;
+      }
+    }
+    // Save lessons learned
+    async saveLessonsLearned(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const lessonsLearnedData = {
+          job_application_id: this.currentJobApplicationId,
+          key_insights: JSON.stringify(data.keyInsights || []),
+          skills_to_develop: JSON.stringify(data.skillsToDevelop || []),
+          interview_techniques_to_improve: JSON.stringify(data.interviewTechniquesToImprove || []),
+          resume_adjustments_needed: JSON.stringify(data.resumeAdjustmentsNeeded || []),
+          resume_improvement_plan: JSON.stringify(data.resumeImprovementPlan || {}),
+          future_application_strategy: JSON.stringify(data.futureApplicationStrategy || {})
+        };
+        await jobOpsDatabase.saveSectionData("lessons_learned", lessonsLearnedData);
+        console.log("Lessons learned saved");
+      } catch (error) {
+        console.error("Error saving lessons learned:", error);
+        throw error;
+      }
+    }
+    // Save performance metrics
+    async savePerformanceMetrics(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const performanceMetricsData = {
+          job_application_id: this.currentJobApplicationId,
+          application_to_interview_rate: data.applicationToInterviewRate || 0,
+          interview_to_second_round_rate: data.interviewToSecondRoundRate || 0,
+          final_interview_to_offer_rate: data.finalInterviewToOfferRate || 0,
+          time_from_application_to_response: data.timeFromApplicationToResponse || 0,
+          skills_match_percentage: data.skillsMatchPercentage || 0
+        };
+        await jobOpsDatabase.saveSectionData("performance_metrics", performanceMetricsData);
+        console.log("Performance metrics saved");
+      } catch (error) {
+        console.error("Error saving performance metrics:", error);
+        throw error;
+      }
+    }
+    // Save advisor review
+    async saveAdvisorReview(data) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        const advisorReviewData = {
+          job_application_id: this.currentJobApplicationId,
+          advisor_name: data.advisorName || "",
+          review_date: data.reviewDate || (/* @__PURE__ */ new Date()).toISOString(),
+          observations: JSON.stringify(data.observations || {}),
+          action_plan: JSON.stringify(data.actionPlan || {})
+        };
+        await jobOpsDatabase.saveSectionData("advisor_review", advisorReviewData);
+        console.log("Advisor review saved");
+      } catch (error) {
+        console.error("Error saving advisor review:", error);
+        throw error;
+      }
+    }
+    // Update job application status
+    async updateJobStatus(status) {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        await jobOpsDatabase.updateJobApplication(this.currentJobApplicationId, { status });
+        console.log("Job status updated to:", status);
+      } catch (error) {
+        console.error("Error updating job status:", error);
+        throw error;
+      }
+    }
+    // Get current job application ID
+    getCurrentJobApplicationId() {
+      return this.currentJobApplicationId;
+    }
+    // Get current canonical URL
+    getCurrentCanonicalUrl() {
+      return this.currentCanonicalUrl;
+    }
+    // Populate UI with loaded data
+    populateUIWithData(data) {
+      console.log("Populating UI with loaded data:", data);
+    }
+    // Export current job application data
+    async exportCurrentJobApplication() {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        return await jobOpsDatabase.getCompleteJobApplication(this.currentJobApplicationId);
+      } catch (error) {
+        console.error("Error exporting job application:", error);
+        throw error;
+      }
+    }
+    // Delete current job application
+    async deleteCurrentJobApplication() {
+      if (!this.currentJobApplicationId) {
+        throw new Error("No active job application");
+      }
+      try {
+        await jobOpsDatabase.deleteJobApplication(this.currentJobApplicationId);
+        this.currentJobApplicationId = null;
+        this.currentCanonicalUrl = null;
+        console.log("Job application deleted");
+      } catch (error) {
+        console.error("Error deleting job application:", error);
+        throw error;
+      }
+    }
+    // Get all job applications for dashboard
+    async getAllJobApplications() {
+      try {
+        return await jobOpsDatabase.getAllJobApplications();
+      } catch (error) {
+        console.error("Error getting all job applications:", error);
+        throw error;
+      }
+    }
+    // Export entire database
+    async exportDatabase() {
+      try {
+        return await jobOpsDatabase.exportDatabase();
+      } catch (error) {
+        console.error("Error exporting database:", error);
+        throw error;
+      }
+    }
+    // Import database
+    async importDatabase(data) {
+      try {
+        await jobOpsDatabase.importDatabase(data);
+        console.log("Database imported successfully");
+      } catch (error) {
+        console.error("Error importing database:", error);
+        throw error;
+      }
+    }
+  };
+  var jobOpsDataManager = new JobOpsDataManager();
+
   // src/popup.ts
   var GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
   var GROQ_MODEL = "qwen2.5-32b-instant";
@@ -63,15 +1080,31 @@
     generateReportBtn.style.opacity = "1";
     generateReportBtn.style.cursor = "pointer";
     setupToggleHandlers();
+    setupAutoSave();
+    setupSectionSaveButtons();
     const backendUrl = typeof JOBOPS_BACKEND_URL !== "undefined" ? JOBOPS_BACKEND_URL : "http://localhost:8877";
     chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
       requestJobData();
     });
-    chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
+    chrome.runtime.onMessage.addListener(async (msg, _sender, _sendResponse) => {
       if (msg.action === "show_preview" && msg.jobData) {
         logToConsole("\u{1F4E8} Received preview data from content script", "info");
         logToConsole(`\u{1F4CA} Job title: ${msg.jobData.title || "N/A"}`, "info");
         jobData = msg.jobData;
+        const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
+        if (jobExists) {
+          logToConsole("\u{1F504} Existing job application found and loaded", "info");
+          showNotification2("\u{1F504} Existing job application loaded");
+        } else {
+          logToConsole("\u{1F195} Creating new job application", "info");
+          try {
+            await jobOpsDataManager.createNewJobApplication(jobData);
+            showNotification2("\u{1F195} New job application created");
+          } catch (error) {
+            logToConsole(`\u274C Error creating job application: ${error}`, "error");
+            showNotification2("\u274C Error creating job application", true);
+          }
+        }
         populatePropertyFields(jobData);
         markdownEditor.value = generateMarkdown(jobData);
         copyBtn.disabled = false;
@@ -107,8 +1140,246 @@
     }
     logToConsole("\u{1F680} JobOps Clipper initialized", "info");
     logToConsole("\u{1F4CB} Ready to process job postings and resumes", "success");
+    const logToApplicationLog = (level, message, data) => {
+      const logEntry = {
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        level,
+        component: "JobOpsClipper",
+        message,
+        correlation_id: `jobops_${Date.now()}`,
+        user_id: "extension_user",
+        request_id: `req_${Date.now()}`,
+        ...data && { data }
+      };
+      console.log("APPLICATION_LOG:", JSON.stringify(logEntry));
+    };
+    logToApplicationLog("INFO", "JobOps Clipper extension initialized", {
+      version: "1.0.0",
+      database_ready: true,
+      features: ["job_tracking", "database_storage", "ai_analysis"]
+    });
+    async function saveSectionData(sectionName, data) {
+      try {
+        const jobInfo = getCurrentJobInfo();
+        logToApplicationLog("INFO", `Saving section data`, {
+          section: sectionName,
+          job_application_id: jobInfo.id,
+          canonical_url: jobInfo.url,
+          data_keys: Object.keys(data)
+        });
+        switch (sectionName) {
+          case "position_details":
+            await jobOpsDataManager.savePositionDetails(data);
+            break;
+          case "job_requirements":
+            await jobOpsDataManager.saveJobRequirements(data);
+            break;
+          case "company_information":
+            await jobOpsDataManager.saveCompanyInformation(data);
+            break;
+          case "skills_matrix":
+            await jobOpsDataManager.saveSkillsMatrix(data);
+            break;
+          case "application_materials":
+            await jobOpsDataManager.saveApplicationMaterials(data);
+            break;
+          case "interview_schedule":
+            await jobOpsDataManager.saveInterviewSchedule(data);
+            break;
+          case "interview_preparation":
+            await jobOpsDataManager.saveInterviewPreparation(data);
+            break;
+          case "communication_log":
+            await jobOpsDataManager.saveCommunicationLog(data);
+            break;
+          case "key_contacts":
+            await jobOpsDataManager.saveKeyContacts(data);
+            break;
+          case "interview_feedback":
+            await jobOpsDataManager.saveInterviewFeedback(data);
+            break;
+          case "offer_details":
+            await jobOpsDataManager.saveOfferDetails(data);
+            break;
+          case "rejection_analysis":
+            await jobOpsDataManager.saveRejectionAnalysis(data);
+            break;
+          case "privacy_policy":
+            await jobOpsDataManager.savePrivacyPolicy(data);
+            break;
+          case "lessons_learned":
+            await jobOpsDataManager.saveLessonsLearned(data);
+            break;
+          case "performance_metrics":
+            await jobOpsDataManager.savePerformanceMetrics(data);
+            break;
+          case "advisor_review":
+            await jobOpsDataManager.saveAdvisorReview(data);
+            break;
+          default:
+            throw new Error(`Unknown section: ${sectionName}`);
+        }
+        logToApplicationLog("INFO", `Section data saved successfully`, {
+          section: sectionName,
+          job_application_id: jobInfo.id
+        });
+        logToConsole(`\u2705 ${sectionName} data saved successfully`, "success");
+        showNotification2(`\u2705 ${sectionName} saved`);
+      } catch (error) {
+        const jobInfo = getCurrentJobInfo();
+        logToApplicationLog("ERROR", `Failed to save section data`, {
+          section: sectionName,
+          job_application_id: jobInfo.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        logToConsole(`\u274C Error saving ${sectionName}: ${error}`, "error");
+        showNotification2(`\u274C Error saving ${sectionName}`, true);
+        throw error;
+      }
+    }
+    function setupAutoSave() {
+      const autoSaveFields = [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation];
+      autoSaveFields.forEach((field) => {
+        let saveTimeout;
+        field.addEventListener("input", () => {
+          clearTimeout(saveTimeout);
+          saveTimeout = setTimeout(async () => {
+            try {
+              updateJobDataFromFields();
+              if (jobData.title || jobData.description || jobData.location) {
+                await saveSectionData("position_details", {
+                  job_title: jobData.title,
+                  job_description: jobData.description,
+                  location: jobData.location,
+                  source_url: jobData.url,
+                  company_name: jobData.company || "",
+                  salary_range: "",
+                  employment_type: "",
+                  experience_level: "",
+                  remote_work_policy: ""
+                });
+              }
+              logToConsole("\u{1F4BE} Auto-saved job data", "debug");
+            } catch (error) {
+              logToConsole(`\u274C Auto-save failed: ${error}`, "error");
+            }
+          }, 2e3);
+        });
+      });
+    }
+    function setupSectionSaveButtons() {
+      const sections = [
+        "position-details",
+        "job-requirements",
+        "company-information",
+        "skills-matrix",
+        "application-materials",
+        "interview-schedule",
+        "interview-preparation",
+        "communication-log",
+        "key-contacts",
+        "interview-feedback",
+        "offer-details",
+        "rejection-analysis",
+        "privacy-policy",
+        "lessons-learned",
+        "performance-metrics",
+        "advisor-review"
+      ];
+      sections.forEach((sectionName) => {
+        const sectionElement = document.querySelector(`[data-section="${sectionName}"]`);
+        if (sectionElement) {
+          const header = sectionElement.querySelector(".job-header");
+          if (header) {
+            const saveButton = document.createElement("button");
+            saveButton.className = "section-save-btn";
+            saveButton.innerHTML = "\u{1F4BE}";
+            saveButton.title = `Save ${sectionName.replace("-", " ")}`;
+            saveButton.style.cssText = `
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 8px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+          `;
+            saveButton.addEventListener("mouseenter", () => {
+              saveButton.style.opacity = "1";
+            });
+            saveButton.addEventListener("mouseleave", () => {
+              saveButton.style.opacity = "0.7";
+            });
+            saveButton.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              await handleSectionSave(sectionName);
+            });
+            header.appendChild(saveButton);
+          }
+        }
+      });
+    }
+    async function handleSectionSave(sectionName) {
+      try {
+        logToConsole(`\u{1F4BE} Saving ${sectionName}...`, "info");
+        const sectionData = getSectionData(sectionName);
+        if (sectionData && Object.keys(sectionData).length > 0) {
+          await saveSectionData(sectionName.replace("-", "_"), sectionData);
+          logToConsole(`\u2705 ${sectionName} saved successfully`, "success");
+        } else {
+          logToConsole(`\u26A0\uFE0F No data to save for ${sectionName}`, "warning");
+          showNotification2(`\u26A0\uFE0F No data to save for ${sectionName}`, true);
+        }
+      } catch (error) {
+        logToConsole(`\u274C Failed to save ${sectionName}: ${error}`, "error");
+        showNotification2(`\u274C Failed to save ${sectionName}`, true);
+      }
+    }
+    function getSectionData(sectionName) {
+      switch (sectionName) {
+        case "position-details":
+          return {
+            job_title: jobData.title || "",
+            job_description: jobData.description || "",
+            location: jobData.location || "",
+            source_url: jobData.url || "",
+            company_name: jobData.company || "",
+            salary_range: "",
+            employment_type: "",
+            experience_level: "",
+            remote_work_policy: ""
+          };
+        case "job-requirements":
+          return {
+            required_skills: [],
+            preferred_skills: [],
+            experience_years: "",
+            education_requirements: "",
+            certifications: [],
+            technical_requirements: []
+          };
+        default:
+          return {};
+      }
+    }
+    function getCurrentJobInfo() {
+      return {
+        id: jobOpsDataManager.getCurrentJobApplicationId(),
+        url: jobOpsDataManager.getCurrentCanonicalUrl()
+      };
+    }
+    async function updateJobStatus(status2) {
+      try {
+        await jobOpsDataManager.updateJobStatus(status2);
+        logToConsole(`\u2705 Job status updated to: ${status2}`, "success");
+        showNotification2(`\u2705 Status updated to: ${status2}`);
+      } catch (error) {
+        logToConsole(`\u274C Error updating job status: ${error}`, "error");
+        showNotification2(`\u274C Error updating status`, true);
+      }
+    }
     function setupToggleHandlers() {
-      const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header, .realtime-header");
+      const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header, .realtime-header, .job-header");
       toggleHeaders.forEach((header) => {
         header.addEventListener("click", () => {
           const toggleTarget = header.getAttribute("data-toggle");
@@ -185,7 +1456,7 @@
     [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation].forEach((input) => {
       input.addEventListener("input", updateJobDataFromFields);
     });
-    function requestJobData() {
+    async function requestJobData() {
       logToConsole("\u{1F310} Requesting job data from current page...", "info");
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs[0]?.id) {
@@ -198,7 +1469,7 @@
             target: { tabId: tabs[0].id },
             func: () => !!window && !!window.document && !!window.document.body
           },
-          (results) => {
+          async (results) => {
             if (chrome.runtime.lastError || !results || !results[0].result) {
               logToConsole("\u274C Content script not loaded. Please refresh the page and try again.", "error");
               status.textContent = "Content script not loaded. Please refresh the page and try again.";
@@ -208,7 +1479,7 @@
             chrome.tabs.sendMessage(
               tabs[0].id,
               { action: "clip_page" },
-              (response) => {
+              async (response) => {
                 if (chrome.runtime.lastError) {
                   logToConsole("\u274C Could not connect to content script. Try refreshing the page.", "error");
                   status.textContent = "Could not connect to content script. Try refreshing the page.";
@@ -224,6 +1495,20 @@
                     return;
                   }
                   jobData = response.jobData;
+                  const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
+                  if (jobExists) {
+                    logToConsole("\u{1F504} Existing job application found and loaded", "info");
+                    showNotification2("\u{1F504} Existing job application loaded");
+                  } else {
+                    logToConsole("\u{1F195} Creating new job application", "info");
+                    try {
+                      await jobOpsDataManager.createNewJobApplication(jobData);
+                      showNotification2("\u{1F195} New job application created");
+                    } catch (error) {
+                      logToConsole(`\u274C Error creating job application: ${error}`, "error");
+                      showNotification2("\u274C Error creating job application", true);
+                    }
+                  }
                   populatePropertyFields(jobData);
                   markdownEditor.value = generateMarkdown(jobData);
                   copyBtn.disabled = false;

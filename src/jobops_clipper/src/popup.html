@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Clip Preview</title>
+  <title>JobOps Clipper</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="popup.css" />
 </head>
@@ -11,6 +11,7 @@
 <body>
   <div class="glassmorphic-popup">
     <form id="properties-form" autocomplete="off">
+      <!-- Existing Properties Section -->
       <div class="properties-section">
         <div class="properties-header" data-toggle="properties-content">
           Properties <span class="toggle-icon">▶</span>
@@ -58,6 +59,178 @@
           </div>
         </div>
       </div>
+
+      <!-- Position Details Section -->
+      <div class="job-section" data-section="position-details">
+        <div class="job-header" data-toggle="position-details-content">
+          💼 Position Details <span class="toggle-icon">▶</span>
+        </div>
+        <div id="position-details-content" class="job-content collapsed">
+          <!-- Position Details interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Job Requirements Section -->
+      <div class="job-section" data-section="job-requirements">
+        <div class="job-header" data-toggle="job-requirements-content">
+          📋 Job Requirements <span class="toggle-icon">▶</span>
+        </div>
+        <div id="job-requirements-content" class="job-content collapsed">
+          <!-- JobRequirements interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Company Information Section -->
+      <div class="job-section" data-section="company-information">
+        <div class="job-header" data-toggle="company-information-content">
+          🏢 Company Information <span class="toggle-icon">▶</span>
+        </div>
+        <div id="company-information-content" class="job-content collapsed">
+          <!-- CompanyInformation interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Skills Matrix Section -->
+      <div class="job-section" data-section="skills-matrix">
+        <div class="job-header" data-toggle="skills-matrix-content">
+          🎯 Skills Matrix <span class="toggle-icon">▶</span>
+        </div>
+        <div id="skills-matrix-content" class="job-content collapsed">
+          <!-- SkillsMatrix interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Application Materials Section -->
+      <div class="job-section" data-section="application-materials">
+        <div class="job-header" data-toggle="application-materials-content">
+          📄 Application Materials <span class="toggle-icon">▶</span>
+        </div>
+        <div id="application-materials-content" class="job-content collapsed">
+          <!-- ApplicationMaterials interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Interview Schedule Section -->
+      <div class="job-section" data-section="interview-schedule">
+        <div class="job-header" data-toggle="interview-schedule-content">
+          📅 Interview Schedule <span class="toggle-icon">▶</span>
+        </div>
+        <div id="interview-schedule-content" class="job-content collapsed">
+          <!-- InterviewSchedule interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Interview Preparation Section -->
+      <div class="job-section" data-section="interview-preparation">
+        <div class="job-header" data-toggle="interview-preparation-content">
+          🎯 Interview Preparation <span class="toggle-icon">▶</span>
+        </div>
+        <div id="interview-preparation-content" class="job-content collapsed">
+          <!-- InterviewPreparation interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Communication Log Section -->
+      <div class="job-section" data-section="communication-log">
+        <div class="job-header" data-toggle="communication-log-content">
+          💬 Communication Log <span class="toggle-icon">▶</span>
+        </div>
+        <div id="communication-log-content" class="job-content collapsed">
+          <!-- CommunicationLog interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Key Contacts Section -->
+      <div class="job-section" data-section="key-contacts">
+        <div class="job-header" data-toggle="key-contacts-content">
+          👥 Key Contacts <span class="toggle-icon">▶</span>
+        </div>
+        <div id="key-contacts-content" class="job-content collapsed">
+          <!-- KeyContacts interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Interview Feedback Section -->
+      <div class="job-section" data-section="interview-feedback">
+        <div class="job-header" data-toggle="interview-feedback-content">
+          📊 Interview Feedback <span class="toggle-icon">▶</span>
+        </div>
+        <div id="interview-feedback-content" class="job-content collapsed">
+          <!-- InterviewFeedback interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Offer Details Section -->
+      <div class="job-section" data-section="offer-details">
+        <div class="job-header" data-toggle="offer-details-content">
+          💰 Offer Details <span class="toggle-icon">▶</span>
+        </div>
+        <div id="offer-details-content" class="job-content collapsed">
+          <!-- OfferDetails interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Rejection Analysis Section -->
+      <div class="job-section" data-section="rejection-analysis">
+        <div class="job-header" data-toggle="rejection-analysis-content">
+          📉 Rejection Analysis <span class="toggle-icon">▶</span>
+        </div>
+        <div id="rejection-analysis-content" class="job-content collapsed">
+          <!-- RejectionAnalysis interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Privacy Policy Section -->
+      <div class="job-section" data-section="privacy-policy">
+        <div class="job-header" data-toggle="privacy-policy-content">
+          🔒 Privacy Policy <span class="toggle-icon">▶</span>
+        </div>
+        <div id="privacy-policy-content" class="job-content collapsed">
+          <!-- PrivacyPolicy interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Lessons Learned Section -->
+      <div class="job-section" data-section="lessons-learned">
+        <div class="job-header" data-toggle="lessons-learned-content">
+          📚 Lessons Learned <span class="toggle-icon">▶</span>
+        </div>
+        <div id="lessons-learned-content" class="job-content collapsed">
+          <!-- LessonsLearned interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Performance Metrics Section -->
+      <div class="job-section" data-section="performance-metrics">
+        <div class="job-header" data-toggle="performance-metrics-content">
+          📈 Performance Metrics <span class="toggle-icon">▶</span>
+        </div>
+        <div id="performance-metrics-content" class="job-content collapsed">
+          <!-- PerformanceMetrics interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Advisor Review Section -->
+      <div class="job-section" data-section="advisor-review">
+        <div class="job-header" data-toggle="advisor-review-content">
+          👨‍💼 Advisor Review <span class="toggle-icon">▶</span>
+        </div>
+        <div id="advisor-review-content" class="job-content collapsed">
+          <!-- AdvisorReview interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Job Application Summary Section -->
+      <div class="job-section" data-section="application-summary">
+        <div class="job-header" data-toggle="application-summary-content">
+          📋 Application Summary <span class="toggle-icon">▶</span>
+        </div>
+        <div id="application-summary-content" class="job-content collapsed">
+          <!-- JobApplicationSummary interface fields will be added here -->
+        </div>
+      </div>
+
+      <!-- Existing Markdown Section -->
       <div class="markdown-section">
         <div class="markdown-header" data-toggle="markdown-content">
           Markdown Preview <span class="toggle-icon">▶</span>
@@ -66,6 +239,8 @@
           <textarea id="markdown-editor" class="markdown-editor" placeholder="Edit your markdown here..."></textarea>
         </div>
       </div>
+
+      <!-- Existing Real-time Section -->
       <div class="realtime-section">
         <div class="realtime-header" data-toggle="realtime-content">
           🤖 Real-time Response <span class="toggle-icon">▶</span>
@@ -78,6 +253,8 @@
           </div>
         </div>
       </div>
+
+      <!-- Existing Action Buttons -->
       <div class="action-buttons">
         <button id="copy-markdown" class="action-button" aria-label="Copy to Clipboard">📋</button>
         <button id="generate-report" class="action-button" aria-label="Generate Report">📊</button>
