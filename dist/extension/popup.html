@@ -316,11 +316,14 @@
 
     <!-- Real-time Console Monitor -->
     <div id="console-monitor" class="console-monitor">
-      <div class="console-header">
+      <div class="console-header" data-toggle="console-output">
         <span class="console-title">🔍 Debug Console</span>
-        <button id="clear-console" class="console-clear-btn" title="Clear console">🗑️</button>
+        <div class="header-actions">
+          <button id="clear-console" class="console-clear-btn" title="Clear console">🗑️</button>
+          <span class="toggle-icon">▼</span>
+        </div>
       </div>
-      <div id="console-output" class="console-output"></div>
+      <div id="console-output" class="console-output expanded"></div>
     </div>
   </div>
   <script src="popup.js"></script>

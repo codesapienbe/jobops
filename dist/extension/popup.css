@@ -197,13 +197,19 @@ button:hover {
   box-shadow: 0 -4px 20px rgba(0, 212, 255, 0.3);
   z-index: 1000;
   max-height: 200px;
-  min-height: 120px;
+  min-height: 40px;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 11px;
   line-height: 1.4;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: max-height 0.3s ease;
+}
+
+/* Console collapsed state */
+.console-monitor[data-collapsed="true"] {
+  max-height: 40px;
 }
 
 /* Update console header to use flexbox */
@@ -215,6 +221,12 @@ button:hover {
   background: linear-gradient(135deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.2) 100%);
   border-radius: 8px 8px 0 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.console-header:hover {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 212, 255, 0.1) 100%);
 }
 
 .console-title {
@@ -232,7 +244,6 @@ button:hover {
   font-size: 12px;
   padding: 4px;
   border-radius: 4px;
-  margin-left: auto;
   opacity: 0.7;
   transition: opacity 0.2s;
   color: #e0e0e0;
@@ -252,6 +263,43 @@ button:hover {
   background: transparent;
   border: none;
   outline: none;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 1;
+  max-height: 150px;
+}
+
+.console-output.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.console-output.expanded {
+  max-height: 150px;
+  opacity: 1;
+}
+
+/* Console toggle icon styles */
+.console-header .toggle-icon {
+  margin-left: 8px;
+  font-size: 0.8em;
+  transition: transform 0.3s ease;
+  opacity: 0.9;
+  flex-shrink: 0;
+  color: #00d4ff;
+}
+
+/* Console collapsed state - using data attribute approach */
+.console-monitor[data-collapsed="true"] .console-header .toggle-icon {
+  transform: rotate(-90deg);
+}
+
+/* Console expanded state */
+.console-monitor[data-collapsed="false"] .console-header .toggle-icon,
+.console-monitor:not([data-collapsed]) .console-header .toggle-icon {
+  transform: rotate(0deg);
 }
 
 .console-output::-webkit-scrollbar {
@@ -348,6 +396,13 @@ button:hover {
   min-height: 0;
   overflow-y: auto;
   padding-bottom: 210px; /* Reserve space for console */
+  transition: padding-bottom 0.3s ease;
+}
+
+/* Adjust padding when console is collapsed */
+.console-monitor[data-collapsed="true"] ~ .glassmorphic-popup > form#properties-form,
+.glassmorphic-popup:has(.console-monitor[data-collapsed="true"]) > form#properties-form {
+  padding-bottom: 50px; /* Reduced space when console is collapsed */
 }
 
 /* Dock the console at the bottom of the popup */

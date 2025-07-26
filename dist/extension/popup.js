@@ -1504,6 +1504,14 @@
     }
     async function handleSectionSave(sectionName) {
       try {
+        const sectionData = getSectionData(sectionName);
+        const hasSectionContent = sectionData && Object.values(sectionData).some(
+          (value) => typeof value === "string" && value.trim().length > 0
+        );
+        if (!hasSectionContent) {
+          logToConsole(`\u{1F4BE} ${sectionName} is empty - no save needed`, "debug");
+          return;
+        }
         logToConsole(`\u{1F4BE} Saving ${sectionName}...`, "info");
         const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
         if (!hasContent) {
@@ -1519,7 +1527,6 @@
           logToConsole(`\u26A0\uFE0F Cannot save - insufficient content. Missing: ${missingSections.join(", ")}`, "warning");
           return;
         }
-        const sectionData = getSectionData(sectionName);
         if (sectionData && Object.keys(sectionData).length > 0) {
           await saveSectionData(sectionName.replace("-", "_"), sectionData);
           logToConsole(`\u2705 ${sectionName} saved successfully`, "success");
@@ -1623,9 +1630,12 @@
       }
     }
     function setupToggleHandlers() {
-      const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header, .realtime-header, .job-header");
+      const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header, .realtime-header, .job-header, .console-header");
       toggleHeaders.forEach((header) => {
-        header.addEventListener("click", () => {
+        header.addEventListener("click", (event) => {
+          if (event.target && event.target.closest("button")) {
+            return;
+          }
           const toggleTarget = header.getAttribute("data-toggle");
           if (toggleTarget) {
             toggleSection(toggleTarget);
@@ -1646,12 +1656,30 @@
         if (isCollapsed) {
           content.classList.remove("collapsed");
           content.classList.add("expanded");
-          toggleIcon.textContent = "\u25BC";
+          if (sectionId === "console-output") {
+            toggleIcon.textContent = "\u25BC";
+            const consoleMonitor = content.closest(".console-monitor");
+            if (consoleMonitor) {
+              consoleMonitor.setAttribute("data-collapsed", "false");
+            }
+            logToApplicationLog("INFO", "Debug console expanded", { section: sectionId });
+          } else {
+            toggleIcon.textContent = "\u25BC";
+          }
           logToConsole(`\u2705 Section expanded: ${sectionId}`, "debug");
         } else {
           content.classList.remove("expanded");
           content.classList.add("collapsed");
-          toggleIcon.textContent = "\u25B6";
+          if (sectionId === "console-output") {
+            toggleIcon.textContent = "\u25B6";
+            const consoleMonitor = content.closest(".console-monitor");
+            if (consoleMonitor) {
+              consoleMonitor.setAttribute("data-collapsed", "true");
+            }
+            logToApplicationLog("INFO", "Debug console collapsed", { section: sectionId });
+          } else {
+            toggleIcon.textContent = "\u25B6";
+          }
           logToConsole(`\u2705 Section collapsed: ${sectionId}`, "debug");
         }
       } else {

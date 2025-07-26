@@ -249,6 +249,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     features: ['job_tracking', 'database_storage', 'ai_analysis']
   });
 
+  logToApplicationLog('INFO', 'Debug console initialized in collapsed state', { initial_state: 'collapsed' });
+
   // Database utility functions
   async function saveSectionData(sectionName: string, data: any): Promise<void> {
     try {
@@ -630,6 +632,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Handle section save button clicks
   async function handleSectionSave(sectionName: string) {
     try {
+      // First check if the specific section has any content at all
+      const sectionData = getSectionData(sectionName);
+      const hasSectionContent = sectionData && 
+        Object.values(sectionData).some(value => 
+          typeof value === 'string' && value.trim().length > 0
+        );
+      
+      if (!hasSectionContent) {
+        // Section is empty, no need to save or validate
+        logToConsole(`💾 ${sectionName} is empty - no save needed`, "debug");
+        return;
+      }
+      
       logToConsole(`💾 Saving ${sectionName}...`, "info");
       
       // Check if we have sufficient content to save
@@ -649,9 +664,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         logToConsole(`⚠️ Cannot save - insufficient content. Missing: ${missingSections.join(', ')}`, "warning");
         return;
       }
-      
-      // Get data from the section
-      const sectionData = getSectionData(sectionName);
       
       if (sectionData && Object.keys(sectionData).length > 0) {
         await saveSectionData(sectionName.replace('-', '_'), sectionData);
@@ -764,9 +776,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function setupToggleHandlers() {
     // Add click event listeners to all toggle headers
-    const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header, .realtime-header, .job-header');
+    const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header, .realtime-header, .job-header, .console-header');
     toggleHeaders.forEach(header => {
-      header.addEventListener('click', () => {
+      header.addEventListener('click', (event) => {
+        // Prevent toggle when clicking on buttons inside the header
+        if (event.target && (event.target as Element).closest('button')) {
+          return;
+        }
+        
         const toggleTarget = header.getAttribute('data-toggle');
         if (toggleTarget) {
           toggleSection(toggleTarget);
@@ -791,12 +808,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (isCollapsed) {
         content.classList.remove('collapsed');
         content.classList.add('expanded');
-        toggleIcon.textContent = '▼';
+        // Handle console toggle icon differently
+        if (sectionId === 'console-output') {
+          toggleIcon.textContent = '▼';
+          const consoleMonitor = content.closest('.console-monitor');
+          if (consoleMonitor) {
+            consoleMonitor.setAttribute('data-collapsed', 'false');
+          }
+          logToApplicationLog('INFO', 'Debug console expanded', { section: sectionId });
+        } else {
+          toggleIcon.textContent = '▼';
+        }
         logToConsole(`✅ Section expanded: ${sectionId}`, "debug");
       } else {
         content.classList.remove('expanded');
         content.classList.add('collapsed');
-        toggleIcon.textContent = '▶';
+        // Handle console toggle icon differently
+        if (sectionId === 'console-output') {
+          toggleIcon.textContent = '▶';
+          const consoleMonitor = content.closest('.console-monitor');
+          if (consoleMonitor) {
+            consoleMonitor.setAttribute('data-collapsed', 'true');
+          }
+          logToApplicationLog('INFO', 'Debug console collapsed', { section: sectionId });
+        } else {
+          toggleIcon.textContent = '▶';
+        }
         logToConsole(`✅ Section collapsed: ${sectionId}`, "debug");
       }
     } else {
