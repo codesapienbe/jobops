@@ -1408,6 +1408,455 @@
   };
   var i18n = new I18nManager();
 
+  // src/client.ts
+  var LinearClient = class {
+    constructor(apiKey) {
+      this.baseUrl = "https://api.linear.app/graphql";
+      this.apiKey = apiKey;
+    }
+    async makeGraphQLRequest(query, variables) {
+      const response = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          query,
+          variables
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Linear API error: ${response.status} ${response.statusText}`);
+      }
+      const result = await response.json();
+      if (result.errors) {
+        throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      return result.data;
+    }
+    async getCurrentUser() {
+      const query = `
+      query {
+        viewer {
+          id
+          name
+          email
+        }
+      }
+    `;
+      const data = await this.makeGraphQLRequest(query);
+      return data.viewer;
+    }
+    async getTeams() {
+      const query = `
+      query {
+        teams {
+          nodes {
+            id
+            name
+            key
+          }
+        }
+      }
+    `;
+      const data = await this.makeGraphQLRequest(query);
+      return data.teams.nodes;
+    }
+    async getProjects(teamId) {
+      const query = `
+      query($teamId: String!) {
+        team(id: $teamId) {
+          projects {
+            nodes {
+              id
+              name
+              description
+            }
+          }
+        }
+      }
+    `;
+      const data = await this.makeGraphQLRequest(query, { teamId });
+      return data.team.projects.nodes;
+    }
+    async getLabels(teamId) {
+      const query = `
+      query($teamId: String!) {
+        team(id: $teamId) {
+          labels {
+            nodes {
+              id
+              name
+              color
+            }
+          }
+        }
+      }
+    `;
+      const data = await this.makeGraphQLRequest(query, { teamId });
+      return data.team.labels.nodes;
+    }
+    async createIssue(task) {
+      const mutation = `
+      mutation($input: IssueCreateInput!) {
+        issueCreate(input: $input) {
+          issue {
+            id
+            title
+            description
+            url
+            team {
+              id
+              name
+              key
+            }
+            project {
+              id
+              name
+            }
+            labels {
+              id
+              name
+              color
+            }
+            assignee {
+              id
+              name
+              email
+            }
+            priority
+            createdAt
+            updatedAt
+          }
+        }
+      }
+    `;
+      const input = {
+        title: task.title,
+        description: task.description,
+        teamId: task.teamId,
+        projectId: task.projectId,
+        priority: task.priority,
+        labelIds: task.labels,
+        assigneeId: task.assigneeId
+      };
+      const data = await this.makeGraphQLRequest(mutation, { input });
+      return data.issueCreate.issue;
+    }
+    async createSubtask(subtask) {
+      const mutation = `
+      mutation($input: IssueCreateInput!) {
+        issueCreate(input: $input) {
+          issue {
+            id
+            title
+            description
+            url
+            team {
+              id
+              name
+              key
+            }
+            project {
+              id
+              name
+            }
+            labels {
+              id
+              name
+              color
+            }
+            assignee {
+              id
+              name
+              email
+            }
+            priority
+            createdAt
+            updatedAt
+          }
+        }
+      }
+    `;
+      const input = {
+        title: subtask.title,
+        description: subtask.description,
+        parentId: subtask.parentId,
+        priority: subtask.priority,
+        labelIds: subtask.labels
+      };
+      const data = await this.makeGraphQLRequest(mutation, { input });
+      return data.issueCreate.issue;
+    }
+    async testConnection() {
+      try {
+        await this.getCurrentUser();
+        return true;
+      } catch (error) {
+        console.error("Linear connection test failed:", error);
+        return false;
+      }
+    }
+  };
+
+  // src/integration.ts
+  var LinearIntegrationService = class {
+    constructor(config, dataManager) {
+      this.config = config;
+      this.client = new LinearClient(config.apiKey);
+      this.dataManager = dataManager;
+    }
+    getSectionMappings() {
+      return [
+        {
+          sectionName: "position_details",
+          taskTitle: "Position Details",
+          taskDescription: "Job position information and requirements",
+          priority: 1,
+          labels: ["position", "details"]
+        },
+        {
+          sectionName: "job_requirements",
+          taskTitle: "Job Requirements",
+          taskDescription: "Required skills, experience, and qualifications",
+          priority: 2,
+          labels: ["requirements", "skills"]
+        },
+        {
+          sectionName: "company_information",
+          taskTitle: "Company Research",
+          taskDescription: "Company background, culture, and market position",
+          priority: 3,
+          labels: ["company", "research"]
+        },
+        {
+          sectionName: "skills_matrix",
+          taskTitle: "Skills Assessment",
+          taskDescription: "Skills gap analysis and development priorities",
+          priority: 4,
+          labels: ["skills", "assessment"]
+        },
+        {
+          sectionName: "application_materials",
+          taskTitle: "Application Materials",
+          taskDescription: "Resume, cover letter, and supporting documents",
+          priority: 5,
+          labels: ["materials", "documents"]
+        },
+        {
+          sectionName: "interview_schedule",
+          taskTitle: "Interview Schedule",
+          taskDescription: "Interview appointments and logistics",
+          priority: 6,
+          labels: ["interview", "schedule"]
+        },
+        {
+          sectionName: "interview_preparation",
+          taskTitle: "Interview Preparation",
+          taskDescription: "Preparation checklist and research",
+          priority: 7,
+          labels: ["interview", "preparation"]
+        },
+        {
+          sectionName: "communication_log",
+          taskTitle: "Communication Log",
+          taskDescription: "All communications with the company",
+          priority: 8,
+          labels: ["communication", "log"]
+        },
+        {
+          sectionName: "key_contacts",
+          taskTitle: "Key Contacts",
+          taskDescription: "Important contact information",
+          priority: 9,
+          labels: ["contacts", "networking"]
+        },
+        {
+          sectionName: "interview_feedback",
+          taskTitle: "Interview Feedback",
+          taskDescription: "Interview performance and feedback",
+          priority: 10,
+          labels: ["interview", "feedback"]
+        },
+        {
+          sectionName: "offer_details",
+          taskTitle: "Offer Details",
+          taskDescription: "Job offer information and negotiation",
+          priority: 11,
+          labels: ["offer", "negotiation"]
+        },
+        {
+          sectionName: "rejection_analysis",
+          taskTitle: "Rejection Analysis",
+          taskDescription: "Rejection reasons and lessons learned",
+          priority: 12,
+          labels: ["rejection", "analysis"]
+        },
+        {
+          sectionName: "privacy_policy",
+          taskTitle: "Privacy Policy",
+          taskDescription: "Privacy and consent tracking",
+          priority: 13,
+          labels: ["privacy", "compliance"]
+        },
+        {
+          sectionName: "lessons_learned",
+          taskTitle: "Lessons Learned",
+          taskDescription: "Insights and improvement strategies",
+          priority: 14,
+          labels: ["lessons", "improvement"]
+        },
+        {
+          sectionName: "performance_metrics",
+          taskTitle: "Performance Metrics",
+          taskDescription: "Application success metrics and tracking",
+          priority: 15,
+          labels: ["metrics", "performance"]
+        },
+        {
+          sectionName: "advisor_review",
+          taskTitle: "Advisor Review",
+          taskDescription: "Professional advisor feedback and recommendations",
+          priority: 16,
+          labels: ["advisor", "review"]
+        }
+      ];
+    }
+    formatSectionContent(sectionData, sectionName) {
+      if (!sectionData || sectionData.length === 0) {
+        return `No data available for ${sectionName.replace("_", " ")}`;
+      }
+      const data = Array.isArray(sectionData) ? sectionData[0] : sectionData;
+      let content = "";
+      for (const [key, value] of Object.entries(data)) {
+        if (key === "id" || key === "job_application_id" || key === "created_at" || key === "updated_at") {
+          continue;
+        }
+        if (value !== null && value !== void 0 && value !== "") {
+          const formattedKey = key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+          const formattedValue = Array.isArray(value) ? value.join(", ") : String(value);
+          content += `**${formattedKey}:** ${formattedValue}
+
+`;
+        }
+      }
+      return content || `No detailed data available for ${sectionName.replace("_", " ")}`;
+    }
+    async getLabelIds(labels, teamId) {
+      try {
+        const availableLabels = await this.client.getLabels(teamId);
+        const labelIds = [];
+        for (const labelName of labels) {
+          const label = availableLabels.find(
+            (l) => l.name.toLowerCase() === labelName.toLowerCase()
+          );
+          if (label) {
+            labelIds.push(label.id);
+          }
+        }
+        return labelIds;
+      } catch (error) {
+        console.warn("Failed to fetch labels, proceeding without labels:", error);
+        return [];
+      }
+    }
+    async exportJobToLinear(jobApplicationId) {
+      try {
+        const jobData = await this.dataManager.exportCurrentJobApplication();
+        if (!jobData.jobApplication) {
+          throw new Error("Job application not found");
+        }
+        const job = jobData.jobApplication;
+        const sectionMappings = this.getSectionMappings();
+        const mainTaskTitle = `Job Application: ${job.job_title} at ${job.company_name}`;
+        const mainTaskDescription = `
+# Job Application Tracking
+
+**Position:** ${job.job_title}
+**Company:** ${job.company_name}
+**Application Date:** ${job.application_date}
+**Status:** ${job.status}
+**URL:** ${job.canonical_url}
+
+## Overview
+This task tracks the complete application process for the ${job.job_title} position at ${job.company_name}.
+
+## Sections
+${sectionMappings.map((mapping) => `- ${mapping.taskTitle}`).join("\n")}
+
+---
+*Created by JobOps Clipper Extension*
+      `.trim();
+        const mainTask = {
+          title: mainTaskTitle,
+          description: mainTaskDescription,
+          teamId: this.config.teamId,
+          projectId: this.config.projectId,
+          priority: this.config.defaultPriority,
+          assigneeId: this.config.assigneeId,
+          labels: await this.getLabelIds(["job-application", "tracking"], this.config.teamId)
+        };
+        const mainTaskIssue = await this.client.createIssue(mainTask);
+        const subtasks = [];
+        if (this.config.autoCreateSubtasks) {
+          for (const mapping of sectionMappings) {
+            const sectionData = jobData[mapping.sectionName];
+            const sectionContent = this.formatSectionContent(sectionData, mapping.sectionName);
+            const subtask = {
+              title: mapping.taskTitle,
+              description: `
+# ${mapping.taskTitle}
+
+${mapping.taskDescription}
+
+## Content
+${sectionContent}
+
+---
+*Section from JobOps Clipper*
+            `.trim(),
+              parentId: mainTaskIssue.id,
+              priority: mapping.priority,
+              labels: await this.getLabelIds(mapping.labels, this.config.teamId)
+            };
+            try {
+              const subtaskIssue = await this.client.createSubtask(subtask);
+              subtasks.push(subtaskIssue);
+            } catch (error) {
+              console.error(`Failed to create subtask for ${mapping.sectionName}:`, error);
+            }
+          }
+        }
+        return {
+          mainTask: mainTaskIssue,
+          subtasks,
+          success: true
+        };
+      } catch (error) {
+        console.error("Failed to export job to Linear:", error);
+        return {
+          mainTask: null,
+          subtasks: [],
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error"
+        };
+      }
+    }
+    async testConnection() {
+      return await this.client.testConnection();
+    }
+    async getTeams() {
+      return await this.client.getTeams();
+    }
+    async getProjects(teamId) {
+      return await this.client.getProjects(teamId);
+    }
+    async getLabels(teamId) {
+      return await this.client.getLabels(teamId);
+    }
+  };
+
   // src/popup.ts
   var GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
   var GROQ_MODEL = "qwen2.5-32b-instant";
@@ -1522,6 +1971,11 @@
     if (clearConsoleBtn) {
       clearConsoleBtn.addEventListener("click", clearConsole);
     }
+    const exportLinearBtn = document.getElementById("export-linear");
+    if (exportLinearBtn) {
+      exportLinearBtn.addEventListener("click", handleExportToLinear);
+      logToConsole("\u{1F4E4} Linear export button event listener added", "debug");
+    }
     if (resumeUpload) {
       resumeUpload.addEventListener("change", handleResumeUpload);
     }
@@ -1547,6 +2001,7 @@
     chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
       requestJobData();
     });
+    await scanForMissingApiKeys();
     chrome.runtime.onMessage.addListener(async (msg, _sender, _sendResponse) => {
       if (msg.action === "show_preview" && msg.jobData) {
         logToConsole(i18n.getConsoleMessage("previewDataReceived"), "info");
@@ -2440,7 +2895,19 @@
         logToConsole("\u{1F511} Checking API configuration...", "info");
         const apiKey = await getGroqApiKey();
         if (!apiKey) {
-          throw new Error("Groq API key not configured");
+          const message = "Groq API key not configured. Please configure in settings.";
+          logToConsole("\u274C " + message, "error");
+          showNotification2(message, true);
+          if (chrome.notifications) {
+            chrome.notifications.create({
+              type: "basic",
+              iconUrl: "icon.png",
+              title: "JobOps Clipper - Groq API Configuration",
+              message,
+              priority: 2
+            });
+          }
+          return;
         }
         logToConsole("\u2705 API key found, proceeding with report generation", "success");
         showNotification2("\u2705 API key found, proceeding...");
@@ -2556,31 +3023,77 @@
     }
     async function handleSettings() {
       logToConsole("\u2699\uFE0F Settings dialog opened", "info");
-      const apiKey = await getGroqApiKey();
-      const newApiKey = prompt("Enter your Groq API key (leave empty to remove):", apiKey || "");
-      if (newApiKey !== null) {
-        if (newApiKey.trim()) {
-          logToConsole("\u{1F511} Saving new Groq API key...", "progress");
-          await new Promise((resolve) => {
-            chrome.storage.sync.set({ groq_api_key: newApiKey.trim() }, () => {
-              logToConsole("\u2705 Groq API key saved successfully!", "success");
-              showNotification2("\u2705 Groq API key saved!");
-              resolve();
-            });
-          });
-        } else {
-          logToConsole("\u{1F5D1}\uFE0F Removing Groq API key...", "warning");
-          await new Promise((resolve) => {
-            chrome.storage.sync.remove(["groq_api_key"], () => {
-              logToConsole("\u2705 Groq API key removed successfully!", "success");
-              showNotification2("\u2705 Groq API key removed!");
-              resolve();
-            });
-          });
+      const groqApiKey = await getGroqApiKey();
+      const linearConfig = await getLinearConfig();
+      const settingsHtml = `
+      <div style="padding: 20px; max-width: 500px;">
+        <h3>\u{1F511} Groq API Settings</h3>
+        <p>Enter your Groq API key for AI report generation:</p>
+        <input type="password" id="groq-api-key" placeholder="Groq API Key" value="${groqApiKey || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        
+        <h3>\u{1F4E4} Linear Integration Settings</h3>
+        <p>Configure Linear integration for task creation:</p>
+        <input type="password" id="linear-api-key" placeholder="Linear API Key" value="${linearConfig?.apiKey || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <input type="text" id="linear-team-id" placeholder="Linear Team ID" value="${linearConfig?.teamId || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <input type="text" id="linear-project-id" placeholder="Linear Project ID (optional)" value="${linearConfig?.projectId || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <input type="text" id="linear-assignee-id" placeholder="Linear Assignee ID (optional)" value="${linearConfig?.assigneeId || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        
+        <div style="margin-top: 20px;">
+          <button id="save-settings" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px;">Save Settings</button>
+          <button id="cancel-settings" style="background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 4px;">Cancel</button>
+        </div>
+      </div>
+    `;
+      const modal = document.createElement("div");
+      modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+      background: rgba(0,0,0,0.5); z-index: 10000; display: flex; 
+      align-items: center; justify-content: center;
+    `;
+      modal.innerHTML = `
+      <div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">
+        ${settingsHtml}
+      </div>
+    `;
+      document.body.appendChild(modal);
+      const saveBtn = modal.querySelector("#save-settings");
+      saveBtn?.addEventListener("click", async () => {
+        const groqKey = modal.querySelector("#groq-api-key")?.value.trim();
+        const linearKey = modal.querySelector("#linear-api-key")?.value.trim();
+        const linearTeamId = modal.querySelector("#linear-team-id")?.value.trim();
+        const linearProjectId = modal.querySelector("#linear-project-id")?.value.trim();
+        const linearAssigneeId = modal.querySelector("#linear-assignee-id")?.value.trim();
+        const settings = {};
+        if (groqKey)
+          settings.groq_api_key = groqKey;
+        if (linearKey && linearTeamId) {
+          settings.linear_api_key = linearKey;
+          settings.linear_team_id = linearTeamId;
+          if (linearProjectId)
+            settings.linear_project_id = linearProjectId;
+          if (linearAssigneeId)
+            settings.linear_assignee_id = linearAssigneeId;
         }
-      } else {
+        await new Promise((resolve) => {
+          chrome.storage.sync.set(settings, () => {
+            logToConsole("\u2705 Settings saved successfully!", "success");
+            showNotification2("\u2705 Settings saved!");
+            resolve();
+          });
+        });
+        document.body.removeChild(modal);
+      });
+      const cancelBtn = modal.querySelector("#cancel-settings");
+      cancelBtn?.addEventListener("click", () => {
+        document.body.removeChild(modal);
         logToConsole("\u274C Settings dialog cancelled", "info");
-      }
+      });
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) {
+          document.body.removeChild(modal);
+          logToConsole("\u274C Settings dialog cancelled", "info");
+        }
+      });
     }
     async function handleTestAPI(event) {
       event.preventDefault();
@@ -3127,6 +3640,133 @@ Fill in all template placeholders with concrete, actionable information based on
     } catch (error) {
       logToConsole(`\u274C Failed to copy real-time response: ${error}`, "error");
       showNotification(i18n.getNotificationMessage("copyFailed"), true);
+    }
+  }
+  async function scanForMissingApiKeys() {
+    logToConsole("\u{1F50D} Scanning for missing API keys...", "info");
+    const groqApiKey = await getGroqApiKey();
+    const linearConfig = await getLinearConfig();
+    const missingKeys = [];
+    if (!groqApiKey) {
+      missingKeys.push("Groq API");
+      logToConsole("\u26A0\uFE0F Groq API key not configured", "warning");
+    }
+    if (!linearConfig) {
+      missingKeys.push("Linear API");
+      logToConsole("\u26A0\uFE0F Linear API key not configured", "warning");
+    }
+    if (missingKeys.length > 0) {
+      const message = `Missing API keys: ${missingKeys.join(", ")}. Click \u2699\uFE0F to configure.`;
+      logToConsole(message, "warning");
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icon.png",
+          title: "JobOps Clipper - API Configuration",
+          message,
+          priority: 1
+        });
+      }
+      showNotification(message, true);
+    } else {
+      logToConsole("\u2705 All API keys configured", "success");
+    }
+  }
+  async function getLinearConfig() {
+    return new Promise((resolve) => {
+      chrome.storage.sync.get(["linear_api_key", "linear_team_id", "linear_project_id", "linear_assignee_id"], (result) => {
+        if (result.linear_api_key && result.linear_team_id) {
+          resolve({
+            apiKey: result.linear_api_key,
+            teamId: result.linear_team_id,
+            projectId: result.linear_project_id || void 0,
+            assigneeId: result.linear_assignee_id || void 0,
+            autoCreateSubtasks: true,
+            defaultPriority: 2
+          });
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+  async function handleExportToLinear() {
+    logToConsole("\u{1F680} Starting Linear export...", "info");
+    try {
+      const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
+      if (!currentJobId) {
+        logToConsole("\u274C No active job application found", "error");
+        const message = "No active job application found. Please clip a job posting first.";
+        showNotification(message, true);
+        if (chrome.notifications) {
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icon.png",
+            title: "JobOps Clipper - No Job Application",
+            message,
+            priority: 2
+          });
+        }
+        return;
+      }
+      const config = await getLinearConfig();
+      if (!config) {
+        logToConsole("\u274C Linear configuration not found", "error");
+        const message = "Linear configuration not found. Please configure Linear settings first.";
+        showNotification(message, true);
+        if (chrome.notifications) {
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icon.png",
+            title: "JobOps Clipper - Linear Configuration",
+            message,
+            priority: 2
+          });
+        }
+        return;
+      }
+      logToConsole("\u{1F527} Linear configuration loaded", "debug");
+      logToConsole(`\u{1F4CB} Team ID: ${config.teamId}`, "debug");
+      logToConsole(`\u{1F4C1} Project ID: ${config.projectId || "None"}`, "debug");
+      const linearService = new LinearIntegrationService(config, jobOpsDataManager);
+      logToConsole("\u{1F517} Testing Linear connection...", "progress");
+      const connectionTest = await linearService.testConnection();
+      if (!connectionTest) {
+        logToConsole("\u274C Linear connection test failed", "error");
+        const message = "Failed to connect to Linear. Please check your API key and try again.";
+        showNotification(message, true);
+        if (chrome.notifications) {
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icon.png",
+            title: "JobOps Clipper - Linear Connection Failed",
+            message,
+            priority: 2
+          });
+        }
+        return;
+      }
+      logToConsole("\u2705 Linear connection successful", "success");
+      logToConsole("\u{1F4E4} Exporting job application to Linear...", "progress");
+      const result = await linearService.exportJobToLinear(currentJobId);
+      if (result.success) {
+        logToConsole("\u2705 Job exported to Linear successfully", "success");
+        logToConsole(`\u{1F4CB} Main task created: ${result.mainTask.title}`, "info");
+        logToConsole(`\u{1F4CB} Subtasks created: ${result.subtasks.length}`, "info");
+        const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
+        showNotification(message);
+        if (result.mainTask.url) {
+          logToConsole(`\u{1F517} Opening Linear task: ${result.mainTask.url}`, "info");
+          chrome.tabs.create({ url: result.mainTask.url });
+        }
+      } else {
+        logToConsole(`\u274C Linear export failed: ${result.error}`, "error");
+        showNotification(`Failed to export to Linear: ${result.error}`, true);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logToConsole(`\u274C Linear export error: ${errorMessage}`, "error");
+      showNotification(`Linear export failed: ${errorMessage}`, true);
     }
   }
 })();

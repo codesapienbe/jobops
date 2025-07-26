@@ -2,40 +2,40 @@
 > jobops_clipper@0.1.0 build
 > node build.js
 
-[2025-07-26T16:36:58.755Z] --- Build started ---
-[2025-07-26T16:36:58.759Z] Output directory: C:\Users\Administrator\Projects\jobops\dist\extension
-[2025-07-26T16:36:58.760Z] Ensuring output directory exists...
-[2025-07-26T16:36:58.761Z] Output directory ready.
-[2025-07-26T16:36:58.762Z] Running TypeScript build...
-[2025-07-26T16:37:00.635Z] TypeScript build completed.
-[2025-07-26T16:37:00.636Z] Copying manifest and icon...
-[2025-07-26T16:37:00.642Z] Manifest and icon copied.
-[2025-07-26T16:37:00.643Z] Using BACKEND_API_BASE: http://localhost:8877
-[2025-07-26T16:37:00.644Z] Bundling background.ts with esbuild...
-[2025-07-26T16:37:00.799Z] background.ts bundled.
-[2025-07-26T16:37:00.800Z] Bundling content.ts with esbuild...
-[2025-07-26T16:37:00.945Z] content.ts bundled.
-[2025-07-26T16:37:00.946Z] Bundling popup.ts with esbuild...
-[2025-07-26T16:37:01.096Z] popup.ts bundled.
-[2025-07-26T16:37:01.096Z] Copying popup.html and popup.css...
-[2025-07-26T16:37:01.099Z] popup.html and popup.css copied.
-[2025-07-26T16:37:01.100Z] Copying locale files...
-[2025-07-26T16:37:01.102Z] Copied en.json
-[2025-07-26T16:37:01.104Z] Copied nl.json
-[2025-07-26T16:37:01.106Z] Copied fr.json
-[2025-07-26T16:37:01.108Z] Copied tr.json
-[2025-07-26T16:37:01.109Z] Locale files copied.
-[2025-07-26T16:37:01.109Z] --- Build completed successfully ---
+[2025-07-26T16:52:12.520Z] --- Build started ---
+[2025-07-26T16:52:12.524Z] Output directory: C:\Users\Administrator\Projects\jobops\dist\extension
+[2025-07-26T16:52:12.525Z] Ensuring output directory exists...
+[2025-07-26T16:52:12.526Z] Output directory ready.
+[2025-07-26T16:52:12.527Z] Running TypeScript build...
+[2025-07-26T16:52:14.085Z] TypeScript build completed.
+[2025-07-26T16:52:14.086Z] Copying manifest and icon...
+[2025-07-26T16:52:14.091Z] Manifest and icon copied.
+[2025-07-26T16:52:14.092Z] Using BACKEND_API_BASE: http://localhost:8877
+[2025-07-26T16:52:14.094Z] Bundling background.ts with esbuild...
+[2025-07-26T16:52:14.234Z] background.ts bundled.
+[2025-07-26T16:52:14.234Z] Bundling content.ts with esbuild...
+[2025-07-26T16:52:14.374Z] content.ts bundled.
+[2025-07-26T16:52:14.374Z] Bundling popup.ts with esbuild...
+[2025-07-26T16:52:14.524Z] popup.ts bundled.
+[2025-07-26T16:52:14.524Z] Copying popup.html and popup.css...
+[2025-07-26T16:52:14.527Z] popup.html and popup.css copied.
+[2025-07-26T16:52:14.527Z] Copying locale files...
+[2025-07-26T16:52:14.529Z] Copied en.json
+[2025-07-26T16:52:14.531Z] Copied nl.json
+[2025-07-26T16:52:14.533Z] Copied fr.json
+[2025-07-26T16:52:14.534Z] Copied tr.json
+[2025-07-26T16:52:14.536Z] Locale files copied.
+[2025-07-26T16:52:14.536Z] --- Build completed successfully ---
 
 
   ..\..\dist\extension\background.js  6.2kb
 
-Done in 6ms
+Done in 5ms
 
   ..\..\dist\extension\content.js  3.5kb
 
 Done in 5ms
 
-  ..\..\dist\extension\popup.js  131.6kb
+  ..\..\dist\extension\popup.js  153.0kb
 
-Done in 14ms
+Done in 15ms

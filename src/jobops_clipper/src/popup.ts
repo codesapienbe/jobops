@@ -179,6 +179,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearConsoleBtn.addEventListener('click', clearConsole);
   }
   
+  // Add Linear export button event listener
+  const exportLinearBtn = document.getElementById("export-linear");
+  if (exportLinearBtn) {
+    exportLinearBtn.addEventListener('click', handleExportToLinear);
+    logToConsole("📤 Linear export button event listener added", "debug");
+  }
+  
   if (resumeUpload) {
     resumeUpload.addEventListener('change', handleResumeUpload);
   }
@@ -216,6 +223,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   chrome.storage.sync.set({ jobops_backend_url: backendUrl }, async () => {
     requestJobData();
   });
+
+  // Scan for missing API keys on startup
+  await scanForMissingApiKeys();
 
   // Listen for preview data from content script
   chrome.runtime.onMessage.addListener(async (msg, _sender, _sendResponse) => {
@@ -1335,7 +1345,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       logToConsole("🔑 Checking API configuration...", "info");
       const apiKey = await getGroqApiKey();
       if (!apiKey) {
-        throw new Error('Groq API key not configured');
+        const message = 'Groq API key not configured. Please configure in settings.';
+        logToConsole("❌ " + message, "error");
+        showNotification(message, true);
+        
+        // Show native notification
+        if (chrome.notifications) {
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icon.png',
+            title: 'JobOps Clipper - Groq API Configuration',
+            message: message,
+            priority: 2
+          });
+        }
+        return;
       }
       logToConsole("✅ API key found, proceeding with report generation", "success");
       showNotification("✅ API key found, proceeding...");
@@ -2228,6 +2252,47 @@ async function handleCopyRealtime() {
   }
 }
 
+// Scan for missing API keys and show notifications
+async function scanForMissingApiKeys() {
+  logToConsole("🔍 Scanning for missing API keys...", "info");
+  
+  const groqApiKey = await getGroqApiKey();
+  const linearConfig = await getLinearConfig();
+  
+  const missingKeys = [];
+  
+  if (!groqApiKey) {
+    missingKeys.push('Groq API');
+    logToConsole("⚠️ Groq API key not configured", "warning");
+  }
+  
+  if (!linearConfig) {
+    missingKeys.push('Linear API');
+    logToConsole("⚠️ Linear API key not configured", "warning");
+  }
+  
+  if (missingKeys.length > 0) {
+    const message = `Missing API keys: ${missingKeys.join(', ')}. Click ⚙️ to configure.`;
+    logToConsole(message, "warning");
+    
+    // Show native notification
+    if (chrome.notifications) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: 'JobOps Clipper - API Configuration',
+        message: message,
+        priority: 1
+      });
+    }
+    
+    // Also show in-app notification
+    showNotification(message, true);
+  } else {
+    logToConsole("✅ All API keys configured", "success");
+  }
+}
+
 import { LinearIntegrationService, LinearIntegrationConfig } from './integration';
 
 // Linear integration functions
@@ -2258,7 +2323,19 @@ async function handleExportToLinear() {
     const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
     if (!currentJobId) {
       logToConsole("❌ No active job application found", "error");
-      showNotification("No active job application found. Please clip a job posting first.", true);
+      const message = "No active job application found. Please clip a job posting first.";
+      showNotification(message, true);
+      
+      // Show native notification
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icon.png',
+          title: 'JobOps Clipper - No Job Application',
+          message: message,
+          priority: 2
+        });
+      }
       return;
     }
 
@@ -2266,7 +2343,19 @@ async function handleExportToLinear() {
     const config = await getLinearConfig();
     if (!config) {
       logToConsole("❌ Linear configuration not found", "error");
-      showNotification("Linear configuration not found. Please configure Linear settings first.", true);
+      const message = "Linear configuration not found. Please configure Linear settings first.";
+      showNotification(message, true);
+      
+      // Show native notification
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icon.png',
+          title: 'JobOps Clipper - Linear Configuration',
+          message: message,
+          priority: 2
+        });
+      }
       return;
     }
 
@@ -2282,7 +2371,19 @@ async function handleExportToLinear() {
     const connectionTest = await linearService.testConnection();
     if (!connectionTest) {
       logToConsole("❌ Linear connection test failed", "error");
-      showNotification("Failed to connect to Linear. Please check your API key and try again.", true);
+      const message = "Failed to connect to Linear. Please check your API key and try again.";
+      showNotification(message, true);
+      
+      // Show native notification
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icon.png',
+          title: 'JobOps Clipper - Linear Connection Failed',
+          message: message,
+          priority: 2
+        });
+      }
       return;
     }
     logToConsole("✅ Linear connection successful", "success");
@@ -2316,10 +2417,3 @@ async function handleExportToLinear() {
     showNotification(`Linear export failed: ${errorMessage}`, true);
   }
 }
-
-// ... existing code ...
-
-// Add Linear export button event listener
-document.getElementById("export-linear")?.addEventListener("click", handleExportToLinear);
-
-// ... existing code ...
