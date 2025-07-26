@@ -604,21 +604,23 @@ document.addEventListener("DOMContentLoaded", async () => {
         const content = sectionElement.querySelector('.job-content');
         
         if (header && content) {
+          // Track the previous state to detect collapse
+          let wasExpanded = !content.classList.contains('collapsed');
+          
           // Override the click handler to add save-on-collapse functionality
           header.addEventListener('click', async (e) => {
-            // Check if section is currently expanded and will be collapsed
-            const isCurrentlyExpanded = !content.classList.contains('collapsed');
+            // Check if section was expanded BEFORE the toggle
+            const previousState = wasExpanded;
             
-            // Let the original toggle behavior happen first (toggleSection will be called)
-            // We don't need to call it manually as the data-toggle attribute handles it
-            
-            // If the section was expanded and is now being collapsed, trigger save
-            if (isCurrentlyExpanded) {
-              // Small delay to ensure the collapse animation has started
-              setTimeout(async () => {
-                await handleSectionSave(sectionName);
-              }, 100);
-            }
+            // Update the tracked state after a short delay to let the toggle happen
+            setTimeout(() => {
+              wasExpanded = !content.classList.contains('collapsed');
+              
+              // If the section was expanded and is now collapsed, trigger save
+              if (previousState && !wasExpanded) {
+                handleSectionSave(sectionName);
+              }
+            }, 50);
           });
         }
       }

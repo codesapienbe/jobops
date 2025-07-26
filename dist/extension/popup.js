@@ -1488,13 +1488,15 @@
           const header = sectionElement.querySelector(".job-header");
           const content = sectionElement.querySelector(".job-content");
           if (header && content) {
+            let wasExpanded = !content.classList.contains("collapsed");
             header.addEventListener("click", async (e) => {
-              const isCurrentlyExpanded = !content.classList.contains("collapsed");
-              if (isCurrentlyExpanded) {
-                setTimeout(async () => {
-                  await handleSectionSave(sectionName);
-                }, 100);
-              }
+              const previousState = wasExpanded;
+              setTimeout(() => {
+                wasExpanded = !content.classList.contains("collapsed");
+                if (previousState && !wasExpanded) {
+                  handleSectionSave(sectionName);
+                }
+              }, 50);
             });
           }
         }
