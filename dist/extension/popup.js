@@ -1187,6 +1187,7 @@
       database_ready: true,
       features: ["job_tracking", "database_storage", "ai_analysis"]
     });
+    logToApplicationLog("INFO", "Debug console initialized in collapsed state", { initial_state: "collapsed" });
     async function saveSectionData(sectionName, data) {
       try {
         const jobInfo = getCurrentJobInfo();

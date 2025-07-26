@@ -212,6 +212,11 @@ button:hover {
   max-height: 40px;
 }
 
+/* Console expanded state */
+.console-monitor[data-collapsed="false"] {
+  max-height: 200px;
+}
+
 /* Update console header to use flexbox */
 .console-header {
   display: flex;
