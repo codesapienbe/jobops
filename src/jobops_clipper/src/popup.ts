@@ -157,7 +157,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function toggleSection(sectionId: string) {
     const content = document.getElementById(sectionId);
-    const header = content?.parentElement?.querySelector('.properties-header, .markdown-header, .realtime-header');
+    if (!content) {
+      logToConsole(`❌ Section element not found: ${sectionId}`, "error");
+      return;
+    }
+    
+    const header = content.parentElement?.querySelector('[data-toggle="' + sectionId + '"]');
     const toggleIcon = header?.querySelector('.toggle-icon');
     
     if (content && header && toggleIcon) {
@@ -167,11 +172,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         content.classList.remove('collapsed');
         content.classList.add('expanded');
         toggleIcon.textContent = '▼';
+        logToConsole(`✅ Section expanded: ${sectionId}`, "debug");
       } else {
         content.classList.remove('expanded');
         content.classList.add('collapsed');
         toggleIcon.textContent = '▶';
+        logToConsole(`✅ Section collapsed: ${sectionId}`, "debug");
       }
+    } else {
+      logToConsole(`❌ Header or toggle icon not found for section: ${sectionId}`, "error");
     }
   }
 
@@ -431,14 +440,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       status.className = "loading";
       showNotification("🤖 Starting streaming analysis...");
       
-      // Initialize real-time response
+      // Force expand real-time section first
+      logToConsole("🔧 Forcing real-time section expansion...", "debug");
+      const realtimeContent = document.getElementById("realtime-content");
+      if (realtimeContent) {
+        if (realtimeContent.classList.contains('collapsed')) {
+          toggleSection('realtime-content');
+          logToConsole("✅ Real-time section expanded", "debug");
+        } else {
+          logToConsole("✅ Real-time section already expanded", "debug");
+        }
+      } else {
+        logToConsole("❌ Real-time content element not found", "error");
+      }
+      
+      // Initialize real-time response with test message
+      const realtimeResponse = document.getElementById("realtime-response");
       if (realtimeResponse) {
-        realtimeResponse.innerHTML = '';
+        realtimeResponse.innerHTML = '<span class="typing-text">🚀 Starting report generation...</span>';
         realtimeResponse.classList.add('typing');
-        logToConsole("✅ Real-time response element initialized", "debug");
+        logToConsole("✅ Real-time response element initialized with test message", "debug");
       } else {
         logToConsole("❌ Real-time response element not found", "error");
       }
+      
+      // Show stop generation button
       if (stopGenerationBtn) {
         stopGenerationBtn.style.display = 'inline-block';
         logToConsole("✅ Stop generation button shown", "debug");
@@ -446,30 +472,26 @@ document.addEventListener("DOMContentLoaded", async () => {
         logToConsole("❌ Stop generation button not found", "error");
       }
       
-      // Ensure real-time section is expanded
-      const realtimeContent = document.getElementById("realtime-content");
-      if (realtimeContent && realtimeContent.classList.contains('collapsed')) {
-        toggleSection('realtime-content');
-        logToConsole("✅ Real-time section expanded", "debug");
-      } else if (realtimeContent) {
-        logToConsole("✅ Real-time section already expanded", "debug");
-      } else {
-        logToConsole("❌ Real-time content element not found", "error");
-      }
-      
       isGenerating = true;
       abortController = new AbortController();
       
+      logToConsole("🔄 Calling generateJobReportStreaming...", "debug");
       const report = await generateJobReportStreaming(jobData, resumeContent, (chunk: string) => {
+        logToConsole(`📝 Chunk callback received: ${chunk.length} characters`, "debug");
+        const realtimeResponse = document.getElementById("realtime-response");
         if (realtimeResponse) {
           const span = document.createElement('span');
           span.className = 'typing-text';
           span.textContent = chunk;
           realtimeResponse.appendChild(span);
           realtimeResponse.scrollTop = realtimeResponse.scrollHeight;
-          logToConsole(`📝 Real-time chunk received: ${chunk.length} characters`, "debug");
+          logToConsole(`📝 Real-time chunk added to UI: ${chunk.length} characters`, "debug");
+        } else {
+          logToConsole("❌ Real-time response element not found in chunk callback", "error");
         }
       });
+      
+      logToConsole(`📊 Report generation result: ${report ? 'success' : 'failed'}`, "debug");
       
       if (!report) {
         throw new Error('No report generated - API returned empty response');
@@ -502,8 +524,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Clean up streaming state
       isGenerating = false;
       abortController = null;
+      
+      // Add error message to real-time response
+      const realtimeResponse = document.getElementById("realtime-response");
       if (realtimeResponse) {
         realtimeResponse.classList.remove('typing');
+        realtimeResponse.innerHTML += `<br><span style="color: #ff6b6b;">❌ Error: ${errorMessage}</span>`;
+        logToConsole("✅ Error message added to real-time response", "debug");
       }
       if (stopGenerationBtn) {
         stopGenerationBtn.style.display = 'none';
@@ -1067,7 +1094,13 @@ async function callOllamaAPI(prompt: string): Promise<string | null> {
 async function getGroqApiKey(): Promise<string | null> {
   return new Promise((resolve) => {
     chrome.storage.sync.get(['groq_api_key'], (result) => {
-      resolve(result.groq_api_key || null);
+      const apiKey = result.groq_api_key || null;
+      if (apiKey) {
+        logToConsole(`🔑 API key found (${apiKey.substring(0, 8)}...)`, "debug");
+      } else {
+        logToConsole("❌ No API key found in storage", "debug");
+      }
+      resolve(apiKey);
     });
   });
 }

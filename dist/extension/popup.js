@@ -109,7 +109,11 @@
     }
     function toggleSection(sectionId) {
       const content = document.getElementById(sectionId);
-      const header = content?.parentElement?.querySelector(".properties-header, .markdown-header, .realtime-header");
+      if (!content) {
+        logToConsole(`\u274C Section element not found: ${sectionId}`, "error");
+        return;
+      }
+      const header = content.parentElement?.querySelector('[data-toggle="' + sectionId + '"]');
       const toggleIcon = header?.querySelector(".toggle-icon");
       if (content && header && toggleIcon) {
         const isCollapsed = content.classList.contains("collapsed");
@@ -117,11 +121,15 @@
           content.classList.remove("collapsed");
           content.classList.add("expanded");
           toggleIcon.textContent = "\u25BC";
+          logToConsole(`\u2705 Section expanded: ${sectionId}`, "debug");
         } else {
           content.classList.remove("expanded");
           content.classList.add("collapsed");
           toggleIcon.textContent = "\u25B6";
+          logToConsole(`\u2705 Section collapsed: ${sectionId}`, "debug");
         }
+      } else {
+        logToConsole(`\u274C Header or toggle icon not found for section: ${sectionId}`, "error");
       }
     }
     function populatePropertyFields(data) {
@@ -327,10 +335,23 @@
         status.textContent = "\u{1F916} Starting streaming report generation...";
         status.className = "loading";
         showNotification2("\u{1F916} Starting streaming analysis...");
-        if (realtimeResponse) {
-          realtimeResponse.innerHTML = "";
-          realtimeResponse.classList.add("typing");
-          logToConsole("\u2705 Real-time response element initialized", "debug");
+        logToConsole("\u{1F527} Forcing real-time section expansion...", "debug");
+        const realtimeContent = document.getElementById("realtime-content");
+        if (realtimeContent) {
+          if (realtimeContent.classList.contains("collapsed")) {
+            toggleSection("realtime-content");
+            logToConsole("\u2705 Real-time section expanded", "debug");
+          } else {
+            logToConsole("\u2705 Real-time section already expanded", "debug");
+          }
+        } else {
+          logToConsole("\u274C Real-time content element not found", "error");
+        }
+        const realtimeResponse2 = document.getElementById("realtime-response");
+        if (realtimeResponse2) {
+          realtimeResponse2.innerHTML = '<span class="typing-text">\u{1F680} Starting report generation...</span>';
+          realtimeResponse2.classList.add("typing");
+          logToConsole("\u2705 Real-time response element initialized with test message", "debug");
         } else {
           logToConsole("\u274C Real-time response element not found", "error");
         }
@@ -340,27 +361,24 @@
         } else {
           logToConsole("\u274C Stop generation button not found", "error");
         }
-        const realtimeContent = document.getElementById("realtime-content");
-        if (realtimeContent && realtimeContent.classList.contains("collapsed")) {
-          toggleSection("realtime-content");
-          logToConsole("\u2705 Real-time section expanded", "debug");
-        } else if (realtimeContent) {
-          logToConsole("\u2705 Real-time section already expanded", "debug");
-        } else {
-          logToConsole("\u274C Real-time content element not found", "error");
-        }
         isGenerating = true;
         abortController = new AbortController();
+        logToConsole("\u{1F504} Calling generateJobReportStreaming...", "debug");
         const report = await generateJobReportStreaming(jobData, resumeContent, (chunk) => {
-          if (realtimeResponse) {
+          logToConsole(`\u{1F4DD} Chunk callback received: ${chunk.length} characters`, "debug");
+          const realtimeResponse3 = document.getElementById("realtime-response");
+          if (realtimeResponse3) {
             const span = document.createElement("span");
             span.className = "typing-text";
             span.textContent = chunk;
-            realtimeResponse.appendChild(span);
-            realtimeResponse.scrollTop = realtimeResponse.scrollHeight;
-            logToConsole(`\u{1F4DD} Real-time chunk received: ${chunk.length} characters`, "debug");
+            realtimeResponse3.appendChild(span);
+            realtimeResponse3.scrollTop = realtimeResponse3.scrollHeight;
+            logToConsole(`\u{1F4DD} Real-time chunk added to UI: ${chunk.length} characters`, "debug");
+          } else {
+            logToConsole("\u274C Real-time response element not found in chunk callback", "error");
           }
         });
+        logToConsole(`\u{1F4CA} Report generation result: ${report ? "success" : "failed"}`, "debug");
         if (!report) {
           throw new Error("No report generated - API returned empty response");
         }
@@ -369,8 +387,8 @@
         status.className = "success";
         showNotification2("\u2705 Report generated successfully!");
         markdownEditor.value = report;
-        if (realtimeResponse) {
-          realtimeResponse.classList.remove("typing");
+        if (realtimeResponse2) {
+          realtimeResponse2.classList.remove("typing");
           logToConsole("\u2705 Real-time response completed", "success");
         }
         setTimeout(() => {
@@ -383,8 +401,11 @@
         logToConsole(`\u274C Report generation failed: ${errorMessage}`, "error");
         isGenerating = false;
         abortController = null;
-        if (realtimeResponse) {
-          realtimeResponse.classList.remove("typing");
+        const realtimeResponse2 = document.getElementById("realtime-response");
+        if (realtimeResponse2) {
+          realtimeResponse2.classList.remove("typing");
+          realtimeResponse2.innerHTML += `<br><span style="color: #ff6b6b;">\u274C Error: ${errorMessage}</span>`;
+          logToConsole("\u2705 Error message added to real-time response", "debug");
         }
         if (stopGenerationBtn) {
           stopGenerationBtn.style.display = "none";
@@ -867,7 +888,13 @@ Fill in all template placeholders with concrete, actionable information based on
   async function getGroqApiKey() {
     return new Promise((resolve) => {
       chrome.storage.sync.get(["groq_api_key"], (result) => {
-        resolve(result.groq_api_key || null);
+        const apiKey = result.groq_api_key || null;
+        if (apiKey) {
+          logToConsole(`\u{1F511} API key found (${apiKey.substring(0, 8)}...)`, "debug");
+        } else {
+          logToConsole("\u274C No API key found in storage", "debug");
+        }
+        resolve(apiKey);
       });
     });
   }
