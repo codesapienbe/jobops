@@ -3180,175 +3180,127 @@ ${value}
     return md;
   }
   async function extractPdfContent(file) {
-    return new Promise((resolve, reject) => {
-      logToConsole("\u{1F504} Starting PDF content extraction...", "progress");
-      const reader = new FileReader();
-      reader.onload = async function(e) {
-        try {
-          logToConsole("\u{1F4D6} File read successfully, creating typed array...", "debug");
-          const typedarray = new Uint8Array(e.target?.result);
-          logToConsole(`\u{1F4CA} Typed array created, size: ${typedarray.length} bytes`, "debug");
-          const header = new TextDecoder().decode(typedarray.slice(0, 10));
-          logToConsole(`\u{1F4C4} File header: ${header}`, "debug");
-          if (!header.includes("%PDF")) {
-            logToConsole("\u26A0\uFE0F File doesn't appear to be a valid PDF", "warning");
+    return new Promise(async (resolve, reject) => {
+      logToConsole("\u{1F504} Starting PDF content extraction with Groq API...", "progress");
+      try {
+        const apiKey = await getGroqApiKey();
+        if (!apiKey) {
+          logToConsole("\u274C No Groq API key available for PDF parsing", "error");
+          const manualText = prompt("Groq API key not configured. Please paste your resume content manually:");
+          if (manualText && manualText.trim().length > 10) {
+            logToConsole("\u2705 Manual resume content provided", "success");
+            resolve(manualText.trim());
+          } else {
+            reject(new Error("No resume content available"));
           }
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = async function(e) {
           try {
-            const pdfjsLib = window["pdfjs-dist/build/pdf"];
-            if (pdfjsLib) {
-              logToConsole("\u2705 PDF.js available, using it for extraction...", "success");
-              extractPdfWithLibrary(typedarray, resolve, reject);
-              return;
+            logToConsole("\u{1F4D6} File read successfully, converting to base64...", "debug");
+            const typedarray = new Uint8Array(e.target?.result);
+            logToConsole(`\u{1F4CA} File size: ${typedarray.length} bytes`, "debug");
+            const header = new TextDecoder().decode(typedarray.slice(0, 10));
+            logToConsole(`\u{1F4C4} File header: ${header}`, "debug");
+            if (!header.includes("%PDF")) {
+              logToConsole("\u26A0\uFE0F File doesn't appear to be a valid PDF", "warning");
             }
-          } catch (error) {
-            logToConsole(`\u26A0\uFE0F PDF.js method failed: ${error}`, "warning");
-          }
-          logToConsole("\u{1F4DA} PDF.js not available, trying to load from multiple sources...", "progress");
-          const status = document.getElementById("clip-status");
-          if (status) {
-            status.textContent = "\u{1F4DA} Loading PDF processing library...";
-            status.className = "loading";
-          }
-          const cdnSources = [
-            "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js",
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
-            "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"
-          ];
-          let loaded = false;
-          const timeout = setTimeout(() => {
-            if (!loaded) {
-              logToConsole("\u23F0 PDF.js loading timeout, using fallback method", "warning");
-              const fallbackText = extractPdfFallback(typedarray);
-              if (fallbackText && fallbackText.length > 50) {
-                resolve(fallbackText);
-              } else {
-                const manualText = prompt("PDF extraction failed. Please paste your resume content manually:");
-                if (manualText && manualText.trim().length > 10) {
-                  resolve(manualText.trim());
-                } else {
-                  reject(new Error("No resume content available"));
-                }
-              }
-            }
-          }, 1e4);
-          for (const source of cdnSources) {
-            if (loaded)
-              break;
-            try {
-              logToConsole(`\u{1F4DA} Trying to load PDF.js from: ${source}`, "debug");
-              const script = document.createElement("script");
-              script.src = source;
-              script.onload = () => {
-                if (!loaded) {
-                  loaded = true;
-                  clearTimeout(timeout);
-                  logToConsole(`\u2705 PDF.js loaded from ${source}`, "success");
-                  extractPdfWithLibrary(typedarray, resolve, reject);
-                }
-              };
-              script.onerror = () => {
-                logToConsole(`\u274C Failed to load PDF.js from ${source}`, "debug");
-              };
-              document.head.appendChild(script);
-              await new Promise((resolve2) => setTimeout(resolve2, 2e3));
-            } catch (error) {
-              logToConsole(`\u274C Error loading from ${source}: ${error}`, "debug");
-            }
-          }
-          if (!loaded) {
-            logToConsole("\u26A0\uFE0F All PDF.js sources failed, using fallback method...", "warning");
-            const fallbackText = extractPdfFallback(typedarray);
-            if (fallbackText && fallbackText.length > 50) {
-              logToConsole("\u2705 Fallback PDF extraction successful", "success");
-              resolve(fallbackText);
+            const base64Data = btoa(String.fromCharCode(...typedarray));
+            logToConsole("\u{1F504} Converting PDF to base64 for API transmission...", "progress");
+            const pdfText = await parsePdfWithGroq(base64Data, file.name);
+            if (pdfText && pdfText.length > 50) {
+              logToConsole(`\u2705 Groq API PDF parsing successful: ${pdfText.length} characters`, "success");
+              resolve(pdfText);
             } else {
-              logToConsole("\u274C All PDF extraction methods failed, using manual input", "warning");
-              const manualText = prompt("PDF extraction failed. Please paste your resume content manually:");
+              logToConsole("\u26A0\uFE0F Groq API parsing found minimal text, offering manual input", "warning");
+              const manualText = prompt("PDF parsing found minimal text. Please paste your resume content manually:");
               if (manualText && manualText.trim().length > 10) {
                 logToConsole("\u2705 Manual resume content provided", "success");
                 resolve(manualText.trim());
               } else {
-                logToConsole("\u274C No manual content provided", "error");
                 reject(new Error("No resume content available"));
               }
             }
+          } catch (error) {
+            logToConsole(`\u274C Error in PDF processing: ${error}`, "error");
+            const manualText = prompt("PDF processing failed. Please paste your resume content manually:");
+            if (manualText && manualText.trim().length > 10) {
+              logToConsole("\u2705 Manual resume content provided", "success");
+              resolve(manualText.trim());
+            } else {
+              reject(new Error("No resume content available"));
+            }
           }
-        } catch (error) {
-          logToConsole(`\u274C Error in PDF extraction: ${error}`, "error");
-          reject(error);
-        }
-      };
-      reader.onerror = (error) => {
-        logToConsole(`\u274C FileReader error: ${error}`, "error");
-        reject(new Error("Failed to read file"));
-      };
-      reader.readAsArrayBuffer(file);
+        };
+        reader.onerror = (error) => {
+          logToConsole(`\u274C FileReader error: ${error}`, "error");
+          reject(new Error("Failed to read file"));
+        };
+        reader.readAsArrayBuffer(file);
+      } catch (error) {
+        logToConsole(`\u274C Error in PDF extraction setup: ${error}`, "error");
+        reject(error);
+      }
     });
   }
-  function extractPdfFallback(typedarray) {
+  async function parsePdfWithGroq(base64Data, fileName) {
     try {
-      logToConsole("\u{1F504} Using fallback PDF extraction method...", "progress");
-      const decoder = new TextDecoder("utf-8");
-      const text = decoder.decode(typedarray);
-      const textMatches = text.match(/\(([^)]+)\)/g);
-      if (textMatches && textMatches.length > 0) {
-        const extractedText = textMatches.map((match) => match.slice(1, -1)).filter((text2) => text2.length > 3 && !text2.match(/^[0-9\s]+$/)).join(" ");
-        if (extractedText.length > 50) {
-          logToConsole(`\u2705 Fallback extraction found ${extractedText.length} characters`, "success");
-          return extractedText;
-        }
+      logToConsole("\u{1F916} Sending PDF to Groq API for parsing...", "progress");
+      const apiKey = await getGroqApiKey();
+      if (!apiKey) {
+        throw new Error("No Groq API key available");
       }
-      const readableText = text.match(/[A-Za-z\s]{10,}/g);
-      if (readableText && readableText.length > 0) {
-        const combined = readableText.join(" ").trim();
-        if (combined.length > 50) {
-          logToConsole(`\u2705 Fallback extraction found ${combined.length} characters`, "success");
-          return combined;
-        }
+      const prompt2 = `You are an expert PDF parser. I will provide you with a base64-encoded PDF file. Please extract all the text content from this PDF and return it as clean, readable text.
+
+PDF File: ${fileName}
+Base64 Data: ${base64Data}
+
+Instructions:
+1. Decode the base64 data to access the PDF content
+2. Extract all text content from the PDF
+3. Preserve the structure and formatting as much as possible
+4. Remove any PDF artifacts or formatting codes
+5. Return only the clean, readable text content
+6. If the PDF contains images with text, describe the text content
+7. If the PDF is mostly images, describe what you can see
+
+Please extract and return the text content from this PDF:`;
+      logToConsole("\u{1F4E4} Sending PDF parsing request to Groq API...", "progress");
+      const response = await fetch(GROQ_API_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            {
+              role: "user",
+              content: prompt2
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 4e3,
+          stream: false
+        })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Groq API error: ${response.status} - ${JSON.stringify(errorData)}`);
       }
-      logToConsole("\u26A0\uFE0F Fallback extraction found minimal text", "warning");
-      return "PDF content could not be extracted. Please ensure the PDF contains text (not just images).";
+      const data = await response.json();
+      const extractedText = data.choices?.[0]?.message?.content;
+      if (!extractedText) {
+        throw new Error("No content received from Groq API");
+      }
+      logToConsole(`\u2705 Groq API successfully parsed PDF: ${extractedText.length} characters`, "success");
+      return extractedText.trim();
     } catch (error) {
-      logToConsole(`\u274C Fallback extraction failed: ${error}`, "error");
-      return "PDF extraction failed. Please try a different PDF file.";
-    }
-  }
-  async function extractPdfWithLibrary(typedarray, resolve, reject) {
-    try {
-      logToConsole("\u{1F504} Starting PDF library extraction...", "progress");
-      const pdfjsLib = window["pdfjs-dist/build/pdf"];
-      if (!pdfjsLib) {
-        throw new Error("PDF.js library not available");
-      }
-      const status = document.getElementById("clip-status");
-      if (status) {
-        status.textContent = "\u{1F4D6} Loading PDF document...";
-        status.className = "loading";
-      }
-      logToConsole("\u{1F4D6} Creating PDF document from typed array...", "progress");
-      const loadingTask = pdfjsLib.getDocument({ data: typedarray });
-      const pdf = await loadingTask.promise;
-      logToConsole(`\u{1F4C4} PDF document loaded, pages: ${pdf.numPages}`, "success");
-      let fullText = "";
-      const totalPages = pdf.numPages;
-      for (let i = 1; i <= totalPages; i++) {
-        logToConsole(`\u{1F4C4} Processing page ${i} of ${totalPages}...`, "progress");
-        const status2 = document.getElementById("clip-status");
-        if (status2) {
-          status2.textContent = `\u{1F4C4} Processing page ${i} of ${totalPages}...`;
-          status2.className = "loading";
-        }
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item) => item.str).join(" ");
-        fullText += pageText + "\n";
-        logToConsole(`\u2705 Page ${i} processed, text length: ${pageText.length} characters`, "debug");
-      }
-      logToConsole(`\u{1F389} PDF extraction completed! Total text length: ${fullText.length} characters`, "success");
-      resolve(fullText.trim());
-    } catch (error) {
-      logToConsole(`\u274C Error in PDF library extraction: ${error}`, "error");
-      reject(new Error(`PDF extraction failed: ${error}`));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logToConsole(`\u274C Groq API PDF parsing failed: ${errorMessage}`, "error");
+      throw error;
     }
   }
   async function generateJobReportStreaming(jobData, resumeContent, onChunk) {
