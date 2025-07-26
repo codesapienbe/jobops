@@ -1,80 +1,90 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="UTF-8">
-    <title>Clip Preview</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="popup.css" />
-  </head>
-  <body>
-    <div class="glassmorphic-popup">
-      <form id="properties-form" autocomplete="off">
-        <div class="properties-section">
-          <div class="properties-header" data-toggle="properties-content">
-            Properties <span class="toggle-icon">▶</span>
-          </div>
-          <div id="properties-content" class="properties-content collapsed">
-            <div class="property-row">
-              <span class="property-icon">📝</span>
-              <input id="prop-title" class="property-input" type="text" placeholder="Title" />
-            </div>
-            <div class="property-row">
-              <span class="property-icon">🔗</span>
-              <input id="prop-url" class="property-input" type="text" placeholder="Source URL" />
-            </div>
-            <div class="property-row">
-              <span class="property-icon">👤</span>
-              <input id="prop-author" class="property-input" type="text" placeholder="Author" />
-            </div>
-            <div class="property-row">
-              <span class="property-icon">📅</span>
-              <input id="prop-published" class="property-input" type="text" placeholder="Published" />
-            </div>
-            <div class="property-row">
-              <span class="property-icon">⏰</span>
-              <input id="prop-created" class="property-input" type="text" placeholder="Created" />
-            </div>
-            <div class="property-row">
-              <span class="property-icon">📝</span>
-              <input id="prop-description" class="property-input" type="text" placeholder="Description" />
-            </div>
-            <div class="property-row">
-              <span class="property-icon">🏷️</span>
-              <input id="prop-tags" class="property-input" type="text" placeholder="Tags (comma separated)" />
-            </div>
-            <div class="property-row">
-              <span class="property-icon">🏷️</span>
-              <div id="prop-headings" class="property-tags"></div>
-            </div>
-            <div class="property-row">
-              <span class="property-icon">🖼️</span>
-              <div id="prop-images" class="property-images"></div>
-            </div>
-            <div class="property-row">
-              <span class="property-icon">📍</span>
-              <input id="prop-location" class="property-input" type="text" placeholder="Location" />
-            </div>
-          </div>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Clip Preview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+
+<body>
+  <div class="glassmorphic-popup">
+    <form id="properties-form" autocomplete="off">
+      <div class="properties-section">
+        <div class="properties-header" data-toggle="properties-content">
+          Properties <span class="toggle-icon">▶</span>
         </div>
-        <div class="markdown-section">
-          <div class="markdown-header" data-toggle="markdown-content">
-            Markdown Preview <span class="toggle-icon">▶</span>
+        <div id="properties-content" class="properties-content collapsed">
+          <div class="property-row">
+            <span class="property-icon">📝</span>
+            <input id="prop-title" class="property-input" type="text" placeholder="Title" />
           </div>
-          <div id="markdown-content" class="markdown-content collapsed">
-            <textarea id="markdown-editor" class="markdown-editor" placeholder="Edit your markdown here..."></textarea>
+          <div class="property-row">
+            <span class="property-icon">🔗</span>
+            <input id="prop-url" class="property-input" type="text" placeholder="Source URL" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">👤</span>
+            <input id="prop-author" class="property-input" type="text" placeholder="Author" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">📅</span>
+            <input id="prop-published" class="property-input" type="text" placeholder="Published" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">⏰</span>
+            <input id="prop-created" class="property-input" type="text" placeholder="Created" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">📝</span>
+            <input id="prop-description" class="property-input" type="text" placeholder="Description" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">🏷️</span>
+            <input id="prop-tags" class="property-input" type="text" placeholder="Tags (comma separated)" />
+          </div>
+          <div class="property-row">
+            <span class="property-icon">🏷️</span>
+            <div id="prop-headings" class="property-tags"></div>
+          </div>
+          <div class="property-row">
+            <span class="property-icon">🖼️</span>
+            <div id="prop-images" class="property-images"></div>
+          </div>
+          <div class="property-row">
+            <span class="property-icon">📍</span>
+            <input id="prop-location" class="property-input" type="text" placeholder="Location" />
           </div>
         </div>
-        <div class="action-buttons">
-          <button id="copy-markdown" class="action-button" aria-label="Copy to Clipboard">📋</button>
+      </div>
+      <div class="markdown-section">
+        <div class="markdown-header" data-toggle="markdown-content">
+          Markdown Preview <span class="toggle-icon">▶</span>
         </div>
-        <div class="action-buttons" style="margin-top: 8px;">
-          <button id="generate-report" class="action-button" aria-label="Generate Report">📊</button>
-          <button id="settings" class="action-button" aria-label="Settings">⚙️</button>
+        <div id="markdown-content" class="markdown-content collapsed">
+          <textarea id="markdown-editor" class="markdown-editor" placeholder="Edit your markdown here..."></textarea>
         </div>
-      </form>
-      <input type="file" id="resume-upload" accept=".pdf" style="display: none;" />
-      <div id="clip-status"></div>
+      </div>
+      <div class="action-buttons">
+        <button id="copy-markdown" class="action-button" aria-label="Copy to Clipboard">📋</button>
+        <button id="generate-report" class="action-button" aria-label="Generate Report">📊</button>
+        <button id="settings" class="action-button" aria-label="Settings">⚙️</button>
+      </div>
+    </form>
+    <input type="file" id="resume-upload" accept=".pdf" style="display: none;" />
+    <div id="clip-status"></div>
+
+    <!-- Real-time Console Monitor -->
+    <div id="console-monitor" class="console-monitor">
+      <div class="console-header">
+        <span class="console-title">🔍 Debug Console</span>
+        <button id="clear-console" class="console-clear-btn" title="Clear console">🗑️</button>
+      </div>
+      <div id="console-output" class="console-output"></div>
     </div>
-    <script src="popup.js"></script>
-  </body>
+  </div>
+  <script src="popup.js"></script>
+</body>
+
 </html>

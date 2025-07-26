@@ -93,7 +93,6 @@ npm run build
 - `notifications`: Show status notifications
 - `clipboardWrite`: Copy content to clipboard
 - `storage`: Store API keys and settings
-- `fileSystem`: Access PDF files for resume upload
 
 ### Host Permissions
 
