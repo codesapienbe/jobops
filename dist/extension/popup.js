@@ -958,6 +958,10 @@
     // Populate UI with loaded data
     populateUIWithData(data) {
       console.log("Populating UI with loaded data:", data);
+      if (typeof window !== "undefined") {
+        const event = new CustomEvent("jobDataLoaded", { detail: data });
+        window.dispatchEvent(event);
+      }
     }
     // Export current job application data
     async exportCurrentJobApplication() {
@@ -1149,6 +1153,38 @@
     if (copyRealtimeBtn) {
       copyRealtimeBtn.addEventListener("click", handleCopyRealtime);
     }
+    window.addEventListener("jobDataLoaded", function(event) {
+      const customEvent = event;
+      const loadedData = customEvent.detail;
+      logToConsole("\u{1F4E5} Job data loaded from database, updating properties", "info");
+      if (loadedData && loadedData.jobApplication) {
+        const jobApp = loadedData.jobApplication;
+        populatePropertyFields({
+          title: jobApp.job_title || "",
+          url: jobApp.canonical_url || "",
+          author: "",
+          published: jobApp.application_date || "",
+          created_at: jobApp.created_at || "",
+          description: "",
+          metaKeywords: [],
+          location: "",
+          company: jobApp.company_name || ""
+        });
+        if (loadedData.positionDetails && loadedData.positionDetails.length > 0) {
+          const posDetails = loadedData.positionDetails[0];
+          const jobTitleInput = document.getElementById("job-title");
+          const companyNameInput = document.getElementById("company-name");
+          const locationInput = document.getElementById("location");
+          if (jobTitleInput)
+            jobTitleInput.value = posDetails.job_title || "";
+          if (companyNameInput)
+            companyNameInput.value = posDetails.company_name || "";
+          if (locationInput)
+            locationInput.value = posDetails.location || "";
+        }
+        logToConsole("\u2705 Properties updated with loaded job data", "success");
+      }
+    });
     logToConsole("\u{1F680} JobOps Clipper initialized", "info");
     logToConsole("\u{1F4CB} Ready to process job postings and resumes", "success");
     document.documentElement.style.setProperty("--button-bottom", "48px");
@@ -1624,16 +1660,6 @@
         id: jobOpsDataManager.getCurrentJobApplicationId(),
         url: jobOpsDataManager.getCurrentCanonicalUrl()
       };
-    }
-    async function updateJobStatus(status) {
-      try {
-        await jobOpsDataManager.updateJobStatus(status);
-        logToConsole(`\u2705 Job status updated to: ${status}`, "success");
-        showNotification2(`\u2705 Status updated to: ${status}`);
-      } catch (error) {
-        logToConsole(`\u274C Error updating job status: ${error}`, "error");
-        showNotification2(`\u274C Error updating status`, true);
-      }
     }
     function setupToggleHandlers() {
       const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header, .realtime-header, .job-header, .console-header");

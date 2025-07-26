@@ -1,3 +1,466 @@
+/* CSS Variables for Theme Support */
+:root {
+  /* Dark Theme Variables */
+  --dark-theme-popup-background-primary: rgba(24,24,32,0.85);
+  --dark-theme-popup-background-secondary: rgba(255,255,255,0.32);
+  --dark-theme-popup-background-tertiary: rgba(255,255,255,0.02);
+  --dark-theme-popup-background-quaternary: rgba(255,255,255,0.1);
+  --dark-theme-popup-background-quinary: rgba(255,255,255,0.05);
+  
+  --dark-theme-text-primary: #fff;
+  --dark-theme-text-secondary: #e0e0e0;
+  --dark-theme-text-tertiary: #aaa;
+  --dark-theme-text-quaternary: #bbb;
+  --dark-theme-text-quinary: #888;
+  
+  --dark-theme-border-primary: rgba(255, 255, 255, 0.18);
+  --dark-theme-border-secondary: rgba(255, 255, 255, 0.1);
+  --dark-theme-border-tertiary: rgba(255, 255, 255, 0.08);
+  --dark-theme-border-quaternary: rgba(255, 255, 255, 0.2);
+  
+  --dark-theme-shadow-primary: rgba(31, 38, 135, 0.18);
+  --dark-theme-shadow-secondary: rgba(0,0,0,0.08);
+  --dark-theme-shadow-tertiary: rgba(0,0,0,0.04);
+  --dark-theme-shadow-quaternary: rgba(0,0,0,0.1);
+  --dark-theme-shadow-quinary: rgba(0,0,0,0.15);
+  
+  --dark-theme-accent-primary: #a8ff78;
+  --dark-theme-accent-secondary: #78ffd6;
+  --dark-theme-accent-tertiary: #4ade80;
+  --dark-theme-accent-quaternary: #22c55e;
+  --dark-theme-accent-quinary: #16a34a;
+  
+  --dark-theme-console-primary: #00d4ff;
+  --dark-theme-console-secondary: #1a1a2e;
+  --dark-theme-console-tertiary: #16213e;
+  --dark-theme-console-quaternary: #0f3460;
+  
+  --dark-theme-input-background: rgba(24,24,32,0.85);
+  --dark-theme-input-border: rgba(168,255,120,0.13);
+  --dark-theme-input-border-focus: #a8ff78;
+  
+  --dark-theme-job-input-background: rgba(24,24,32,0.85);
+  --dark-theme-job-input-border: rgba(74, 222, 128, 0.13);
+  --dark-theme-job-input-border-focus: #4ade80;
+  --dark-theme-job-label: #4ade80;
+  --dark-theme-job-icon: #4ade80;
+  
+  --dark-theme-realtime-border: rgba(255,107,107,0.3);
+  --dark-theme-realtime-typing: #ff6b6b;
+  
+  --dark-theme-button-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --dark-theme-button-primary-hover: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  --dark-theme-button-secondary: rgba(255,255,255,0.35);
+  --dark-theme-button-approve: linear-gradient(90deg, #a8ff78 0%, #78ffd6 100%);
+  --dark-theme-button-cancel: linear-gradient(90deg, #ffecd2 0%, #fcb69f 100%);
+  
+  --dark-theme-status-loading-bg: rgba(59, 130, 246, 0.2);
+  --dark-theme-status-loading-border: rgba(59, 130, 246, 0.4);
+  --dark-theme-status-loading-text: #60a5fa;
+  --dark-theme-status-success-bg: rgba(34, 197, 94, 0.2);
+  --dark-theme-status-success-border: rgba(34, 197, 94, 0.4);
+  --dark-theme-status-success-text: #4ade80;
+  --dark-theme-status-error-bg: rgba(239, 68, 68, 0.2);
+  --dark-theme-status-error-border: rgba(239, 68, 68, 0.4);
+  --dark-theme-status-error-text: #f87171;
+  
+  --dark-theme-console-line-info: #00d4ff;
+  --dark-theme-console-line-success: #4ade80;
+  --dark-theme-console-line-warning: #fbbf24;
+  --dark-theme-console-line-error: #f87171;
+  --dark-theme-console-line-debug: #a78bfa;
+  --dark-theme-console-line-progress: #60a5fa;
+  
+  /* Job Section Specific Colors - Dark Theme */
+  --dark-theme-job-section-position-details-primary: #3b82f6;
+  --dark-theme-job-section-position-details-secondary: #1d4ed8;
+  --dark-theme-job-section-position-details-hover-primary: #2563eb;
+  --dark-theme-job-section-position-details-hover-secondary: #1e40af;
+  
+  --dark-theme-job-section-job-requirements-primary: #8b5cf6;
+  --dark-theme-job-section-job-requirements-secondary: #7c3aed;
+  --dark-theme-job-section-job-requirements-hover-primary: #7c3aed;
+  --dark-theme-job-section-job-requirements-hover-secondary: #6d28d9;
+  
+  --dark-theme-job-section-company-information-primary: #f59e0b;
+  --dark-theme-job-section-company-information-secondary: #d97706;
+  --dark-theme-job-section-company-information-hover-primary: #d97706;
+  --dark-theme-job-section-company-information-hover-secondary: #b45309;
+  
+  --dark-theme-job-section-skills-matrix-primary: #ec4899;
+  --dark-theme-job-section-skills-matrix-secondary: #db2777;
+  --dark-theme-job-section-skills-matrix-hover-primary: #db2777;
+  --dark-theme-job-section-skills-matrix-hover-secondary: #be185d;
+  
+  --dark-theme-job-section-application-materials-primary: #10b981;
+  --dark-theme-job-section-application-materials-secondary: #059669;
+  --dark-theme-job-section-application-materials-hover-primary: #059669;
+  --dark-theme-job-section-application-materials-hover-secondary: #047857;
+  
+  --dark-theme-job-section-interview-schedule-primary: #06b6d4;
+  --dark-theme-job-section-interview-schedule-secondary: #0891b2;
+  --dark-theme-job-section-interview-schedule-hover-primary: #0891b2;
+  --dark-theme-job-section-interview-schedule-hover-secondary: #0e7490;
+  
+  --dark-theme-job-section-interview-preparation-primary: #f97316;
+  --dark-theme-job-section-interview-preparation-secondary: #ea580c;
+  --dark-theme-job-section-interview-preparation-hover-primary: #ea580c;
+  --dark-theme-job-section-interview-preparation-hover-secondary: #c2410c;
+  
+  --dark-theme-job-section-communication-log-primary: #84cc16;
+  --dark-theme-job-section-communication-log-secondary: #65a30d;
+  --dark-theme-job-section-communication-log-hover-primary: #65a30d;
+  --dark-theme-job-section-communication-log-hover-secondary: #4d7c0f;
+  
+  --dark-theme-job-section-key-contacts-primary: #a855f7;
+  --dark-theme-job-section-key-contacts-secondary: #9333ea;
+  --dark-theme-job-section-key-contacts-hover-primary: #9333ea;
+  --dark-theme-job-section-key-contacts-hover-secondary: #7c3aed;
+  
+  --dark-theme-job-section-interview-feedback-primary: #14b8a6;
+  --dark-theme-job-section-interview-feedback-secondary: #0d9488;
+  --dark-theme-job-section-interview-feedback-hover-primary: #0d9488;
+  --dark-theme-job-section-interview-feedback-hover-secondary: #0f766e;
+  
+  --dark-theme-job-section-offer-details-primary: #fbbf24;
+  --dark-theme-job-section-offer-details-secondary: #f59e0b;
+  --dark-theme-job-section-offer-details-hover-primary: #f59e0b;
+  --dark-theme-job-section-offer-details-hover-secondary: #d97706;
+  
+  --dark-theme-job-section-rejection-analysis-primary: #ef4444;
+  --dark-theme-job-section-rejection-analysis-secondary: #dc2626;
+  --dark-theme-job-section-rejection-analysis-hover-primary: #dc2626;
+  --dark-theme-job-section-rejection-analysis-hover-secondary: #b91c1c;
+  
+  --dark-theme-job-section-privacy-policy-primary: #6b7280;
+  --dark-theme-job-section-privacy-policy-secondary: #4b5563;
+  --dark-theme-job-section-privacy-policy-hover-primary: #4b5563;
+  --dark-theme-job-section-privacy-policy-hover-secondary: #374151;
+  
+  --dark-theme-job-section-lessons-learned-primary: #8b5cf6;
+  --dark-theme-job-section-lessons-learned-secondary: #7c3aed;
+  --dark-theme-job-section-lessons-learned-hover-primary: #7c3aed;
+  --dark-theme-job-section-lessons-learned-hover-secondary: #6d28d9;
+  
+  --dark-theme-job-section-performance-metrics-primary: #10b981;
+  --dark-theme-job-section-performance-metrics-secondary: #059669;
+  --dark-theme-job-section-performance-metrics-hover-primary: #059669;
+  --dark-theme-job-section-performance-metrics-hover-secondary: #047857;
+  
+  --dark-theme-job-section-advisor-review-primary: #f59e0b;
+  --dark-theme-job-section-advisor-review-secondary: #d97706;
+  --dark-theme-job-section-advisor-review-hover-primary: #d97706;
+  --dark-theme-job-section-advisor-review-hover-secondary: #b45309;
+  
+  --dark-theme-job-section-application-summary-primary: #3b82f6;
+  --dark-theme-job-section-application-summary-secondary: #1d4ed8;
+  --dark-theme-job-section-application-summary-hover-primary: #2563eb;
+  --dark-theme-job-section-application-summary-hover-secondary: #1e40af;
+  
+  /* Light Theme Variables */
+  --light-theme-popup-background-primary: rgba(255,255,255,0.95);
+  --light-theme-popup-background-secondary: rgba(240,240,240,0.9);
+  --light-theme-popup-background-tertiary: rgba(250,250,250,0.8);
+  --light-theme-popup-background-quaternary: rgba(0,0,0,0.05);
+  --light-theme-popup-background-quinary: rgba(0,0,0,0.02);
+  
+  --light-theme-text-primary: #1a1a1a;
+  --light-theme-text-secondary: #333;
+  --light-theme-text-tertiary: #666;
+  --light-theme-text-quaternary: #888;
+  --light-theme-text-quinary: #aaa;
+  
+  --light-theme-border-primary: rgba(0, 0, 0, 0.1);
+  --light-theme-border-secondary: rgba(0, 0, 0, 0.08);
+  --light-theme-border-tertiary: rgba(0, 0, 0, 0.05);
+  --light-theme-border-quaternary: rgba(0, 0, 0, 0.15);
+  
+  --light-theme-shadow-primary: rgba(0, 0, 0, 0.1);
+  --light-theme-shadow-secondary: rgba(0, 0, 0, 0.05);
+  --light-theme-shadow-tertiary: rgba(0, 0, 0, 0.02);
+  --light-theme-shadow-quaternary: rgba(0, 0, 0, 0.08);
+  --light-theme-shadow-quinary: rgba(0, 0, 0, 0.12);
+  
+  --light-theme-accent-primary: #059669;
+  --light-theme-accent-secondary: #047857;
+  --light-theme-accent-tertiary: #065f46;
+  --light-theme-accent-quaternary: #064e3b;
+  --light-theme-accent-quinary: #022c22;
+  
+  --light-theme-console-primary: #0891b2;
+  --light-theme-console-secondary: #f8fafc;
+  --light-theme-console-tertiary: #f1f5f9;
+  --light-theme-console-quaternary: #e2e8f0;
+  
+  --light-theme-input-background: rgba(255,255,255,0.9);
+  --light-theme-input-border: rgba(5, 150, 105, 0.2);
+  --light-theme-input-border-focus: #059669;
+  
+  --light-theme-job-input-background: rgba(255,255,255,0.9);
+  --light-theme-job-input-border: rgba(5, 150, 105, 0.2);
+  --light-theme-job-input-border-focus: #059669;
+  --light-theme-job-label: #059669;
+  --light-theme-job-icon: #059669;
+  
+  --light-theme-realtime-border: rgba(239, 68, 68, 0.3);
+  --light-theme-realtime-typing: #dc2626;
+  
+  --light-theme-button-primary: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  --light-theme-button-primary-hover: linear-gradient(135deg, #0e7490 0%, #155e75 100%);
+  --light-theme-button-secondary: rgba(0,0,0,0.1);
+  --light-theme-button-approve: linear-gradient(90deg, #059669 0%, #047857 100%);
+  --light-theme-button-cancel: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%);
+  
+  --light-theme-status-loading-bg: rgba(59, 130, 246, 0.1);
+  --light-theme-status-loading-border: rgba(59, 130, 246, 0.3);
+  --light-theme-status-loading-text: #2563eb;
+  --light-theme-status-success-bg: rgba(34, 197, 94, 0.1);
+  --light-theme-status-success-border: rgba(34, 197, 94, 0.3);
+  --light-theme-status-success-text: #059669;
+  --light-theme-status-error-bg: rgba(239, 68, 68, 0.1);
+  --light-theme-status-error-border: rgba(239, 68, 68, 0.3);
+  --light-theme-status-error-text: #dc2626;
+  
+  --light-theme-console-line-info: #0891b2;
+  --light-theme-console-line-success: #059669;
+  --light-theme-console-line-warning: #d97706;
+  --light-theme-console-line-error: #dc2626;
+  --light-theme-console-line-debug: #7c3aed;
+  --light-theme-console-line-progress: #2563eb;
+  
+  /* Job Section Specific Colors - Light Theme */
+  --light-theme-job-section-position-details-primary: #2563eb;
+  --light-theme-job-section-position-details-secondary: #1d4ed8;
+  --light-theme-job-section-position-details-hover-primary: #1e40af;
+  --light-theme-job-section-position-details-hover-secondary: #1e3a8a;
+  
+  --light-theme-job-section-job-requirements-primary: #7c3aed;
+  --light-theme-job-section-job-requirements-secondary: #6d28d9;
+  --light-theme-job-section-job-requirements-hover-primary: #6d28d9;
+  --light-theme-job-section-job-requirements-hover-secondary: #5b21b6;
+  
+  --light-theme-job-section-company-information-primary: #d97706;
+  --light-theme-job-section-company-information-secondary: #b45309;
+  --light-theme-job-section-company-information-hover-primary: #b45309;
+  --light-theme-job-section-company-information-hover-secondary: #92400e;
+  
+  --light-theme-job-section-skills-matrix-primary: #db2777;
+  --light-theme-job-section-skills-matrix-secondary: #be185d;
+  --light-theme-job-section-skills-matrix-hover-primary: #be185d;
+  --light-theme-job-section-skills-matrix-hover-secondary: #9d174d;
+  
+  --light-theme-job-section-application-materials-primary: #059669;
+  --light-theme-job-section-application-materials-secondary: #047857;
+  --light-theme-job-section-application-materials-hover-primary: #047857;
+  --light-theme-job-section-application-materials-hover-secondary: #065f46;
+  
+  --light-theme-job-section-interview-schedule-primary: #0891b2;
+  --light-theme-job-section-interview-schedule-secondary: #0e7490;
+  --light-theme-job-section-interview-schedule-hover-primary: #0e7490;
+  --light-theme-job-section-interview-schedule-hover-secondary: #155e75;
+  
+  --light-theme-job-section-interview-preparation-primary: #ea580c;
+  --light-theme-job-section-interview-preparation-secondary: #c2410c;
+  --light-theme-job-section-interview-preparation-hover-primary: #c2410c;
+  --light-theme-job-section-interview-preparation-hover-secondary: #9a3412;
+  
+  --light-theme-job-section-communication-log-primary: #65a30d;
+  --light-theme-job-section-communication-log-secondary: #4d7c0f;
+  --light-theme-job-section-communication-log-hover-primary: #4d7c0f;
+  --light-theme-job-section-communication-log-hover-secondary: #3f6212;
+  
+  --light-theme-job-section-key-contacts-primary: #9333ea;
+  --light-theme-job-section-key-contacts-secondary: #7c3aed;
+  --light-theme-job-section-key-contacts-hover-primary: #7c3aed;
+  --light-theme-job-section-key-contacts-hover-secondary: #6d28d9;
+  
+  --light-theme-job-section-interview-feedback-primary: #0d9488;
+  --light-theme-job-section-interview-feedback-secondary: #0f766e;
+  --light-theme-job-section-interview-feedback-hover-primary: #0f766e;
+  --light-theme-job-section-interview-feedback-hover-secondary: #115e59;
+  
+  --light-theme-job-section-offer-details-primary: #f59e0b;
+  --light-theme-job-section-offer-details-secondary: #d97706;
+  --light-theme-job-section-offer-details-hover-primary: #d97706;
+  --light-theme-job-section-offer-details-hover-secondary: #b45309;
+  
+  --light-theme-job-section-rejection-analysis-primary: #dc2626;
+  --light-theme-job-section-rejection-analysis-secondary: #b91c1c;
+  --light-theme-job-section-rejection-analysis-hover-primary: #b91c1c;
+  --light-theme-job-section-rejection-analysis-hover-secondary: #991b1b;
+  
+  --light-theme-job-section-privacy-policy-primary: #4b5563;
+  --light-theme-job-section-privacy-policy-secondary: #374151;
+  --light-theme-job-section-privacy-policy-hover-primary: #374151;
+  --light-theme-job-section-privacy-policy-hover-secondary: #1f2937;
+  
+  --light-theme-job-section-lessons-learned-primary: #7c3aed;
+  --light-theme-job-section-lessons-learned-secondary: #6d28d9;
+  --light-theme-job-section-lessons-learned-hover-primary: #6d28d9;
+  --light-theme-job-section-lessons-learned-hover-secondary: #5b21b6;
+  
+  --light-theme-job-section-performance-metrics-primary: #059669;
+  --light-theme-job-section-performance-metrics-secondary: #047857;
+  --light-theme-job-section-performance-metrics-hover-primary: #047857;
+  --light-theme-job-section-performance-metrics-hover-secondary: #065f46;
+  
+  --light-theme-job-section-advisor-review-primary: #d97706;
+  --light-theme-job-section-advisor-review-secondary: #b45309;
+  --light-theme-job-section-advisor-review-hover-primary: #b45309;
+  --light-theme-job-section-advisor-review-hover-secondary: #92400e;
+  
+  --light-theme-job-section-application-summary-primary: #2563eb;
+  --light-theme-job-section-application-summary-secondary: #1d4ed8;
+  --light-theme-job-section-application-summary-hover-primary: #1e40af;
+  --light-theme-job-section-application-summary-hover-secondary: #1e3a8a;
+}
+
+/* Default to dark theme */
+:root {
+  --theme-popup-background-primary: var(--dark-theme-popup-background-primary);
+  --theme-popup-background-secondary: var(--dark-theme-popup-background-secondary);
+  --theme-popup-background-tertiary: var(--dark-theme-popup-background-tertiary);
+  --theme-popup-background-quaternary: var(--dark-theme-popup-background-quaternary);
+  --theme-popup-background-quinary: var(--dark-theme-popup-background-quinary);
+  
+  --theme-text-primary: var(--dark-theme-text-primary);
+  --theme-text-secondary: var(--dark-theme-text-secondary);
+  --theme-text-tertiary: var(--dark-theme-text-tertiary);
+  --theme-text-quaternary: var(--dark-theme-text-quaternary);
+  --theme-text-quinary: var(--dark-theme-text-quinary);
+  
+  --theme-border-primary: var(--dark-theme-border-primary);
+  --theme-border-secondary: var(--dark-theme-border-secondary);
+  --theme-border-tertiary: var(--dark-theme-border-tertiary);
+  --theme-border-quaternary: var(--dark-theme-border-quaternary);
+  
+  --theme-shadow-primary: var(--dark-theme-shadow-primary);
+  --theme-shadow-secondary: var(--dark-theme-shadow-secondary);
+  --theme-shadow-tertiary: var(--dark-theme-shadow-tertiary);
+  --theme-shadow-quaternary: var(--dark-theme-shadow-quaternary);
+  --theme-shadow-quinary: var(--dark-theme-shadow-quinary);
+  
+  --theme-accent-primary: var(--dark-theme-accent-primary);
+  --theme-accent-secondary: var(--dark-theme-accent-secondary);
+  --theme-accent-tertiary: var(--dark-theme-accent-tertiary);
+  --theme-accent-quaternary: var(--dark-theme-accent-quaternary);
+  --theme-accent-quinary: var(--dark-theme-accent-quinary);
+  
+  --theme-console-primary: var(--dark-theme-console-primary);
+  --theme-console-secondary: var(--dark-theme-console-secondary);
+  --theme-console-tertiary: var(--dark-theme-console-tertiary);
+  --theme-console-quaternary: var(--dark-theme-console-quaternary);
+  
+  --theme-input-background: var(--dark-theme-input-background);
+  --theme-input-border: var(--dark-theme-input-border);
+  --theme-input-border-focus: var(--dark-theme-input-border-focus);
+  
+  --theme-job-input-background: var(--dark-theme-job-input-background);
+  --theme-job-input-border: var(--dark-theme-job-input-border);
+  --theme-job-input-border-focus: var(--dark-theme-job-input-border-focus);
+  --theme-job-label: var(--dark-theme-job-label);
+  --theme-job-icon: var(--dark-theme-job-icon);
+  
+  --theme-realtime-border: var(--dark-theme-realtime-border);
+  --theme-realtime-typing: var(--dark-theme-realtime-typing);
+  
+  --theme-button-primary: var(--dark-theme-button-primary);
+  --theme-button-primary-hover: var(--dark-theme-button-primary-hover);
+  --theme-button-secondary: var(--dark-theme-button-secondary);
+  --theme-button-approve: var(--dark-theme-button-approve);
+  --theme-button-cancel: var(--dark-theme-button-cancel);
+  
+  --theme-status-loading-bg: var(--dark-theme-status-loading-bg);
+  --theme-status-loading-border: var(--dark-theme-status-loading-border);
+  --theme-status-loading-text: var(--dark-theme-status-loading-text);
+  --theme-status-success-bg: var(--dark-theme-status-success-bg);
+  --theme-status-success-border: var(--dark-theme-status-success-border);
+  --theme-status-success-text: var(--dark-theme-status-success-text);
+  --theme-status-error-bg: var(--dark-theme-status-error-bg);
+  --theme-status-error-border: var(--dark-theme-status-error-border);
+  --theme-status-error-text: var(--dark-theme-status-error-text);
+  
+  --theme-console-line-info: var(--dark-theme-console-line-info);
+  --theme-console-line-success: var(--dark-theme-console-line-success);
+  --theme-console-line-warning: var(--dark-theme-console-line-warning);
+  --theme-console-line-error: var(--dark-theme-console-line-error);
+  --theme-console-line-debug: var(--dark-theme-console-line-debug);
+  --theme-console-line-progress: var(--dark-theme-console-line-progress);
+}
+
+/* Light theme class */
+.theme-light {
+  --theme-popup-background-primary: var(--light-theme-popup-background-primary);
+  --theme-popup-background-secondary: var(--light-theme-popup-background-secondary);
+  --theme-popup-background-tertiary: var(--light-theme-popup-background-tertiary);
+  --theme-popup-background-quaternary: var(--light-theme-popup-background-quaternary);
+  --theme-popup-background-quinary: var(--light-theme-popup-background-quinary);
+  
+  --theme-text-primary: var(--light-theme-text-primary);
+  --theme-text-secondary: var(--light-theme-text-secondary);
+  --theme-text-tertiary: var(--light-theme-text-tertiary);
+  --theme-text-quaternary: var(--light-theme-text-quaternary);
+  --theme-text-quinary: var(--light-theme-text-quinary);
+  
+  --theme-border-primary: var(--light-theme-border-primary);
+  --theme-border-secondary: var(--light-theme-border-secondary);
+  --theme-border-tertiary: var(--light-theme-border-tertiary);
+  --theme-border-quaternary: var(--light-theme-border-quaternary);
+  
+  --theme-shadow-primary: var(--light-theme-shadow-primary);
+  --theme-shadow-secondary: var(--light-theme-shadow-secondary);
+  --theme-shadow-tertiary: var(--light-theme-shadow-tertiary);
+  --theme-shadow-quaternary: var(--light-theme-shadow-quaternary);
+  --theme-shadow-quinary: var(--light-theme-shadow-quinary);
+  
+  --theme-accent-primary: var(--light-theme-accent-primary);
+  --theme-accent-secondary: var(--light-theme-accent-secondary);
+  --theme-accent-tertiary: var(--light-theme-accent-tertiary);
+  --theme-accent-quaternary: var(--light-theme-accent-quaternary);
+  --theme-accent-quinary: var(--light-theme-accent-quinary);
+  
+  --theme-console-primary: var(--light-theme-console-primary);
+  --theme-console-secondary: var(--light-theme-console-secondary);
+  --theme-console-tertiary: var(--light-theme-console-tertiary);
+  --theme-console-quaternary: var(--light-theme-console-quaternary);
+  
+  --theme-input-background: var(--light-theme-input-background);
+  --theme-input-border: var(--light-theme-input-border);
+  --theme-input-border-focus: var(--light-theme-input-border-focus);
+  
+  --theme-job-input-background: var(--light-theme-job-input-background);
+  --theme-job-input-border: var(--light-theme-job-input-border);
+  --theme-job-input-border-focus: var(--light-theme-job-input-border-focus);
+  --theme-job-label: var(--light-theme-job-label);
+  --theme-job-icon: var(--light-theme-job-icon);
+  
+  --theme-realtime-border: var(--light-theme-realtime-border);
+  --theme-realtime-typing: var(--light-theme-realtime-typing);
+  
+  --theme-button-primary: var(--light-theme-button-primary);
+  --theme-button-primary-hover: var(--light-theme-button-primary-hover);
+  --theme-button-secondary: var(--light-theme-button-secondary);
+  --theme-button-approve: var(--light-theme-button-approve);
+  --theme-button-cancel: var(--light-theme-button-cancel);
+  
+  --theme-status-loading-bg: var(--light-theme-status-loading-bg);
+  --theme-status-loading-border: var(--light-theme-status-loading-border);
+  --theme-status-loading-text: var(--light-theme-status-loading-text);
+  --theme-status-success-bg: var(--light-theme-status-success-bg);
+  --theme-status-success-border: var(--light-theme-status-success-border);
+  --theme-status-success-text: var(--light-theme-status-success-text);
+  --theme-status-error-bg: var(--light-theme-status-error-bg);
+  --theme-status-error-border: var(--light-theme-status-error-border);
+  --theme-status-error-text: var(--light-theme-status-error-text);
+  
+  --theme-console-line-info: var(--light-theme-console-line-info);
+  --theme-console-line-success: var(--light-theme-console-line-success);
+  --theme-console-line-warning: var(--light-theme-console-line-warning);
+  --theme-console-line-error: var(--light-theme-console-line-error);
+  --theme-console-line-debug: var(--light-theme-console-line-debug);
+  --theme-console-line-progress: var(--light-theme-console-line-progress);
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -13,12 +476,12 @@ body {
   flex-direction: column;
   position: relative;
   padding: 24px 18px 88px 18px; /* Added bottom padding for console and buttons with spacing */
-  background: linear-gradient(135deg, rgba(24,24,32,0.85) 0%, rgba(24,24,32,0.85) 100%);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), 0 1.5px 8px 0 rgba(0,0,0,0.08);
+  background: linear-gradient(135deg, var(--theme-popup-background-primary) 0%, var(--theme-popup-background-primary) 100%);
+  box-shadow: 0 8px 32px 0 var(--theme-shadow-primary), 0 1.5px 8px 0 var(--theme-shadow-secondary);
   backdrop-filter: blur(18px) saturate(1.2);
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  border: 1.5px solid rgba(255, 255, 255, 0.18);
-  color: #fff;
+  border: 1.5px solid var(--theme-border-primary);
+  color: var(--theme-text-primary);
   font-weight: 500;
   text-shadow: 0 1px 4px rgba(0,0,0,0.7);
   transition: background 0.3s, box-shadow 0.3s;
@@ -41,7 +504,7 @@ h2 {
 
 .meta {
   font-size: 0.92em;
-  color: #444;
+  color: var(--theme-text-tertiary);
   margin-bottom: 8px;
   word-break: break-all;
 }
@@ -50,13 +513,13 @@ textarea {
   width: 100%;
   min-height: 90px;
   border-radius: 10px;
-  border: 1px solid #e0e0e0;
-  background: rgba(255,255,255,0.45);
+  border: 1px solid var(--theme-border-secondary);
+  background: var(--theme-popup-background-secondary);
   margin-bottom: 10px;
   padding: 8px;
   font-size: 1em;
   resize: vertical;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 4px var(--theme-shadow-tertiary);
 }
 
 .buttons {
@@ -84,13 +547,13 @@ textarea {
   left: 18px; /* Account for popup padding */
   right: 18px; /* Account for popup padding */
   z-index: 95;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--theme-popup-background-quaternary);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-top: 1px solid var(--theme-border-quaternary);
   margin: 0;
   transition: bottom 0.3s ease;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow for elegance */
+  box-shadow: 0 -2px 8px var(--theme-shadow-quaternary); /* Subtle shadow for elegance */
   border-radius: 8px 8px 0 0; /* Rounded top corners for elegance */
 }
 
@@ -100,12 +563,12 @@ textarea {
   height: 36px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--theme-button-primary);
   color: white;
   font-size: 1.1em;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px var(--theme-shadow-quaternary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,13 +596,13 @@ textarea {
 
 .action-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  box-shadow: 0 4px 12px var(--theme-shadow-quinary);
+  background: var(--theme-button-primary-hover);
 }
 
 .action-button:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px var(--theme-shadow-quaternary);
 }
 
 .buttons button {
@@ -152,21 +615,21 @@ button {
   padding: 8px 0;
   border: none;
   border-radius: 8px;
-  background: rgba(255,255,255,0.35);
-  color: #222;
+  background: var(--theme-button-secondary);
+  color: var(--theme-text-primary);
   font-weight: 600;
   font-size: 1em;
   cursor: pointer;
   transition: background 0.2s;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 4px var(--theme-shadow-tertiary);
 }
 
 button#approve {
-  background: linear-gradient(90deg, #a8ff78 0%, #78ffd6 100%);
+  background: var(--theme-button-approve);
 }
 
 button#cancel {
-  background: linear-gradient(90deg, #ffecd2 0%, #fcb69f 100%);
+  background: var(--theme-button-cancel);
 }
 
 button:hover {
@@ -178,22 +641,22 @@ button:hover {
 }
 
 #clip-status.loading {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #60a5fa;
+  background: var(--theme-status-loading-bg);
+  border-color: var(--theme-status-loading-border);
+  color: var(--theme-status-loading-text);
   animation: pulse 2s infinite;
 }
 
 #clip-status.success {
-  background: rgba(34, 197, 94, 0.2);
-  border-color: rgba(34, 197, 94, 0.4);
-  color: #4ade80;
+  background: var(--theme-status-success-bg);
+  border-color: var(--theme-status-success-border);
+  color: var(--theme-status-success-text);
 }
 
 #clip-status.error {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #f87171;
+  background: var(--theme-status-error-bg);
+  border-color: var(--theme-status-error-border);
+  color: var(--theme-status-error-text);
 }
 
 @keyframes pulse {
@@ -207,8 +670,8 @@ button:hover {
   bottom: 8px; /* Standard spacing from bottom for elegance */
   left: 18px; /* Account for popup padding */
   right: 18px; /* Account for popup padding */
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  border-top: 2px solid #00d4ff;
+  background: linear-gradient(135deg, var(--theme-console-secondary) 0%, var(--theme-console-tertiary) 50%, var(--theme-console-quaternary) 100%);
+  border-top: 2px solid var(--theme-console-primary);
   box-shadow: 0 -4px 20px rgba(0, 212, 255, 0.3);
   z-index: 1000;
   max-height: 200px;
@@ -241,7 +704,7 @@ button:hover {
   padding: 8px 12px;
   background: linear-gradient(135deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.2) 100%);
   border-radius: 8px 8px 0 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--theme-border-secondary);
   cursor: pointer;
   transition: all 0.3s ease;
 }
@@ -251,7 +714,7 @@ button:hover {
 }
 
 .console-title {
-  color: #00d4ff;
+  color: var(--theme-console-primary);
   font-weight: 600;
   font-size: 12px;
   text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
@@ -267,12 +730,12 @@ button:hover {
   border-radius: 4px;
   opacity: 0.7;
   transition: opacity 0.2s;
-  color: #e0e0e0;
+  color: var(--theme-text-secondary);
 }
 
 .console-clear-btn:hover {
   opacity: 1;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--theme-popup-background-quaternary);
 }
 
 .console-output {
@@ -309,7 +772,7 @@ button:hover {
   transition: transform 0.3s ease;
   opacity: 0.9;
   flex-shrink: 0;
-  color: #00d4ff;
+  color: var(--theme-console-primary);
 }
 
 /* Console collapsed state - using data attribute approach */
@@ -353,39 +816,39 @@ button:hover {
 }
 
 .console-line.info {
-  color: #00d4ff;
+  color: var(--theme-console-line-info);
   background: rgba(0, 212, 255, 0.1);
-  border-left: 3px solid #00d4ff;
+  border-left: 3px solid var(--theme-console-line-info);
 }
 
 .console-line.success {
-  color: #4ade80;
+  color: var(--theme-console-line-success);
   background: rgba(74, 222, 128, 0.1);
-  border-left: 3px solid #4ade80;
+  border-left: 3px solid var(--theme-console-line-success);
 }
 
 .console-line.warning {
-  color: #fbbf24;
+  color: var(--theme-console-line-warning);
   background: rgba(251, 191, 36, 0.1);
-  border-left: 3px solid #fbbf24;
+  border-left: 3px solid var(--theme-console-line-warning);
 }
 
 .console-line.error {
-  color: #f87171;
+  color: var(--theme-console-line-error);
   background: rgba(248, 113, 113, 0.1);
-  border-left: 3px solid #f87171;
+  border-left: 3px solid var(--theme-console-line-error);
 }
 
 .console-line.debug {
-  color: #a78bfa;
+  color: var(--theme-console-line-debug);
   background: rgba(167, 139, 250, 0.1);
-  border-left: 3px solid #a78bfa;
+  border-left: 3px solid var(--theme-console-line-debug);
 }
 
 .console-line.progress {
-  color: #60a5fa;
+  color: var(--theme-console-line-progress);
   background: rgba(96, 165, 250, 0.1);
-  border-left: 3px solid #60a5fa;
+  border-left: 3px solid var(--theme-console-line-progress);
   animation: consolePulse 2s infinite;
 }
 
@@ -451,11 +914,11 @@ button:hover {
   margin-bottom: 16px;
   padding: 10px 8px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.32);
-  box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+  background: var(--theme-popup-background-secondary);
+  box-shadow: 0 1px 6px var(--theme-shadow-tertiary);
   max-height: 260px;
   overflow-y: auto;
-  color: #fff;
+  color: var(--theme-text-primary);
   text-shadow: 0 1px 4px rgba(0,0,0,0.7);
   font-weight: 500;
 }
@@ -475,13 +938,13 @@ button:hover {
 .preview-row {
   display: flex;
   align-items: flex-start;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--theme-border-tertiary);
   padding: 4px 0;
 }
 .preview-key {
   min-width: 110px;
   font-weight: 700;
-  color: #a8ff78;
+  color: var(--theme-accent-primary);
   margin-right: 12px;
   text-align: left;
   word-break: break-word;
@@ -489,7 +952,7 @@ button:hover {
 }
 .preview-value {
   flex: 1;
-  color: #fff;
+  color: var(--theme-text-primary);
   font-family: 'Fira Mono', 'Consolas', monospace;
   font-size: 0.98em;
   word-break: break-word;
@@ -501,18 +964,18 @@ button:hover {
 .heading-tag {
   display: inline-block;
   background: rgba(168,255,120,0.18);
-  color: #a8ff78;
+  color: var(--theme-accent-primary);
   border-radius: 16px;
   padding: 2px 10px 2px 8px;
   margin: 0 6px 4px 0;
   font-size: 0.97em;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 2px var(--theme-shadow-tertiary);
   border: 1px solid rgba(168,255,120,0.18);
   vertical-align: middle;
 }
 .heading-tag-type {
-  color: #fff;
+  color: var(--theme-text-primary);
   font-size: 0.85em;
   font-weight: 400;
   margin-left: 4px;
@@ -520,7 +983,7 @@ button:hover {
 }
 
 .tag-empty {
-  color: #bbb;
+  color: var(--theme-text-quaternary);
   font-style: italic;
 }
 
@@ -529,19 +992,19 @@ button:hover {
   align-items: flex-start;
   margin-bottom: 7px;
   padding-bottom: 3px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--theme-border-secondary);
 }
 
 .label {
   min-width: 110px;
   font-weight: 600;
-  color: #2d6a4f;
+  color: var(--theme-accent-tertiary);
   margin-right: 8px;
   text-transform: capitalize;
 }
 .value {
   flex: 1;
-  color: #222;
+  color: var(--theme-text-primary);
   word-break: break-word;
   font-family: 'Fira Mono', 'Consolas', monospace;
   font-size: 0.98em;
@@ -567,23 +1030,23 @@ button:hover {
   background: none;
   border: none;
   box-shadow: none;
-  color: #a8ff78;
+  color: var(--theme-accent-primary);
   transition: color 0.2s, transform 0.2s;
 }
 .buttons button:hover {
-  color: #fff;
+  color: var(--theme-text-primary);
   transform: scale(1.15);
 }
 .jobops-markdown-preview {
   padding: 8px 0 8px 0;
-  color: #fff;
+  color: var(--theme-text-primary);
   font-size: 1.05em;
   font-family: 'Segoe UI', Arial, sans-serif;
   line-height: 1.6;
   word-break: break-word;
 }
 .jobops-markdown-preview h1, .jobops-markdown-preview h2, .jobops-markdown-preview h3 {
-  color: #a8ff78;
+  color: var(--theme-accent-primary);
   margin: 0.5em 0 0.2em 0;
 }
 .jobops-markdown-preview img {
@@ -606,22 +1069,22 @@ button:hover {
   height: 48px;
   object-fit: cover;
   border-radius: 8px;
-  border: 1.5px solid #a8ff78;
-  background: #222;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+  border: 1.5px solid var(--theme-accent-primary);
+  background: var(--theme-popup-background-primary);
+  box-shadow: 0 1px 4px var(--theme-shadow-quaternary);
   margin-right: 2px;
 }
 
 .meta-keyword-tag {
   display: inline-block;
   background: rgba(168,255,120,0.18);
-  color: #a8ff78;
+  color: var(--theme-accent-primary);
   border-radius: 16px;
   padding: 2px 10px 2px 8px;
   margin: 0 6px 4px 0;
   font-size: 0.97em;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 2px var(--theme-shadow-tertiary);
   border: 1px solid rgba(168,255,120,0.18);
   vertical-align: middle;
 }
@@ -639,7 +1102,7 @@ button:hover {
 .property-icon {
   font-size: 1.1em;
   margin-right: 8px;
-  color: #a8ff78;
+  color: var(--theme-accent-primary);
   min-width: 1.5em;
   text-align: center;
 }
@@ -655,12 +1118,12 @@ button:hover {
 .property-tag {
   display: inline-block;
   background: rgba(168,255,120,0.18);
-  color: #a8ff78;
+  color: var(--theme-accent-primary);
   border-radius: 8px;
   padding: 2px 10px 2px 8px;
   font-size: 0.97em;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 2px var(--theme-shadow-tertiary);
   border: 1px solid rgba(168,255,120,0.18);
   vertical-align: middle;
 }
@@ -678,9 +1141,9 @@ button:hover {
   height: 38px;
   object-fit: cover;
   border-radius: 6px;
-  border: 1.5px solid #a8ff78;
-  background: #222;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+  border: 1.5px solid var(--theme-accent-primary);
+  background: var(--theme-popup-background-primary);
+  box-shadow: 0 1px 4px var(--theme-shadow-quaternary);
   margin-right: 2px;
 }
 
@@ -688,33 +1151,33 @@ button:hover {
   width: 38px;
   height: 38px;
   border-radius: 6px;
-  border: 1.5px solid #ff6b6b;
-  background: #333;
+  border: 1.5px solid var(--theme-realtime-typing);
+  background: var(--theme-popup-background-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  color: #ff6b6b;
+  color: var(--theme-realtime-typing);
   margin-right: 2px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+  box-shadow: 0 1px 4px var(--theme-shadow-quaternary);
 }
 
 .property-image-count {
   display: inline-block;
   padding: 8px 12px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--theme-popup-background-quinary);
+  border: 1px solid var(--theme-border-secondary);
   border-radius: 6px;
   font-size: 0.9em;
-  color: #aaa;
+  color: var(--theme-text-tertiary);
   margin: 2px;
   font-style: italic;
 }
 .property-input {
   flex: 1;
-  background: rgba(24,24,32,0.85);
-  border: 1.2px solid rgba(168,255,120,0.13);
-  color: #fff;
+  background: var(--theme-input-background);
+  border: 1.2px solid var(--theme-input-border);
+  color: var(--theme-text-primary);
   font-size: 1em;
   font-family: inherit;
   padding: 6px 10px;
@@ -723,7 +1186,7 @@ button:hover {
   transition: border 0.2s;
 }
 .property-input:focus {
-  border: 1.2px solid #a8ff78;
+  border: 1.2px solid var(--theme-input-border-focus);
 }
 .markdown-editor {
   flex: 1 1 auto;
@@ -735,13 +1198,13 @@ button:hover {
   max-height: 500px;
   resize: vertical;
   border: 1.5px solid rgba(168,255,120,0.18);
-  background: rgba(24,24,32,0.85);
-  color: #fff;
+  background: var(--theme-input-background);
+  color: var(--theme-text-primary);
   font-size: 1.08em;
   font-family: 'Fira Mono', 'Consolas', monospace;
   padding: 12px;
   margin-bottom: 16px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 6px var(--theme-shadow-tertiary);
   outline: none;
   transition: border 0.2s;
   overflow: auto;
@@ -750,7 +1213,7 @@ button:hover {
   word-break: break-word;
 }
 .markdown-editor:focus {
-  border: 1.5px solid #a8ff78;
+  border: 1.5px solid var(--theme-input-border-focus);
 }
 /* Corner buttons are styled separately above */
 /* Hide all scrollbars */
@@ -821,21 +1284,21 @@ button:hover {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--theme-border-secondary);
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--theme-text-secondary);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-sizing: border-box;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  box-shadow: 0 2px 8px var(--theme-shadow-quaternary);
+  background: linear-gradient(135deg, var(--theme-popup-background-quaternary) 0%, var(--theme-popup-background-quinary) 100%);
   margin-bottom: 8px;
 }
 
 .job-header:hover, .properties-header:hover, .markdown-header:hover, .realtime-header:hover {
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  background: linear-gradient(135deg, var(--theme-accent-quaternary) 0%, var(--theme-accent-quinary) 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px var(--theme-shadow-quinary);
 }
 
 /* Group arrow and save button to the right */
@@ -857,22 +1320,22 @@ button:hover {
 .properties-section {
   border-radius: 8px 8px 0 0;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px var(--theme-shadow-quaternary);
   max-height: 600px;
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--theme-popup-background-quaternary);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   margin-bottom: 16px; /* Standard spacing to prevent overlap */
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 4px 16px rgba(0, 0, 0, 0.05); /* Enhanced shadow for elegance */
+  box-shadow: 0 2px 8px var(--theme-shadow-quaternary), 0 4px 16px var(--theme-shadow-secondary); /* Enhanced shadow for elegance */
 }
 
 .markdown-section, .realtime-section {
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px var(--theme-shadow-quaternary);
   max-height: 600px;
 }
 
@@ -881,7 +1344,7 @@ button:hover {
   overflow-y: auto;
   transition: max-height 0.3s ease, opacity 0.3s ease;
   opacity: 1;
-  background: rgba(255,255,255,0.02);
+  background: var(--theme-popup-background-tertiary);
   border-radius: 0 0 8px 8px;
   padding: 12px;
 }
@@ -904,7 +1367,7 @@ button:hover {
   overflow: hidden;
   transition: max-height 0.3s ease, opacity 0.3s ease;
   opacity: 1;
-  background: rgba(255,255,255,0.02);
+  background: var(--theme-popup-background-tertiary);
   border-radius: 0 0 8px 8px;
   padding: 12px;
 }
@@ -920,10 +1383,10 @@ button:hover {
   min-height: 200px;
   max-height: 300px;
   overflow-y: auto;
-  background: rgba(24,24,32,0.85);
-  border: 1.5px solid rgba(255,107,107,0.3);
+  background: var(--theme-input-background);
+  border: 1.5px solid var(--theme-realtime-border);
   border-radius: 8px;
-  color: #fff;
+  color: var(--theme-text-primary);
   font-family: 'Fira Mono', 'Consolas', monospace;
   font-size: 0.95em;
   line-height: 1.5;
@@ -936,13 +1399,13 @@ button:hover {
 
 .realtime-response:empty::before {
   content: "AI response will appear here in real-time...";
-  color: #888;
+  color: var(--theme-text-quinary);
   font-style: italic;
 }
 
 .realtime-response.typing::after {
   content: "▋";
-  color: #ff6b6b;
+  color: var(--theme-realtime-typing);
   animation: blink 1s infinite;
   font-weight: bold;
 }
@@ -959,7 +1422,7 @@ button:hover {
 }
 
 .control-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--theme-button-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -967,13 +1430,13 @@ button:hover {
   font-size: 0.9em;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px var(--theme-shadow-quaternary);
 }
 
 .control-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  box-shadow: 0 4px 8px var(--theme-shadow-quinary);
+  background: var(--theme-button-primary-hover);
 }
 
 .control-button:disabled {
@@ -998,7 +1461,7 @@ button:hover {
   margin-bottom: 0;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px var(--theme-shadow-quaternary);
   max-height: 600px;
 }
 
@@ -1011,22 +1474,22 @@ button:hover {
   height: 40px;
   min-height: 40px;
   max-height: 40px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  background: linear-gradient(135deg, var(--theme-popup-background-quaternary) 0%, var(--theme-popup-background-quinary) 100%);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--theme-border-secondary);
   margin-bottom: 8px;
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--theme-text-secondary);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
 
 .job-header:hover {
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  background: linear-gradient(135deg, var(--theme-accent-quaternary) 0%, var(--theme-accent-quinary) 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px var(--theme-shadow-quinary);
 }
 
 .job-content {
@@ -1034,7 +1497,7 @@ button:hover {
   overflow-y: auto;
   transition: max-height 0.3s ease, opacity 0.3s ease;
   opacity: 1;
-  background: rgba(255,255,255,0.02);
+  background: var(--theme-popup-background-tertiary);
   border-radius: 0 0 8px 8px;
   padding: 12px;
 }
@@ -1053,9 +1516,9 @@ button:hover {
 /* Job-specific input styles */
 .job-input {
   flex: 1;
-  background: rgba(24,24,32,0.85);
-  border: 1.2px solid rgba(74, 222, 128, 0.13);
-  color: #fff;
+  background: var(--theme-job-input-background);
+  border: 1.2px solid var(--theme-job-input-border);
+  color: var(--theme-text-primary);
   font-size: 1em;
   font-family: inherit;
   padding: 6px 10px;
@@ -1066,15 +1529,15 @@ button:hover {
 }
 
 .job-input:focus {
-  border: 1.2px solid #4ade80;
+  border: 1.2px solid var(--theme-job-input-border-focus);
 }
 
 .job-textarea {
   width: 100%;
   min-height: 80px;
-  background: rgba(24,24,32,0.85);
-  border: 1.2px solid rgba(74, 222, 128, 0.13);
-  color: #fff;
+  background: var(--theme-job-input-background);
+  border: 1.2px solid var(--theme-job-input-border);
+  color: var(--theme-text-primary);
   font-size: 1em;
   font-family: inherit;
   padding: 8px 10px;
@@ -1085,14 +1548,14 @@ button:hover {
 }
 
 .job-textarea:focus {
-  border: 1.2px solid #4ade80;
+  border: 1.2px solid var(--theme-job-input-border-focus);
 }
 
 .job-select {
   flex: 1;
-  background: rgba(24,24,32,0.85);
-  border: 1.2px solid rgba(74, 222, 128, 0.13);
-  color: #fff;
+  background: var(--theme-job-input-background);
+  border: 1.2px solid var(--theme-job-input-border);
+  color: var(--theme-text-primary);
   font-size: 1em;
   font-family: inherit;
   padding: 6px 10px;
@@ -1103,12 +1566,12 @@ button:hover {
 }
 
 .job-select:focus {
-  border: 1.2px solid #4ade80;
+  border: 1.2px solid var(--theme-job-input-border-focus);
 }
 
 .job-checkbox {
   margin-right: 8px;
-  accent-color: #4ade80;
+  accent-color: var(--theme-job-input-border-focus);
 }
 
 .job-row {
@@ -1126,7 +1589,7 @@ button:hover {
 .job-label {
   min-width: 120px;
   font-weight: 600;
-  color: #4ade80;
+  color: var(--theme-job-label);
   margin-right: 8px;
   text-align: left;
   word-break: break-word;
@@ -1135,7 +1598,7 @@ button:hover {
 
 .job-label-textarea {
   font-weight: 600;
-  color: #4ade80;
+  color: var(--theme-job-label);
   margin-bottom: 4px;
   text-align: left;
   word-break: break-word;
@@ -1145,146 +1608,283 @@ button:hover {
 .job-icon {
   font-size: 1.1em;
   margin-right: 8px;
-  color: #4ade80;
+  color: var(--theme-job-icon);
   min-width: 1.5em;
   text-align: center;
 }
 
 /* Job section specific colors */
 .job-section[data-section="position-details"] .job-header {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-position-details-primary) 0%, var(--dark-theme-job-section-position-details-secondary) 100%);
 }
 
 .job-section[data-section="position-details"] .job-header:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-position-details-hover-primary) 0%, var(--dark-theme-job-section-position-details-hover-secondary) 100%);
 }
 
 .job-section[data-section="job-requirements"] .job-header {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-job-requirements-primary) 0%, var(--dark-theme-job-section-job-requirements-secondary) 100%);
 }
 
 .job-section[data-section="job-requirements"] .job-header:hover {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-job-requirements-hover-primary) 0%, var(--dark-theme-job-section-job-requirements-hover-secondary) 100%);
 }
 
 .job-section[data-section="company-information"] .job-header {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-company-information-primary) 0%, var(--dark-theme-job-section-company-information-secondary) 100%);
 }
 
 .job-section[data-section="company-information"] .job-header:hover {
-  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-company-information-hover-primary) 0%, var(--dark-theme-job-section-company-information-hover-secondary) 100%);
 }
 
 .job-section[data-section="skills-matrix"] .job-header {
-  background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-skills-matrix-primary) 0%, var(--dark-theme-job-section-skills-matrix-secondary) 100%);
 }
 
 .job-section[data-section="skills-matrix"] .job-header:hover {
-  background: linear-gradient(135deg, #db2777 0%, #be185d 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-skills-matrix-hover-primary) 0%, var(--dark-theme-job-section-skills-matrix-hover-secondary) 100%);
 }
 
 .job-section[data-section="application-materials"] .job-header {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-application-materials-primary) 0%, var(--dark-theme-job-section-application-materials-secondary) 100%);
 }
 
 .job-section[data-section="application-materials"] .job-header:hover {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-application-materials-hover-primary) 0%, var(--dark-theme-job-section-application-materials-hover-secondary) 100%);
 }
 
 .job-section[data-section="interview-schedule"] .job-header {
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-schedule-primary) 0%, var(--dark-theme-job-section-interview-schedule-secondary) 100%);
 }
 
 .job-section[data-section="interview-schedule"] .job-header:hover {
-  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-schedule-hover-primary) 0%, var(--dark-theme-job-section-interview-schedule-hover-secondary) 100%);
 }
 
 .job-section[data-section="interview-preparation"] .job-header {
-  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-preparation-primary) 0%, var(--dark-theme-job-section-interview-preparation-secondary) 100%);
 }
 
 .job-section[data-section="interview-preparation"] .job-header:hover {
-  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-preparation-hover-primary) 0%, var(--dark-theme-job-section-interview-preparation-hover-secondary) 100%);
 }
 
 .job-section[data-section="communication-log"] .job-header {
-  background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-communication-log-primary) 0%, var(--dark-theme-job-section-communication-log-secondary) 100%);
 }
 
 .job-section[data-section="communication-log"] .job-header:hover {
-  background: linear-gradient(135deg, #65a30d 0%, #4d7c0f 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-communication-log-hover-primary) 0%, var(--dark-theme-job-section-communication-log-hover-secondary) 100%);
 }
 
 .job-section[data-section="key-contacts"] .job-header {
-  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-key-contacts-primary) 0%, var(--dark-theme-job-section-key-contacts-secondary) 100%);
 }
 
 .job-section[data-section="key-contacts"] .job-header:hover {
-  background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-key-contacts-hover-primary) 0%, var(--dark-theme-job-section-key-contacts-hover-secondary) 100%);
 }
 
 .job-section[data-section="interview-feedback"] .job-header {
-  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-feedback-primary) 0%, var(--dark-theme-job-section-interview-feedback-secondary) 100%);
 }
 
 .job-section[data-section="interview-feedback"] .job-header:hover {
-  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-interview-feedback-hover-primary) 0%, var(--dark-theme-job-section-interview-feedback-hover-secondary) 100%);
 }
 
 .job-section[data-section="offer-details"] .job-header {
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-offer-details-primary) 0%, var(--dark-theme-job-section-offer-details-secondary) 100%);
 }
 
 .job-section[data-section="offer-details"] .job-header:hover {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-offer-details-hover-primary) 0%, var(--dark-theme-job-section-offer-details-hover-secondary) 100%);
 }
 
 .job-section[data-section="rejection-analysis"] .job-header {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-rejection-analysis-primary) 0%, var(--dark-theme-job-section-rejection-analysis-secondary) 100%);
 }
 
 .job-section[data-section="rejection-analysis"] .job-header:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-rejection-analysis-hover-primary) 0%, var(--dark-theme-job-section-rejection-analysis-hover-secondary) 100%);
 }
 
 .job-section[data-section="privacy-policy"] .job-header {
-  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-privacy-policy-primary) 0%, var(--dark-theme-job-section-privacy-policy-secondary) 100%);
 }
 
 .job-section[data-section="privacy-policy"] .job-header:hover {
-  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-privacy-policy-hover-primary) 0%, var(--dark-theme-job-section-privacy-policy-hover-secondary) 100%);
 }
 
 .job-section[data-section="lessons-learned"] .job-header {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-lessons-learned-primary) 0%, var(--dark-theme-job-section-lessons-learned-secondary) 100%);
 }
 
 .job-section[data-section="lessons-learned"] .job-header:hover {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-lessons-learned-hover-primary) 0%, var(--dark-theme-job-section-lessons-learned-hover-secondary) 100%);
 }
 
 .job-section[data-section="performance-metrics"] .job-header {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-performance-metrics-primary) 0%, var(--dark-theme-job-section-performance-metrics-secondary) 100%);
 }
 
 .job-section[data-section="performance-metrics"] .job-header:hover {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-performance-metrics-hover-primary) 0%, var(--dark-theme-job-section-performance-metrics-hover-secondary) 100%);
 }
 
 .job-section[data-section="advisor-review"] .job-header {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-advisor-review-primary) 0%, var(--dark-theme-job-section-advisor-review-secondary) 100%);
 }
 
 .job-section[data-section="advisor-review"] .job-header:hover {
-  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-advisor-review-hover-primary) 0%, var(--dark-theme-job-section-advisor-review-hover-secondary) 100%);
 }
 
 .job-section[data-section="application-summary"] .job-header {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-application-summary-primary) 0%, var(--dark-theme-job-section-application-summary-secondary) 100%);
 }
 
 .job-section[data-section="application-summary"] .job-header:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  background: linear-gradient(135deg, var(--dark-theme-job-section-application-summary-hover-primary) 0%, var(--dark-theme-job-section-application-summary-hover-secondary) 100%);
+}
+
+/* Light theme overrides for job sections */
+.theme-light .job-section[data-section="position-details"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-position-details-primary) 0%, var(--light-theme-job-section-position-details-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="position-details"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-position-details-hover-primary) 0%, var(--light-theme-job-section-position-details-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="job-requirements"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-job-requirements-primary) 0%, var(--light-theme-job-section-job-requirements-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="job-requirements"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-job-requirements-hover-primary) 0%, var(--light-theme-job-section-job-requirements-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="company-information"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-company-information-primary) 0%, var(--light-theme-job-section-company-information-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="company-information"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-company-information-hover-primary) 0%, var(--light-theme-job-section-company-information-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="skills-matrix"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-skills-matrix-primary) 0%, var(--light-theme-job-section-skills-matrix-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="skills-matrix"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-skills-matrix-hover-primary) 0%, var(--light-theme-job-section-skills-matrix-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="application-materials"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-application-materials-primary) 0%, var(--light-theme-job-section-application-materials-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="application-materials"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-application-materials-hover-primary) 0%, var(--light-theme-job-section-application-materials-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="interview-schedule"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-interview-schedule-primary) 0%, var(--light-theme-job-section-interview-schedule-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="interview-schedule"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-interview-schedule-hover-primary) 0%, var(--light-theme-job-section-interview-schedule-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="interview-preparation"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-interview-preparation-primary) 0%, var(--light-theme-job-section-interview-preparation-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="interview-preparation"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-interview-preparation-hover-primary) 0%, var(--light-theme-job-section-interview-preparation-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="communication-log"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-communication-log-primary) 0%, var(--light-theme-job-section-communication-log-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="communication-log"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-communication-log-hover-primary) 0%, var(--light-theme-job-section-communication-log-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="key-contacts"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-key-contacts-primary) 0%, var(--light-theme-job-section-key-contacts-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="key-contacts"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-key-contacts-hover-primary) 0%, var(--light-theme-job-section-key-contacts-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="interview-feedback"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-interview-feedback-primary) 0%, var(--light-theme-job-section-interview-feedback-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="interview-feedback"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-interview-feedback-hover-primary) 0%, var(--light-theme-job-section-interview-feedback-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="offer-details"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-offer-details-primary) 0%, var(--light-theme-job-section-offer-details-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="offer-details"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-offer-details-hover-primary) 0%, var(--light-theme-job-section-offer-details-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="rejection-analysis"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-rejection-analysis-primary) 0%, var(--light-theme-job-section-rejection-analysis-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="rejection-analysis"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-rejection-analysis-hover-primary) 0%, var(--light-theme-job-section-rejection-analysis-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="privacy-policy"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-privacy-policy-primary) 0%, var(--light-theme-job-section-privacy-policy-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="privacy-policy"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-privacy-policy-hover-primary) 0%, var(--light-theme-job-section-privacy-policy-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="lessons-learned"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-lessons-learned-primary) 0%, var(--light-theme-job-section-lessons-learned-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="lessons-learned"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-lessons-learned-hover-primary) 0%, var(--light-theme-job-section-lessons-learned-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="performance-metrics"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-performance-metrics-primary) 0%, var(--light-theme-job-section-performance-metrics-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="performance-metrics"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-performance-metrics-hover-primary) 0%, var(--light-theme-job-section-performance-metrics-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="advisor-review"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-advisor-review-primary) 0%, var(--light-theme-job-section-advisor-review-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="advisor-review"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-advisor-review-hover-primary) 0%, var(--light-theme-job-section-advisor-review-hover-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="application-summary"] .job-header {
+  background: linear-gradient(135deg, var(--light-theme-job-section-application-summary-primary) 0%, var(--light-theme-job-section-application-summary-secondary) 100%);
+}
+
+.theme-light .job-section[data-section="application-summary"] .job-header:hover {
+  background: linear-gradient(135deg, var(--light-theme-job-section-application-summary-hover-primary) 0%, var(--light-theme-job-section-application-summary-hover-secondary) 100%);
 }
 
 /* Save-on-collapse functionality - no UI elements needed */

@@ -560,12 +560,14 @@ export class JobOpsDataManager {
 
   // Populate UI with loaded data
   private populateUIWithData(data: any): void {
-    // This method will be implemented to populate the UI forms with loaded data
-    // For now, it's a placeholder that will be expanded as we implement the form fields
     console.log('Populating UI with loaded data:', data);
     
-    // TODO: Implement form population logic for each section
-    // This will be done as we implement the individual form fields
+    // Dispatch a custom event to notify the popup that data has been loaded
+    // This allows the popup to update its UI with the loaded data
+    if (typeof window !== 'undefined') {
+      const event = new CustomEvent('jobDataLoaded', { detail: data });
+      window.dispatchEvent(event);
+    }
   }
 
   // Export current job application data

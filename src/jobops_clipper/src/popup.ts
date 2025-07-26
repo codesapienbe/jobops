@@ -195,6 +195,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     copyRealtimeBtn.addEventListener('click', handleCopyRealtime);
   }
 
+  // Listen for job data loaded events from the repository
+  window.addEventListener('jobDataLoaded', function(event: Event) {
+    const customEvent = event as CustomEvent;
+    const loadedData = customEvent.detail;
+    logToConsole("📥 Job data loaded from database, updating properties", "info");
+    
+    // Populate properties with loaded data instead of scraped data
+    if (loadedData && loadedData.jobApplication) {
+      const jobApp = loadedData.jobApplication;
+      populatePropertyFields({
+        title: jobApp.job_title || '',
+        url: jobApp.canonical_url || '',
+        author: '',
+        published: jobApp.application_date || '',
+        created_at: jobApp.created_at || '',
+        description: '',
+        metaKeywords: [],
+        location: '',
+        company: jobApp.company_name || ''
+      });
+      
+      // Also populate job sections if they exist
+      if (loadedData.positionDetails && loadedData.positionDetails.length > 0) {
+        const posDetails = loadedData.positionDetails[0];
+        // Populate position details section
+        const jobTitleInput = document.getElementById('job-title') as HTMLInputElement;
+        const companyNameInput = document.getElementById('company-name') as HTMLInputElement;
+        const locationInput = document.getElementById('location') as HTMLInputElement;
+        
+        if (jobTitleInput) jobTitleInput.value = posDetails.job_title || '';
+        if (companyNameInput) companyNameInput.value = posDetails.company_name || '';
+        if (locationInput) locationInput.value = posDetails.location || '';
+      }
+      
+      logToConsole("✅ Properties updated with loaded job data", "success");
+    }
+  });
+
   // Initialize console
   logToConsole("🚀 JobOps Clipper initialized", "info");
   logToConsole("📋 Ready to process job postings and resumes", "success");
@@ -771,18 +809,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   }
 
-  // Function to update job status
-  async function updateJobStatus(status: string): Promise<void> {
-    try {
-      await jobOpsDataManager.updateJobStatus(status);
-      logToConsole(`✅ Job status updated to: ${status}`, "success");
-      showNotification(`✅ Status updated to: ${status}`);
-    } catch (error) {
-      logToConsole(`❌ Error updating job status: ${error}`, "error");
-      showNotification(`❌ Error updating status`, true);
-    }
-  }
-
+  
   function setupToggleHandlers() {
     // Add click event listeners to all toggle headers
     const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header, .realtime-header, .job-header, .console-header');
@@ -962,6 +989,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                 if (jobExists) {
                   logToConsole("🔄 Existing job application found and loaded", "info");
                   showNotification("🔄 Existing job application loaded");
+                  // The populateUIWithData method will dispatch a 'jobDataLoaded' event
+                  // which we'll handle below to populate the properties with loaded data
                 } else {
                   // Check if we have sufficient content to create a database record
                   const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
@@ -993,6 +1022,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   }
                 }
                 
+                // Always populate properties with the scraped data (for new jobs or fallback)
                 populatePropertyFields(jobData);
                 markdownEditor.value = generateMarkdown(jobData);
                 // Copy button is always enabled
