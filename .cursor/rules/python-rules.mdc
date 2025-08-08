@@ -1,42 +1,30 @@
 ---
-description:
-globs:
 alwaysApply: true
 ---
 
-# Python Enterprise Development Rules
+# Python Enterprise Ruleset (Merged, FastAPI + Celery Focus)
 
-## Core Principles
+Below is a merged, in-depth ruleset that incorporates the provided rules plus expanded best practices for FastAPI, Celery, async SQLAlchemy, and enterprise operations, with minimal Django emphasis.
 
-- Follow PEP 8 style guide strictly
-- Use type hints for all function parameters and return values
-- Implement async/await for I/O bound operations
-- Use virtual environments for dependency isolation
-- Write comprehensive docstrings and documentation
-- Follow the principle of least privilege for security
+## 1) Core Principles
 
-## FastAPI Best Practices
+- Enforce PEP 8, use type hints everywhere, and keep comprehensive docstrings and developer-facing docs.  
+- Apply 12-Factor App: config via env, stateless processes, logs to stdout, parity across envs, and disposability.  
+- Async-first for I/O-bound code; offload CPU-bound work to workers (Celery) instead of the FastAPI event loop[1][2].  
+- Principle of least privilege across services, databases, and cloud roles; never embed secrets in code.  
+- Use virtual environments, deterministic dependency locking (Poetry/pip-tools), and semantic versioning for releases.  
 
-- Use Pydantic models for request/response validation
-- Implement dependency injection for shared resources
-- Use APIRouter to organize endpoints logically
-- Implement proper HTTP status codes (200, 201, 400, 404, 500)
-- Use background tasks for non-blocking operations
-- Implement proper error handling with HTTPException
-- Use FastAPI's automatic OpenAPI documentation
-- Implement request/response models with proper validation
+## 2) Project Architecture
 
-## Enterprise Architecture
-
-Structure projects with clear separation of concerns
+- Organize by bounded context and layers to separate routers, schemas, services, repositories, and infra:
 
 ```
 app/
 ├── main.py
 ├── api/
-│   ├── v1/
-│   │   ├── endpoints/
-│   │   └── dependencies/
+│   └── v1/
+│       ├── endpoints/
+│       └── dependencies/
 ├── core/
 │   ├── config.py
 │   ├── security.py
@@ -47,79 +35,220 @@ app/
 └── tests/
 ```
 
-- Use dependency injection containers
-- Implement repository pattern for data access
-- Use service layer for business logic
-- Implement proper configuration management
+- Use APIRouter for logical grouping; dependency injection for shared resources; repository pattern for data access.  
+- Externalize and validate configuration at startup; use feature flags and kill-switches for risky dependencies.  
 
-## Security Implementation
+## 3) FastAPI Best Practices
 
-- Use OAuth2 with JWT for authentication
-- Implement proper password hashing with bcrypt
-- Validate all input data using Pydantic
-- Implement CORS policies correctly
-- Use HTTPS in production
-- Implement rate limiting and request throttling
-- Sanitize all user inputs to prevent injection attacks
-- Use security headers (HSTS, CSP, X-Frame-Options)
-- Implement audit logging for security events
+- Use Pydantic models for request/response validation and schema versioning; forbid unknown fields internally[1][2].  
+- Implement dependency injection for DB sessions, auth context, and clients via Depends; keep routers thin and stateless[3][2].  
+- Use proper HTTP status codes and a consistent error envelope; raise HTTPException for expected errors.  
+- Prefer BackgroundTasks only for trivial, quick operations that can safely run in the same process; use Celery for heavy or slow work[1][4][5].  
+- Enable automatic OpenAPI docs; keep the spec versioned and published alongside releases.  
+- Strict CORS and secure headers at the edge or middleware; enforce request body size limits and content-type checks.  
 
-## Database & ORM
+## 4) Celery Integration (FastAPI + Celery)
 
-- Use SQLAlchemy for database operations
-- Implement database migrations with Alembic
-- Use connection pooling for better performance
-- Implement proper transaction management
-- Use async database drivers (asyncpg, aiomysql)
-- Implement database query optimization
-- Use proper indexing strategies
-- Implement soft deletes for audit trails
+- Use Celery for CPU-intensive workloads and tasks requiring queuing, retries, scheduling, or progress tracking; FastAPI BackgroundTasks are not suitable for heavy workloads since they share the server event loop[1][5].  
+- Containerize FastAPI, Celery worker(s), broker (Redis/RabbitMQ), and Flower; orchestrate with Docker Compose or Kubernetes[1][6].  
+- Expose an endpoint that enqueues a Celery task and returns immediately with a job id; poll job status or push notifications via WebSocket/events[1][6].  
+- Monitor Celery with Flower; persist task results only when necessary to avoid storage bloat; log task events to centralized logging[1][6].  
 
-## Performance & Scalability
+### Celery Task Reliability
 
-- Use caching with Redis for frequently accessed data
-- Implement async database operations
-- Use connection pooling
-- Implement proper pagination for large datasets
-- Use background tasks for heavy computations
-- Implement request/response compression
-- Use CDN for static assets
-- Monitor performance with APM tools
-- Implement horizontal scaling strategies
+- Idempotency is mandatory: the same task with the same inputs should be safe to retry without side effects; use de-duplication keys and idempotent DB upserts for external effects[7][8][9].  
+- Retries: configure autoretry_for with targeted exceptions, retry_backoff for exponential backoff, jitter, and reasonable max_retries; never infinite retries[7][8].  
+- Acknowledgement & redelivery: consider acks_late=True and task_reject_on_worker_lost for critical tasks, combined with time_limit/soft_time_limit; understand broker visibility timeouts (Redis) to prevent duplicates or ghost tasks[7][10].  
+- Resource limits: set memory/time limits to prevent runaway tasks; isolate misbehaving tasks via routing/queues and apply concurrency caps per queue[7][8].  
+- Observability: include correlation/job ids in logs; export task metrics (success/failure/latency/retries) and alert on anomalies; use Flower for operational visibility[1][6].  
 
-## Testing Framework
+### When to Choose Celery vs FastAPI BackgroundTasks
 
-- Use pytest for all testing needs
-- Implement unit tests with high coverage (>85%)
-- Use pytest fixtures for test data setup
-- Implement integration tests with TestClient
-- Use factory_boy for test data generation
-- Mock external dependencies properly
-- Implement contract testing for APIs
-- Use property-based testing with Hypothesis
-- Implement load testing with locust
+- Use BackgroundTasks only for small, non-critical tasks that can run in-process and won’t block the event loop; do not use for heavy CPU-bound processing[1][4][5].  
+- Use Celery when needing durable queuing, worker scaling, retries/backoff, progress tracking, or external system integration that may fail intermittently[1][5].  
 
-## Code Quality & Maintenance
+## 5) Database & Async SQLAlchemy
 
-- Use black for code formatting
-- Use isort for import sorting
-- Use flake8 or pylint for linting
-- Use mypy for static type checking
-- Implement pre-commit hooks
-- Use bandit for security vulnerability scanning
-- Write comprehensive documentation with Sphinx
-- Implement proper logging with structured logs
-- Use semantic versioning for releases
+- Prefer SQLAlchemy 2.x async engine with async_sessionmaker and async drivers (e.g., asyncpg); manage request-scoped sessions via DI[3][11].  
+- Keep transactions explicit and short; avoid long-lived sessions; rollback on exceptions; tune pool sizes and max_overflow per workload[3].  
+- Prevent N+1 with eager loading (joinedload/subqueryload) for hot paths; verify via integration tests; add DB indexes for frequent predicates[3][12][13].  
+- Use Alembic for migrations; never edit applied migrations; keep date-ordered revisions; include comments and test upgrades/downgrades in CI[12][13][11].  
 
-## Deployment & Operations
+## 6) Security
 
-- Use Docker for containerization
-- Implement multi-stage Docker builds
-- Use docker-compose for local development
-- Implement CI/CD with GitHub Actions/GitLab CI
-- Use environment variables for configuration
-- Implement health checks and readiness probes
-- Use Gunicorn/Uvicorn for production deployment
-- Implement log aggregation (ELK stack)
-- Set up monitoring with Prometheus/Grafana
-- Implement backup strategies for data persistence
+- OAuth2/OIDC or JWT for APIs; short-lived tokens; rotate signing keys; secure cookies for session-based flows; enforce HTTPS/HSTS in prod.  
+- Strict CORS; set CSP, X-Content-Type-Options, Referrer-Policy, Permissions-Policy at edge or middleware; validate and sanitize all inputs with Pydantic[1][2].  
+- Secrets from env/secret manager only; no secrets in VCS; rotate regularly; least-privilege DB roles and per-service credentials.  
+- Rate limiting at the gateway; bot protections for public endpoints; never log tokens or PII; use structured logs with correlation ids.  
+
+## 7) Performance & Scalability
+
+- Define SLOs (e.g., p95 latency) and track SLIs; address bottlenecks before scaling out; size Uvicorn/Gunicorn workers for workload and use horizontal scaling[1][14].  
+- Apply timeouts to all outbound calls; circuit breakers, retries with backoff/jitter, and bulkheads to isolate failures.  
+- Cache frequently accessed results with Redis; set explicit TTLs and eviction strategies; design keys to include tenant/user context.  
+- Use pagination and streaming for large responses; compress responses; use CDN for static content; offload heavy processing to Celery.  
+
+## 8) Testing
+
+- Use pytest with coverage ≥85%; unit tests for pure logic; integration tests with TestClient and Testcontainers for DB/broker; contract tests for APIs.  
+- Property-based testing for critical logic; mock external services properly; load testing with Locust for throughput and latency profiles.  
+- For Celery, unit-test tasks in isolation and integration-test the end-to-end flow with a running broker/worker; test retry and idempotency behavior[1].  
+
+## 9) Code Quality & Tooling
+
+- black, isort, ruff/flake8, and mypy/pyright in CI; bandit for security scanning; pre-commit hooks to enforce formatting and linting.  
+- Structured JSON logging; centralized log aggregation (ELK/Loki); consistent error mapping to HTTP responses; semantic versioning and changelogs.  
+
+## 10) Deployment & Operations
+
+- Docker with multi-stage builds; non-root user; minimal base images; read-only filesystem where possible.  
+- Use Gunicorn with Uvicorn workers in prod; configure worker class, timeouts, and graceful shutdown; readiness/liveness probes.  
+- CI/CD with staged gates: lint/format → tests → security scans → package → SBOM/sign → staging → e2e → progressive prod rollout; monitor and rollback on SLO regressions.  
+- Monitoring with Prometheus/Grafana; APM to identify blocking calls in async routes; Flower for Celery visibility; backups and tested restores for stateful stores.  
+
+## 11) Example Baselines (FastAPI + Celery + Async SQLAlchemy)
+
+- FastAPI app with DI-managed AsyncSession; strict Pydantic models for I/O; routers organized per domain[3][2].  
+- Celery configuration with Redis or RabbitMQ; targeted autoretry_for and retry_backoff; acks_late and time limits for critical tasks; Flower enabled[1][7][8].  
+- Alembic migrations and async SQLAlchemy 2.x patterns; connection pool tuning; statement timeouts at DB level for safety[3][12][13].  
+
+## 12) PR & Review Checklist
+
+- Routers thin; business logic in services; repositories handle data access; schemas validated and versioned.  
+- Async correctness: no blocking calls in async code; offload CPU to Celery; proper timeouts/retries/circuit breakers.  
+- DB: no N+1; proper indexes; pagination present; transactions minimal and explicit; migrations added and tested.  
+- Security: authN/Z enforced; CORS/headers configured; no secrets/PII in logs; rate limits for public endpoints.  
+- Celery: idempotency ensured; retry policy appropriate; resource/time limits set; metrics and logging present.  
+- Observability: logs structured with correlation ids; metrics/traces updated; health/readiness reflect dependencies.  
+- Tests: unit/integration/contract/load; coverage thresholds met; CI security scans passing.  
+
+## 13) Notes on Performance Tuning
+
+- Do not expect BackgroundTasks to alleviate CPU-bound latency; use Celery workers sized and isolated for CPU tasks[1][14][5].  
+- Tune broker (Redis/RabbitMQ) for throughput and visibility timeouts; isolate queues per task class; apply concurrency caps to protect shared resources[7][8].  
+- Profile endpoints and tasks; capture p95/p99 latencies; adjust worker counts and autoscaling thresholds based on actual load characteristics[1][14].  
+# Python Enterprise Ruleset (Merged, FastAPI + Celery Focus)
+
+Below is a merged, in-depth ruleset that incorporates the provided rules plus expanded best practices for FastAPI, Celery, async SQLAlchemy, and enterprise operations, with minimal Django emphasis.
+
+## 1) Core Principles
+
+- Enforce PEP 8, use type hints everywhere, and keep comprehensive docstrings and developer-facing docs.  
+- Apply 12-Factor App: config via env, stateless processes, logs to stdout, parity across envs, and disposability.  
+- Async-first for I/O-bound code; offload CPU-bound work to workers (Celery) instead of the FastAPI event loop[1][2].  
+- Principle of least privilege across services, databases, and cloud roles; never embed secrets in code.  
+- Use virtual environments, deterministic dependency locking (Poetry/pip-tools), and semantic versioning for releases.  
+
+## 2) Project Architecture
+
+- Organize by bounded context and layers to separate routers, schemas, services, repositories, and infra:
+
+```
+app/
+├── main.py
+├── api/
+│   └── v1/
+│       ├── endpoints/
+│       └── dependencies/
+├── core/
+│   ├── config.py
+│   ├── security.py
+│   └── database.py
+├── models/
+├── schemas/
+├── services/
+└── tests/
+```
+
+- Use APIRouter for logical grouping; dependency injection for shared resources; repository pattern for data access.  
+- Externalize and validate configuration at startup; use feature flags and kill-switches for risky dependencies.  
+
+## 3) FastAPI Best Practices
+
+- Use Pydantic models for request/response validation and schema versioning; forbid unknown fields internally[1][2].  
+- Implement dependency injection for DB sessions, auth context, and clients via Depends; keep routers thin and stateless[3][2].  
+- Use proper HTTP status codes and a consistent error envelope; raise HTTPException for expected errors.  
+- Prefer BackgroundTasks only for trivial, quick operations that can safely run in the same process; use Celery for heavy or slow work[1][4][5].  
+- Enable automatic OpenAPI docs; keep the spec versioned and published alongside releases.  
+- Strict CORS and secure headers at the edge or middleware; enforce request body size limits and content-type checks.  
+
+## 4) Celery Integration (FastAPI + Celery)
+
+- Use Celery for CPU-intensive workloads and tasks requiring queuing, retries, scheduling, or progress tracking; FastAPI BackgroundTasks are not suitable for heavy workloads since they share the server event loop[1][5].  
+- Containerize FastAPI, Celery worker(s), broker (Redis/RabbitMQ), and Flower; orchestrate with Docker Compose or Kubernetes[1][6].  
+- Expose an endpoint that enqueues a Celery task and returns immediately with a job id; poll job status or push notifications via WebSocket/events[1][6].  
+- Monitor Celery with Flower; persist task results only when necessary to avoid storage bloat; log task events to centralized logging[1][6].  
+
+### Celery Task Reliability
+
+- Idempotency is mandatory: the same task with the same inputs should be safe to retry without side effects; use de-duplication keys and idempotent DB upserts for external effects[7][8][9].  
+- Retries: configure autoretry_for with targeted exceptions, retry_backoff for exponential backoff, jitter, and reasonable max_retries; never infinite retries[7][8].  
+- Acknowledgement & redelivery: consider acks_late=True and task_reject_on_worker_lost for critical tasks, combined with time_limit/soft_time_limit; understand broker visibility timeouts (Redis) to prevent duplicates or ghost tasks[7][10].  
+- Resource limits: set memory/time limits to prevent runaway tasks; isolate misbehaving tasks via routing/queues and apply concurrency caps per queue[7][8].  
+- Observability: include correlation/job ids in logs; export task metrics (success/failure/latency/retries) and alert on anomalies; use Flower for operational visibility[1][6].  
+
+### When to Choose Celery vs FastAPI BackgroundTasks
+
+- Use BackgroundTasks only for small, non-critical tasks that can run in-process and won’t block the event loop; do not use for heavy CPU-bound processing[1][4][5].  
+- Use Celery when needing durable queuing, worker scaling, retries/backoff, progress tracking, or external system integration that may fail intermittently[1][5].  
+
+## 5) Database & Async SQLAlchemy
+
+- Prefer SQLAlchemy 2.x async engine with async_sessionmaker and async drivers (e.g., asyncpg); manage request-scoped sessions via DI[3][11].  
+- Keep transactions explicit and short; avoid long-lived sessions; rollback on exceptions; tune pool sizes and max_overflow per workload[3].  
+- Prevent N+1 with eager loading (joinedload/subqueryload) for hot paths; verify via integration tests; add DB indexes for frequent predicates[3][12][13].  
+- Use Alembic for migrations; never edit applied migrations; keep date-ordered revisions; include comments and test upgrades/downgrades in CI[12][13][11].  
+
+## 6) Security
+
+- OAuth2/OIDC or JWT for APIs; short-lived tokens; rotate signing keys; secure cookies for session-based flows; enforce HTTPS/HSTS in prod.  
+- Strict CORS; set CSP, X-Content-Type-Options, Referrer-Policy, Permissions-Policy at edge or middleware; validate and sanitize all inputs with Pydantic[1][2].  
+- Secrets from env/secret manager only; no secrets in VCS; rotate regularly; least-privilege DB roles and per-service credentials.  
+- Rate limiting at the gateway; bot protections for public endpoints; never log tokens or PII; use structured logs with correlation ids.  
+
+## 7) Performance & Scalability
+
+- Define SLOs (e.g., p95 latency) and track SLIs; address bottlenecks before scaling out; size Uvicorn/Gunicorn workers for workload and use horizontal scaling[1][14].  
+- Apply timeouts to all outbound calls; circuit breakers, retries with backoff/jitter, and bulkheads to isolate failures.  
+- Cache frequently accessed results with Redis; set explicit TTLs and eviction strategies; design keys to include tenant/user context.  
+- Use pagination and streaming for large responses; compress responses; use CDN for static content; offload heavy processing to Celery.  
+
+## 8) Testing
+
+- Use pytest with coverage ≥85%; unit tests for pure logic; integration tests with TestClient and Testcontainers for DB/broker; contract tests for APIs.  
+- Property-based testing for critical logic; mock external services properly; load testing with Locust for throughput and latency profiles.  
+- For Celery, unit-test tasks in isolation and integration-test the end-to-end flow with a running broker/worker; test retry and idempotency behavior[1].  
+
+## 9) Code Quality & Tooling
+
+- black, isort, ruff/flake8, and mypy/pyright in CI; bandit for security scanning; pre-commit hooks to enforce formatting and linting.  
+- Structured JSON logging; centralized log aggregation (ELK/Loki); consistent error mapping to HTTP responses; semantic versioning and changelogs.  
+
+## 10) Deployment & Operations
+
+- Docker with multi-stage builds; non-root user; minimal base images; read-only filesystem where possible.  
+- Use Gunicorn with Uvicorn workers in prod; configure worker class, timeouts, and graceful shutdown; readiness/liveness probes.  
+- CI/CD with staged gates: lint/format → tests → security scans → package → SBOM/sign → staging → e2e → progressive prod rollout; monitor and rollback on SLO regressions.  
+- Monitoring with Prometheus/Grafana; APM to identify blocking calls in async routes; Flower for Celery visibility; backups and tested restores for stateful stores.  
+
+## 11) Example Baselines (FastAPI + Celery + Async SQLAlchemy)
+
+- FastAPI app with DI-managed AsyncSession; strict Pydantic models for I/O; routers organized per domain[3][2].  
+- Celery configuration with Redis or RabbitMQ; targeted autoretry_for and retry_backoff; acks_late and time limits for critical tasks; Flower enabled[1][7][8].  
+- Alembic migrations and async SQLAlchemy 2.x patterns; connection pool tuning; statement timeouts at DB level for safety[3][12][13].  
+
+## 12) PR & Review Checklist
+
+- Routers thin; business logic in services; repositories handle data access; schemas validated and versioned.  
+- Async correctness: no blocking calls in async code; offload CPU to Celery; proper timeouts/retries/circuit breakers.  
+- DB: no N+1; proper indexes; pagination present; transactions minimal and explicit; migrations added and tested.  
+- Security: authN/Z enforced; CORS/headers configured; no secrets/PII in logs; rate limits for public endpoints.  
+- Celery: idempotency ensured; retry policy appropriate; resource/time limits set; metrics and logging present.  
+- Observability: logs structured with correlation ids; metrics/traces updated; health/readiness reflect dependencies.  
+- Tests: unit/integration/contract/load; coverage thresholds met; CI security scans passing.  
+
+## 13) Notes on Performance Tuning
+
+- Do not expect BackgroundTasks to alleviate CPU-bound latency; use Celery workers sized and isolated for CPU tasks[1][14][5].  
+- Tune broker (Redis/RabbitMQ) for throughput and visibility timeouts; isolate queues per task class; apply concurrency caps to protect shared resources[7][8].  
+- Profile endpoints and tasks; capture p95/p99 latencies; adjust worker counts and autoscaling thresholds based on actual load characteristics[1][14].  

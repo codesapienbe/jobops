@@ -70,6 +70,15 @@
     if (typeof self === "undefined" || typeof importScripts === "undefined") {
       console.error("[JobOps Clipper] Not running in a service worker context.");
     }
+    if (chrome && chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+        if (message && message.action === "ping") {
+          sendResponse("pong");
+          return true;
+        }
+        return false;
+      });
+    }
     if (typeof chrome === "undefined" || !chrome.action || !chrome.notifications || !chrome.tabs) {
       console.error("[JobOps Clipper] Required Chrome APIs are missing.");
     }
@@ -85,42 +94,45 @@
     }
     if (chrome && chrome.action && chrome.action.onClicked) {
       chrome.action.onClicked.addListener((tab) => {
-        if (tab.id !== void 0) {
+        const tabIdNum = typeof tab.id === "number" ? tab.id : void 0;
+        if (tabIdNum !== void 0) {
           try {
-            tryClipPage(tab.id).then(async (response) => {
-              try {
-                const backendApiBase = await getBackendApiBase();
-                if (!backendApiBase) {
-                  showNotification("Backend URL not configured. Please check settings.", true);
-                  return;
-                }
-                const clipRes = await fetch(`${backendApiBase}/clip`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    title: response.title,
-                    url: response.url,
-                    body: response.body
-                  })
-                });
-                if (!clipRes.ok) {
-                  let errMsg = "Unknown error";
-                  try {
-                    const err = await clipRes.json();
-                    errMsg = err.error || errMsg;
-                  } catch (err) {
-                    log("Error parsing backend error response:", err);
+            chrome.scripting.executeScript({ target: { tabId: tabIdNum }, files: ["content.js"] }, () => {
+              tryClipPage(tabIdNum).then(async (response) => {
+                try {
+                  const backendApiBase = await getBackendApiBase();
+                  if (!backendApiBase) {
+                    showNotification("Backend URL not configured. Please check settings.", true);
+                    return;
                   }
-                  showNotification(`Error saving clip: ${errMsg}`, true);
-                  return;
+                  const clipRes = await fetch(`${backendApiBase}/clip`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      title: response.title,
+                      url: response.url,
+                      body: response.body
+                    })
+                  });
+                  if (!clipRes.ok) {
+                    let errMsg = "Unknown error";
+                    try {
+                      const err = await clipRes.json();
+                      errMsg = err.error || errMsg;
+                    } catch (err) {
+                      log("Error parsing backend error response:", err);
+                    }
+                    showNotification(`Error saving clip: ${errMsg}`, true);
+                    return;
+                  }
+                  showNotification("Clip saved successfully!");
+                } catch (e) {
+                  log("Fetch to backend failed:", e);
+                  showNotification("Failed to communicate with backend. Please check your connection.", true);
                 }
-                showNotification("Clip saved successfully!");
-              } catch (e) {
-                log("Fetch to backend failed:", e);
-                showNotification("Failed to communicate with backend. Please check your connection.", true);
-              }
-            }).catch((err) => {
-              log("Final failure after retries:", err);
+              }).catch((err) => {
+                log("Final failure after retries:", err);
+              });
             });
           } catch (e) {
             log("Unexpected error in onClicked handler:", e);

@@ -3303,16 +3303,29 @@ ${sectionContent}
     }
     initializeTheme();
     initializeLanguage();
+    try {
+      chrome.runtime.sendMessage({ action: "ping" }, (resp) => {
+        if (chrome.runtime.lastError) {
+          logToConsole(`\u26A0\uFE0F Background worker unreachable: ${chrome.runtime.lastError.message}`, "warning");
+        } else if (resp === "pong") {
+          logToConsole("\u2705 Background worker healthy", "debug");
+        } else {
+          logToConsole("\u26A0\uFE0F Unexpected background worker response", "warning");
+        }
+      });
+    } catch (e) {
+      logToConsole(`\u26A0\uFE0F Background ping failed: ${e instanceof Error ? e.message : String(e)}`, "warning");
+    }
     if (copyBtn) {
       copyBtn.addEventListener("click", async (event) => {
         event.preventDefault();
         try {
           await navigator.clipboard.writeText(markdownEditor.value);
           logToConsole(i18n.getConsoleMessage("markdownCopied"), "success");
-          showNotification2(i18n.getNotificationMessage("copied"));
+          showNotification(i18n.getNotificationMessage("copied"));
         } catch (error) {
           logToConsole(`${i18n.getConsoleMessage("markdownCopyFailed")}: ${error}`, "error");
-          showNotification2(i18n.getNotificationMessage("copyFailed"), true);
+          showNotification(i18n.getNotificationMessage("copyFailed"), true);
         }
       });
     }
@@ -3388,18 +3401,18 @@ ${sectionContent}
         const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
         if (jobExists) {
           logToConsole(i18n.getConsoleMessage("existingJobFound"), "info");
-          showNotification2(i18n.getNotificationMessage("existingJobLoaded"));
+          showNotification(i18n.getNotificationMessage("existingJobLoaded"));
         } else {
           const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
           if (hasContent) {
             logToConsole(`${i18n.getConsoleMessage("newJobCreated")} (${i18n.getConsoleMessage("contentQuality")}: ${contentQuality})`, "info");
             try {
               await jobOpsDataManager.createNewJobApplication(jobData);
-              showNotification2(`${i18n.getNotificationMessage("newJobCreated")} (${contentQuality} content)`);
+              showNotification(`${i18n.getNotificationMessage("newJobCreated")} (${contentQuality} content)`);
               validateAndProvideFeedback(contentQuality, missingSections);
             } catch (error) {
               logToConsole(`${i18n.getConsoleMessage("errorCreatingJob")}: ${error}`, "error");
-              showNotification2(i18n.getNotificationMessage("jobCreationError"), true);
+              showNotification(i18n.getNotificationMessage("jobCreationError"), true);
             }
           } else {
             const minRequirements = missingSections.map((section) => {
@@ -3589,7 +3602,7 @@ ${sectionContent}
           job_application_id: jobInfo.id
         });
         logToConsole(`${i18n.getConsoleMessage("sectionSaved")}: ${sectionName}`, "success");
-        showNotification2(`\u2705 ${sectionName} saved`);
+        showNotification(`\u2705 ${sectionName} saved`);
       } catch (error) {
         const jobInfo = getCurrentJobInfo();
         logToApplicationLog("ERROR", `Failed to save section data`, {
@@ -3598,7 +3611,7 @@ ${sectionContent}
           error: error instanceof Error ? error.message : String(error)
         });
         logToConsole(`${i18n.getConsoleMessage("sectionSaveFailed")} ${sectionName}: ${error}`, "error");
-        showNotification2(`\u274C Error saving ${sectionName}`, true);
+        showNotification(`\u274C Error saving ${sectionName}`, true);
         throw error;
       }
     }
@@ -3880,7 +3893,7 @@ ${sectionContent}
         }
       } catch (error) {
         logToConsole(`\u274C Failed to save ${sectionName}: ${error}`, "error");
-        showNotification2(`\u274C Failed to save ${sectionName}`, true);
+        showNotification(`\u274C Failed to save ${sectionName}`, true);
       }
     }
     function getSectionData(sectionName) {
@@ -3970,6 +3983,10 @@ ${sectionContent}
         header.setAttribute("role", "button");
         header.setAttribute("tabindex", "0");
         header.setAttribute("aria-expanded", "false");
+        const toggleTargetInit = header.getAttribute("data-toggle");
+        if (toggleTargetInit) {
+          header.setAttribute("aria-controls", toggleTargetInit);
+        }
         header.addEventListener("click", (event) => {
           if (event.target && event.target.closest("button"))
             return;
@@ -4171,14 +4188,14 @@ ${sectionContent}
         chrome.scripting.executeScript(
           {
             target: { tabId: tabs[0].id },
-            func: () => !!window && !!window.document && !!window.document.body
+            files: ["content.js"]
           },
-          async (results) => {
-            if (chrome.runtime.lastError || !results || !results[0].result) {
-              logToConsole(i18n.getConsoleMessage("contentScriptNotLoaded"), "error");
+          async () => {
+            if (chrome.runtime.lastError) {
+              logToConsole(`\u274C Failed to inject content script: ${chrome.runtime.lastError.message}`, "error");
               return;
             }
-            logToConsole(i18n.getConsoleMessage("contentScriptAvailable"), "success");
+            logToConsole("\u2705 Content script injected", "success");
             chrome.tabs.sendMessage(
               tabs[0].id,
               { action: "clip_page" },
@@ -4193,25 +4210,25 @@ ${sectionContent}
                   logToConsole(`${i18n.getConsoleMessage("jobDataKeys")}: ${Object.keys(response.jobData).join(", ")}`, "debug");
                   if (!response.jobData.title && !response.jobData.body) {
                     logToConsole(i18n.getConsoleMessage("jobDataMissingFields"), "warning");
-                    showNotification2(i18n.getNotificationMessage("jobDataIncomplete"), true);
+                    showNotification(i18n.getNotificationMessage("jobDataIncomplete"), true);
                     return;
                   }
                   jobData = response.jobData;
                   const jobExists = await jobOpsDataManager.checkAndLoadExistingJob(jobData.url);
                   if (jobExists) {
                     logToConsole(i18n.getConsoleMessage("existingJobFoundAndLoaded"), "info");
-                    showNotification2(i18n.getNotificationMessage("existingJobLoaded"));
+                    showNotification(i18n.getNotificationMessage("existingJobLoaded"));
                   } else {
                     const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
                     if (hasContent) {
                       logToConsole(`${i18n.getConsoleMessage("creatingNewJobApplication")} (${i18n.getConsoleMessage("contentQuality")}: ${contentQuality})`, "info");
                       try {
                         await jobOpsDataManager.createNewJobApplication(jobData);
-                        showNotification2(`\u{1F195} New job application created (${contentQuality} content)`);
+                        showNotification(`\u{1F195} New job application created (${contentQuality} content)`);
                         validateAndProvideFeedback(contentQuality, missingSections);
                       } catch (error) {
                         logToConsole(`\u274C Error creating job application: ${error}`, "error");
-                        showNotification2("\u274C Error creating job application", true);
+                        showNotification("\u274C Error creating job application", true);
                       }
                     } else {
                       const minRequirements = missingSections.map((section) => {
@@ -4232,7 +4249,7 @@ ${sectionContent}
                   logToConsole(i18n.getConsoleMessage("jobDataPopulated"), "success");
                 } else {
                   logToConsole(i18n.getConsoleMessage("noJobDataReceived"), "warning");
-                  showNotification2(i18n.getNotificationMessage("noJobDataFound"), true);
+                  showNotification(i18n.getNotificationMessage("noJobDataFound"), true);
                 }
               }
             );
@@ -4261,20 +4278,20 @@ ${sectionContent}
         });
         if (!hasContent) {
           logToConsole(i18n.getConsoleMessage("noContentToCopy"), "error");
-          showNotification2(i18n.getNotificationMessage("noContentToCopy"), true);
+          showNotification(i18n.getNotificationMessage("noContentToCopy"), true);
           return;
         }
         const jsonContent = JSON.stringify(allFormData, null, 2);
         logToConsole(`${i18n.getConsoleMessage("copyingJsonData")} (${jsonContent.length} characters)...`, "progress");
         await navigator.clipboard.writeText(jsonContent);
         logToConsole(i18n.getConsoleMessage("allFormDataCopiedSuccess"), "success");
-        showNotification2(i18n.getNotificationMessage("allFormDataCopied"));
+        showNotification(i18n.getNotificationMessage("allFormDataCopied"));
       } catch (e) {
         logToConsole(`${i18n.getConsoleMessage("copyFailedWithError")}: ${e}`, "error");
-        showNotification2(i18n.getNotificationMessage("copyFailed"), true);
+        showNotification(i18n.getNotificationMessage("copyFailed"), true);
       }
     };
-    function showNotification2(message, isError = false) {
+    function showNotification(message, isError = false) {
       if (chrome.notifications) {
         const id = `jobops_${Date.now()}`;
         chrome.notifications.create(id, {
@@ -4296,21 +4313,21 @@ ${sectionContent}
       const file = target.files?.[0];
       if (!file) {
         logToConsole(i18n.getConsoleMessage("noFileSelected"), "error");
-        showNotification2(i18n.getNotificationMessage("noFileSelected"), true);
+        showNotification(i18n.getNotificationMessage("noFileSelected"), true);
         return;
       }
       if (file.type !== "application/pdf") {
         logToConsole(i18n.getConsoleMessage("invalidFileType"), "error");
-        showNotification2(i18n.getNotificationMessage("invalidFileType"), true);
+        showNotification(i18n.getNotificationMessage("invalidFileType"), true);
         return;
       }
       logToConsole(`\u{1F4C4} Starting PDF extraction: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, "progress");
       try {
         logToConsole("\u{1F4C4} Loading PDF file...", "progress");
-        showNotification2("\u{1F4C4} Loading PDF file...");
+        showNotification("\u{1F4C4} Loading PDF file...");
         logToConsole("\u{1F4C4} Loading PDF file into memory...", "progress");
         logToConsole("\u{1F50D} Extracting text content from PDF...", "progress");
-        showNotification2("\u{1F50D} Extracting PDF content...");
+        showNotification("\u{1F50D} Extracting PDF content...");
         logToConsole("\u{1F50D} Extracting text content from PDF...", "progress");
         console.log("\u{1F3AF} ABOUT TO EXTRACT PDF CONTENT - DIRECT CONSOLE LOG");
         resumeContent = await extractPdfContent(file);
@@ -4326,7 +4343,7 @@ ${sectionContent}
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logToConsole(`\u274C PDF extraction failed: ${errorMessage}`, "error");
-        showNotification2(`\u274C Failed to extract PDF content: ${errorMessage}`, true);
+        showNotification(`\u274C Failed to extract PDF content: ${errorMessage}`, true);
       }
     }
     async function handleGenerateReport() {
@@ -4352,19 +4369,19 @@ ${sectionContent}
         });
         if (!jobData || Object.keys(jobData).length === 0) {
           logToConsole(i18n.getConsoleMessage("stillNoJobData"), "error");
-          showNotification2(i18n.getNotificationMessage("noJobDataAvailable"), true);
+          showNotification(i18n.getNotificationMessage("noJobDataAvailable"), true);
           return;
         }
       }
       if (!jobData.title && !jobData.body) {
         logToConsole(i18n.getConsoleMessage("jobDataIncomplete"), "error");
-        showNotification2(i18n.getNotificationMessage("jobDataIncomplete"), true);
+        showNotification(i18n.getNotificationMessage("jobDataIncomplete"), true);
         return;
       }
       logToConsole(i18n.getConsoleMessage("reportGenerationStarted"), "info");
       generateReportBtn.disabled = true;
       logToConsole("\u{1F504} Starting report generation...", "info");
-      showNotification2("\u{1F504} Starting report generation...");
+      showNotification("\u{1F504} Starting report generation...");
       logToConsole("\u{1F3AF} BUTTON CLICK VERIFICATION - This should appear immediately", "info");
       try {
         logToConsole("\u{1F511} Checking API configuration...", "progress");
@@ -4373,12 +4390,12 @@ ${sectionContent}
         if (!apiKey) {
           const message = "Groq API key not configured. Please configure in settings.";
           logToConsole("\u274C " + message, "error");
-          showNotification2(message, true);
+          showNotification(message, true);
           showNativeNotification("JobOps Clipper - Groq API Configuration", message, 2);
           return;
         }
         logToConsole("\u2705 API key found, proceeding with report generation", "success");
-        showNotification2("\u2705 API key found, proceeding...");
+        showNotification("\u2705 API key found, proceeding...");
         logToConsole("\u{1F4CA} Preparing job data and resume content...", "progress");
         logToConsole(`\u{1F4CB} Job data keys: ${Object.keys(jobData).join(", ")}`, "debug");
         logToConsole(`\u{1F4C4} Resume content length: ${resumeContent.length} characters`, "debug");
@@ -4461,23 +4478,23 @@ ${sectionContent}
         }
         if (errorMessage.includes("API key")) {
           logToConsole("\u{1F527} API key required - please configure in settings", "warning");
-          showNotification2("\u274C Groq API key not configured. Click \u2699\uFE0F to set it up.", true);
+          showNotification("\u274C Groq API key not configured. Click \u2699\uFE0F to set it up.", true);
         } else if (errorMessage.includes("Groq API")) {
           logToConsole("\u26A0\uFE0F Groq API failed, trying Ollama fallback...", "warning");
-          showNotification2("\u26A0\uFE0F Groq API failed, trying Ollama...");
+          showNotification("\u26A0\uFE0F Groq API failed, trying Ollama...");
           try {
             logToConsole("\u{1F504} Attempting Ollama fallback...", "progress");
             const report = await generateJobReportWithOllama(jobData, resumeContent);
             markdownEditor.value = report;
             logToConsole("\u2705 Report generated with Ollama fallback!", "success");
-            showNotification2("\u2705 Report generated with Ollama fallback!");
+            showNotification("\u2705 Report generated with Ollama fallback!");
           } catch (ollamaError) {
             logToConsole("\u274C Both Groq and Ollama failed", "error");
-            showNotification2("\u274C Report generation failed on all services", true);
+            showNotification("\u274C Report generation failed on all services", true);
           }
         } else {
           logToConsole("\u274C Report generation failed with unknown error", "error");
-          showNotification2("\u274C Report generation failed", true);
+          showNotification("\u274C Report generation failed", true);
         }
       } finally {
         generateReportBtn.disabled = false;
@@ -4631,7 +4648,7 @@ ${sectionContent}
         await new Promise((resolve) => {
           chrome.storage.sync.set(settings, () => {
             logToConsole("\u2705 Settings saved successfully!", "success");
-            showNotification2(i18n.getNotificationMessage("settingsSaved"));
+            showNotification(i18n.getNotificationMessage("settingsSaved"));
             resolve();
           });
         });
@@ -4643,6 +4660,73 @@ ${sectionContent}
           return;
         }
         document.body.removeChild(modal);
+      });
+      const exportBtn = modal.querySelector("#export-settings");
+      exportBtn?.addEventListener("click", async (event) => {
+        event.preventDefault();
+        chrome.storage.sync.get(null, (all) => {
+          const keysToExport = [
+            "jobops_backend_url",
+            "groq_api_key",
+            "linear_api_key",
+            "linear_team_id",
+            "linear_project_id",
+            "linear_assignee_id",
+            "db_encryption_enabled",
+            "consent_send"
+          ];
+          const exported = {};
+          keysToExport.forEach((k) => {
+            if (k in all)
+              exported[k] = all[k];
+          });
+          const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `jobops_settings_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          logToConsole("\u2705 Settings exported", "success");
+        });
+      });
+      const importBtn = modal.querySelector("#import-settings");
+      importBtn?.addEventListener("click", async (event) => {
+        event.preventDefault();
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = "application/json";
+        fileInput.addEventListener("change", async () => {
+          const file = fileInput.files?.[0];
+          if (!file)
+            return;
+          try {
+            const text2 = await file.text();
+            const data = JSON.parse(text2);
+            const allowedKeys = /* @__PURE__ */ new Set([
+              "jobops_backend_url",
+              "groq_api_key",
+              "linear_api_key",
+              "linear_team_id",
+              "linear_project_id",
+              "linear_assignee_id",
+              "db_encryption_enabled",
+              "consent_send"
+            ]);
+            const sanitized = {};
+            Object.keys(data || {}).forEach((k) => {
+              if (allowedKeys.has(k))
+                sanitized[k] = data[k];
+            });
+            await new Promise((resolve) => chrome.storage.sync.set(sanitized, () => resolve()));
+            logToConsole("\u2705 Settings imported", "success");
+            showNotification("\u2705 Settings imported");
+          } catch (e) {
+            logToConsole(`\u274C Failed to import settings: ${e instanceof Error ? e.message : String(e)}`, "error");
+            showNotification("\u274C Failed to import settings", true);
+          }
+        });
+        fileInput.click();
       });
       const cancelBtn = modal.querySelector("#cancel-settings");
       cancelBtn?.addEventListener("click", (event) => {
@@ -4664,7 +4748,7 @@ ${sectionContent}
         const apiKey = await getGroqApiKey();
         if (!apiKey) {
           logToConsole("\u274C No API key configured", "error");
-          showNotification2("\u274C No API key configured", true);
+          showNotification("\u274C No API key configured", true);
           return;
         }
         logToConsole("\u{1F511} API key found, testing Groq API...", "progress");
@@ -4673,17 +4757,240 @@ ${sectionContent}
         });
         if (testResponse) {
           logToConsole("\u2705 API test successful!", "success");
-          showNotification2("\u2705 API test successful!");
+          showNotification("\u2705 API test successful!");
         } else {
           logToConsole("\u274C API test failed - no response", "error");
-          showNotification2("\u274C API test failed", true);
+          showNotification("\u274C API test failed", true);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logToConsole(`\u274C API test failed: ${errorMessage}`, "error");
-        showNotification2(`\u274C API test failed: ${errorMessage}`, true);
+        showNotification(`\u274C API test failed: ${errorMessage}`, true);
       }
     }
+    function handleStopGeneration() {
+      if (abortController) {
+        logToConsole("\u23F9\uFE0F Stopping generation...", "warning");
+        abortController.abort();
+        isGenerating = false;
+        abortController = null;
+        const stopGenerationBtn2 = document.getElementById("stop-generation");
+        const realtimeResponse2 = document.getElementById("realtime-response");
+        if (stopGenerationBtn2) {
+          stopGenerationBtn2.style.display = "none";
+        }
+        if (realtimeResponse2) {
+          realtimeResponse2.classList.remove("typing");
+        }
+        logToConsole("\u2705 Generation stopped", "info");
+        showNotification(i18n.getNotificationMessage("generationStopped"));
+      }
+    }
+    async function handleCopyRealtime() {
+      const realtimeResponse2 = document.getElementById("realtime-response");
+      if (!realtimeResponse2 || !realtimeResponse2.textContent) {
+        logToConsole("\u274C No real-time content to copy", "error");
+        showNotification(i18n.getNotificationMessage("noContentToCopy"), true);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(realtimeResponse2.textContent);
+        logToConsole("\u2705 Real-time response copied to clipboard", "success");
+        showNotification(i18n.getNotificationMessage("copied"));
+      } catch (error) {
+        logToConsole(`\u274C Failed to copy real-time response: ${error}`, "error");
+        showNotification(i18n.getNotificationMessage("copyFailed"), true);
+      }
+    }
+    function showNativeNotification(title, message, priority = 1) {
+      if (chrome.notifications) {
+        const notificationId = `jobops_${Date.now()}`;
+        chrome.notifications.create(notificationId, {
+          type: "basic",
+          iconUrl: "icon.png",
+          title,
+          message,
+          priority
+        });
+        setTimeout(() => {
+          chrome.notifications.clear(notificationId);
+        }, 2e3);
+      }
+    }
+    async function scanForMissingApiKeys() {
+      logToConsole("\u{1F50D} Scanning for missing API keys...", "info");
+      const groqApiKey = await getGroqApiKey();
+      const linearConfig = await getLinearConfig();
+      const missingKeys = [];
+      if (!groqApiKey) {
+        missingKeys.push("Groq API");
+        logToConsole("\u26A0\uFE0F Groq API key not configured", "warning");
+      }
+      if (!linearConfig) {
+        missingKeys.push("Linear API");
+        logToConsole("\u26A0\uFE0F Linear API key not configured", "warning");
+      }
+      if (missingKeys.length > 0) {
+        const message = `Missing API keys: ${missingKeys.join(", ")}. Click \u2699\uFE0F to configure.`;
+        logToConsole(message, "warning");
+        showNativeNotification("JobOps Clipper - API Configuration", message, 1);
+        showNotification(message, true);
+      } else {
+        logToConsole("\u2705 All API keys configured", "success");
+      }
+    }
+    async function getLinearConfig() {
+      return new Promise((resolve) => {
+        chrome.storage.sync.get(["linear_api_key", "linear_team_id", "linear_project_id", "linear_assignee_id"], (result) => {
+          if (result.linear_api_key && result.linear_team_id) {
+            resolve({
+              apiKey: result.linear_api_key,
+              teamId: result.linear_team_id,
+              projectId: result.linear_project_id || void 0,
+              assigneeId: result.linear_assignee_id || void 0,
+              autoCreateSubtasks: true,
+              defaultPriority: 2
+            });
+          } else {
+            resolve(null);
+          }
+        });
+      });
+    }
+    let isExportingLinear = false;
+    async function handleExportToLinear() {
+      if (isExportingLinear) {
+        logToConsole("\u26A0\uFE0F Export already in progress", "warning");
+        return;
+      }
+      isExportingLinear = true;
+      try {
+        const consent = await new Promise((resolve) => {
+          chrome.storage.sync.get(["consent_send"], (res) => resolve(!!res["consent_send"]));
+        });
+        if (!consent) {
+          logToConsole("\u274C Consent is required before sending data to Linear", "error");
+          showNotification(i18n.getNotificationMessage("consentRequired"), true);
+          return;
+        }
+        logToConsole("\u{1F680} Starting Linear export...", "info");
+        const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
+        if (!currentJobId) {
+          logToConsole("\u274C No active job application found", "error");
+          const message = "No active job application found. Please clip a job posting first.";
+          showNotification(message, true);
+          showNativeNotification("JobOps Clipper - No Job Application", message, 2);
+          return;
+        }
+        const alreadyExported = await new Promise((resolve) => {
+          chrome.storage.sync.get([`linear_mapping_${currentJobId}`], (res) => {
+            resolve(!!res[`linear_mapping_${currentJobId}`]);
+          });
+        });
+        if (alreadyExported) {
+          logToConsole("\u26A0\uFE0F This job application was already exported to Linear", "warning");
+          showNotification("\u26A0\uFE0F Already exported to Linear", true);
+          return;
+        }
+        const baseConfig = await getLinearConfig();
+        if (!baseConfig) {
+          logToConsole("\u274C Linear configuration not found", "error");
+          const message = "Linear configuration not found. Please configure Linear settings first.";
+          showNotification(message, true);
+          showNativeNotification("JobOps Clipper - Linear Configuration", message, 2);
+          return;
+        }
+        const svcForMeta = new LinearIntegrationService(baseConfig, jobOpsDataManager);
+        logToConsole("\u{1F517} Testing Linear connection...", "progress");
+        const connectionTest = await svcForMeta.testConnection();
+        if (!connectionTest) {
+          logToConsole("\u274C Linear connection test failed", "error");
+          const message = "Failed to connect to Linear. Please check your API key and try again.";
+          showNotification(message, true);
+          showNativeNotification("JobOps Clipper - Linear Connection Failed", message, 2);
+          return;
+        }
+        logToConsole("\u2705 Linear connection successful", "success");
+        const [projects, labels] = await Promise.all([
+          svcForMeta.getProjects(baseConfig.teamId),
+          svcForMeta.getLabels(baseConfig.teamId)
+        ]);
+        const selection = await new Promise((resolve) => {
+          const modal = document.createElement("div");
+          modal.style.cssText = "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:10001;";
+          const projOptions = ['<option value="">(None)</option>', ...projects.map((p) => `<option value="${p.id}">${p.name}</option>`)].join("");
+          const labelOptions = labels.map((l) => `<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 8px 4px 0;"><input type="checkbox" value="${l.name}"> ${l.name}</label>`).join("");
+          modal.innerHTML = `
+          <div style="background:#fff;border-radius:8px;padding:16px 16px;min-width:360px;max-width:560px;">
+            <h3 style="margin:0 0 8px 0;">Linear Export Options</h3>
+            <label>Project:
+              <select id="linear-project-select" style="width:100%;padding:6px;margin-top:4px;">${projOptions}</select>
+            </label>
+            <div style="margin-top:12px;">
+              <div style="margin-bottom:6px;">Labels:</div>
+              <div id="linear-labels-list" style="display:flex;flex-wrap:wrap;">${labelOptions}</div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+              <button id="cancel-export" type="button" style="padding:8px 12px;">Cancel</button>
+              <button id="confirm-export" type="button" style="padding:8px 12px;background:#4CAF50;color:#fff;border:none;border-radius:4px;">Export</button>
+            </div>
+          </div>`;
+          document.body.appendChild(modal);
+          modal.querySelector("#cancel-export")?.addEventListener("click", () => {
+            document.body.removeChild(modal);
+            resolve({ projectId: void 0, labelNames: [] });
+          });
+          modal.querySelector("#confirm-export")?.addEventListener("click", () => {
+            const projectId = modal.querySelector("#linear-project-select").value || void 0;
+            const selected = Array.from(modal.querySelectorAll('#linear-labels-list input[type="checkbox"]:checked')).map((el) => el.value);
+            document.body.removeChild(modal);
+            resolve({ projectId, labelNames: selected });
+          });
+        });
+        const config = { ...baseConfig };
+        if (selection.projectId)
+          config.projectId = selection.projectId;
+        if (selection.labelNames && selection.labelNames.length > 0)
+          config.additionalLabels = selection.labelNames;
+        const linearService = new LinearIntegrationService(config, jobOpsDataManager);
+        logToConsole("\u{1F4E4} Exporting job application to Linear...", "progress");
+        const result = await linearService.exportJobToLinear(currentJobId);
+        if (result.success) {
+          chrome.storage.sync.set({ [`linear_mapping_${currentJobId}`]: result.mainTask?.id || true });
+          logToConsole("\u2705 Job exported to Linear successfully", "success");
+          if (result.failedSubtasks && result.failedSubtasks.length > 0) {
+            logToConsole(`\u26A0\uFE0F ${result.failedSubtasks.length} subtasks failed to create`, "warning");
+            for (const f of result.failedSubtasks) {
+              logToConsole(`\u2022 ${f.section}: ${f.error}`, "warning");
+            }
+          }
+          const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
+          showNotification(message);
+          if (result.mainTask.url) {
+            chrome.tabs.create({ url: result.mainTask.url });
+          }
+        } else {
+          logToConsole(`\u274C Linear export failed: ${result.error}`, "error");
+          showNotification(`Failed to export to Linear: ${result.error}`, true);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logToConsole(`\u274C Linear export error: ${errorMessage}`, "error");
+        showNotification(`Linear export failed: ${errorMessage}`, true);
+      } finally {
+        isExportingLinear = false;
+      }
+    }
+    window.addEventListener("error", (event) => {
+      const message = event?.message || "Unknown runtime error";
+      logToConsole(`\u274C Uncaught error: ${message}`, "error");
+      showNotification("\u274C An unexpected error occurred. See console for details.", true);
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || "Unknown");
+      logToConsole(`\u274C Unhandled promise rejection: ${reason}`, "error");
+      showNotification("\u274C A background error occurred. Some actions may not have completed.", true);
+    });
   });
   function generateMarkdown(jobData) {
     let md = "";
@@ -5128,226 +5435,20 @@ Fill in all template placeholders with concrete, actionable information based on
       });
     });
   }
-  function handleStopGeneration() {
-    if (abortController) {
-      logToConsole("\u23F9\uFE0F Stopping generation...", "warning");
-      abortController.abort();
-      isGenerating = false;
-      abortController = null;
-      const stopGenerationBtn = document.getElementById("stop-generation");
-      const realtimeResponse = document.getElementById("realtime-response");
-      if (stopGenerationBtn) {
-        stopGenerationBtn.style.display = "none";
-      }
-      if (realtimeResponse) {
-        realtimeResponse.classList.remove("typing");
-      }
-      logToConsole("\u2705 Generation stopped", "info");
-      showNotification(i18n.getNotificationMessage("generationStopped"));
-    }
-  }
-  async function handleCopyRealtime() {
-    const realtimeResponse = document.getElementById("realtime-response");
-    if (!realtimeResponse || !realtimeResponse.textContent) {
-      logToConsole("\u274C No real-time content to copy", "error");
-      showNotification(i18n.getNotificationMessage("noContentToCopy"), true);
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(realtimeResponse.textContent);
-      logToConsole("\u2705 Real-time response copied to clipboard", "success");
-      showNotification(i18n.getNotificationMessage("copied"));
-    } catch (error) {
-      logToConsole(`\u274C Failed to copy real-time response: ${error}`, "error");
-      showNotification(i18n.getNotificationMessage("copyFailed"), true);
-    }
-  }
-  function showNativeNotification(title, message, priority = 1) {
-    if (chrome.notifications) {
-      const notificationId = `jobops_${Date.now()}`;
-      chrome.notifications.create(notificationId, {
-        type: "basic",
-        iconUrl: "icon.png",
-        title,
-        message,
-        priority
-      });
-      setTimeout(() => {
-        chrome.notifications.clear(notificationId);
-      }, 2e3);
-    }
-  }
-  async function scanForMissingApiKeys() {
-    logToConsole("\u{1F50D} Scanning for missing API keys...", "info");
-    const groqApiKey = await getGroqApiKey();
-    const linearConfig = await getLinearConfig();
-    const missingKeys = [];
-    if (!groqApiKey) {
-      missingKeys.push("Groq API");
-      logToConsole("\u26A0\uFE0F Groq API key not configured", "warning");
-    }
-    if (!linearConfig) {
-      missingKeys.push("Linear API");
-      logToConsole("\u26A0\uFE0F Linear API key not configured", "warning");
-    }
-    if (missingKeys.length > 0) {
-      const message = `Missing API keys: ${missingKeys.join(", ")}. Click \u2699\uFE0F to configure.`;
-      logToConsole(message, "warning");
-      showNativeNotification("JobOps Clipper - API Configuration", message, 1);
-      showNotification(message, true);
-    } else {
-      logToConsole("\u2705 All API keys configured", "success");
-    }
-  }
-  async function getLinearConfig() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get(["linear_api_key", "linear_team_id", "linear_project_id", "linear_assignee_id"], (result) => {
-        if (result.linear_api_key && result.linear_team_id) {
-          resolve({
-            apiKey: result.linear_api_key,
-            teamId: result.linear_team_id,
-            projectId: result.linear_project_id || void 0,
-            assigneeId: result.linear_assignee_id || void 0,
-            autoCreateSubtasks: true,
-            defaultPriority: 2
-          });
-        } else {
-          resolve(null);
-        }
-      });
-    });
-  }
-  var isExportingLinear = false;
-  async function handleExportToLinear() {
-    if (isExportingLinear) {
-      logToConsole("\u26A0\uFE0F Export already in progress", "warning");
-      return;
-    }
-    isExportingLinear = true;
-    try {
-      const consent = await new Promise((resolve) => {
-        chrome.storage.sync.get(["consent_send"], (res) => resolve(!!res["consent_send"]));
-      });
-      if (!consent) {
-        logToConsole("\u274C Consent is required before sending data to Linear", "error");
-        showNotification(i18n.getNotificationMessage("consentRequired"), true);
-        return;
-      }
-      logToConsole("\u{1F680} Starting Linear export...", "info");
-      const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
-      if (!currentJobId) {
-        logToConsole("\u274C No active job application found", "error");
-        const message = "No active job application found. Please clip a job posting first.";
-        showNotification(message, true);
-        showNativeNotification("JobOps Clipper - No Job Application", message, 2);
-        return;
-      }
-      const alreadyExported = await new Promise((resolve) => {
-        chrome.storage.sync.get([`linear_mapping_${currentJobId}`], (res) => {
-          resolve(!!res[`linear_mapping_${currentJobId}`]);
-        });
-      });
-      if (alreadyExported) {
-        logToConsole("\u26A0\uFE0F This job application was already exported to Linear", "warning");
-        showNotification("\u26A0\uFE0F Already exported to Linear", true);
-        return;
-      }
-      const baseConfig = await getLinearConfig();
-      if (!baseConfig) {
-        logToConsole("\u274C Linear configuration not found", "error");
-        const message = "Linear configuration not found. Please configure Linear settings first.";
-        showNotification(message, true);
-        showNativeNotification("JobOps Clipper - Linear Configuration", message, 2);
-        return;
-      }
-      const svcForMeta = new LinearIntegrationService(baseConfig, jobOpsDataManager);
-      logToConsole("\u{1F517} Testing Linear connection...", "progress");
-      const connectionTest = await svcForMeta.testConnection();
-      if (!connectionTest) {
-        logToConsole("\u274C Linear connection test failed", "error");
-        const message = "Failed to connect to Linear. Please check your API key and try again.";
-        showNotification(message, true);
-        showNativeNotification("JobOps Clipper - Linear Connection Failed", message, 2);
-        return;
-      }
-      logToConsole("\u2705 Linear connection successful", "success");
-      const [projects, labels] = await Promise.all([
-        svcForMeta.getProjects(baseConfig.teamId),
-        svcForMeta.getLabels(baseConfig.teamId)
-      ]);
-      const selection = await new Promise((resolve) => {
-        const modal = document.createElement("div");
-        modal.style.cssText = "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:10001;";
-        const projOptions = ['<option value="">(None)</option>', ...projects.map((p) => `<option value="${p.id}">${p.name}</option>`)].join("");
-        const labelOptions = labels.map((l) => `<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 8px 4px 0;"><input type="checkbox" value="${l.name}"> ${l.name}</label>`).join("");
-        modal.innerHTML = `
-        <div style="background:#fff;border-radius:8px;padding:16px 16px;min-width:360px;max-width:560px;">
-          <h3 style="margin:0 0 8px 0;">Linear Export Options</h3>
-          <label>Project:
-            <select id="linear-project-select" style="width:100%;padding:6px;margin-top:4px;">${projOptions}</select>
-          </label>
-          <div style="margin-top:12px;">
-            <div style="margin-bottom:6px;">Labels:</div>
-            <div id="linear-labels-list" style="display:flex;flex-wrap:wrap;">${labelOptions}</div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
-            <button id="cancel-export" type="button" style="padding:8px 12px;">Cancel</button>
-            <button id="confirm-export" type="button" style="padding:8px 12px;background:#4CAF50;color:#fff;border:none;border-radius:4px;">Export</button>
-          </div>
-        </div>`;
-        document.body.appendChild(modal);
-        modal.querySelector("#cancel-export")?.addEventListener("click", () => {
-          document.body.removeChild(modal);
-          resolve({ projectId: void 0, labelNames: [] });
-        });
-        modal.querySelector("#confirm-export")?.addEventListener("click", () => {
-          const projectId = modal.querySelector("#linear-project-select").value || void 0;
-          const selected = Array.from(modal.querySelectorAll('#linear-labels-list input[type="checkbox"]:checked')).map((el) => el.value);
-          document.body.removeChild(modal);
-          resolve({ projectId, labelNames: selected });
-        });
-      });
-      const config = { ...baseConfig };
-      if (selection.projectId)
-        config.projectId = selection.projectId;
-      if (selection.labelNames && selection.labelNames.length > 0)
-        config.additionalLabels = selection.labelNames;
-      const linearService = new LinearIntegrationService(config, jobOpsDataManager);
-      logToConsole("\u{1F4E4} Exporting job application to Linear...", "progress");
-      const result = await linearService.exportJobToLinear(currentJobId);
-      if (result.success) {
-        chrome.storage.sync.set({ [`linear_mapping_${currentJobId}`]: result.mainTask?.id || true });
-        logToConsole("\u2705 Job exported to Linear successfully", "success");
-        if (result.failedSubtasks && result.failedSubtasks.length > 0) {
-          logToConsole(`\u26A0\uFE0F ${result.failedSubtasks.length} subtasks failed to create`, "warning");
-          for (const f of result.failedSubtasks) {
-            logToConsole(`\u2022 ${f.section}: ${f.error}`, "warning");
-          }
-        }
-        const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
-        showNotification(message);
-        if (result.mainTask.url) {
-          chrome.tabs.create({ url: result.mainTask.url });
-        }
-      } else {
-        logToConsole(`\u274C Linear export failed: ${result.error}`, "error");
-        showNotification(`Failed to export to Linear: ${result.error}`, true);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logToConsole(`\u274C Linear export error: ${errorMessage}`, "error");
-      showNotification(`Linear export failed: ${errorMessage}`, true);
-    } finally {
-      isExportingLinear = false;
-    }
-  }
   async function ensureConsent() {
-    const consent = await new Promise((resolve) => {
-      chrome.storage.sync.get(["consent_send"], (res) => resolve(!!res["consent_send"]));
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.storage.sync.get(["consent_send"], (res) => {
+          const consent = !!res["consent_send"];
+          if (consent)
+            resolve();
+          else
+            reject(new Error("Consent required before calling Groq API"));
+        });
+      } catch (e) {
+        reject(new Error("Consent check failed"));
+      }
     });
-    if (!consent) {
-      throw new Error("Consent required before calling Groq API");
-    }
   }
 })();
 /*! Bundled license information:

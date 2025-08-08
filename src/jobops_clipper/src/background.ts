@@ -82,6 +82,17 @@ try {
     console.error('[JobOps Clipper] Not running in a service worker context.');
   }
 
+  // Respond to health pings from popup
+  if (chrome && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message && message.action === 'ping') {
+        sendResponse('pong');
+        return true;
+      }
+      return false;
+    });
+  }
+
   // Check for Chrome APIs
   if (typeof chrome === 'undefined' || !chrome.action || !chrome.notifications || !chrome.tabs) {
     console.error('[JobOps Clipper] Required Chrome APIs are missing.');
@@ -100,48 +111,51 @@ try {
     console.warn('[JobOps Clipper] Unable to access manifest metadata.');
   }
 
-
-
   // Defensive event registration
   if (chrome && chrome.action && chrome.action.onClicked) {
     chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
-      if (tab.id !== undefined) {
+      const tabIdNum = typeof tab.id === 'number' ? tab.id : undefined;
+      if (tabIdNum !== undefined) {
         try {
-          tryClipPage(tab.id).then(async (response) => {
-            // ① POST /clip to send clipped content to backend
-            try {
-              const backendApiBase = await getBackendApiBase();
-              if (!backendApiBase) {
-                showNotification("Backend URL not configured. Please check settings.", true);
-                return;
-              }
-              const clipRes = await fetch(`${backendApiBase}/clip`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  title: response.title,
-                  url: response.url,
-                  body: response.body
-                })
-              });
-              if (!clipRes.ok) {
-                let errMsg = "Unknown error";
-                try {
-                  const err = await clipRes.json();
-                  errMsg = err.error || errMsg;
-                } catch (err) {
-                  log("Error parsing backend error response:", err);
+          // Proactively inject content script on the active tab via scripting API (activeTab)
+          chrome.scripting.executeScript({ target: { tabId: tabIdNum }, files: ['content.js'] }, () => {
+            // Ignore injection errors here; tryClipPage will still attempt messaging
+            tryClipPage(tabIdNum).then(async (response) => {
+              // ① POST /clip to send clipped content to backend
+              try {
+                const backendApiBase = await getBackendApiBase();
+                if (!backendApiBase) {
+                  showNotification("Backend URL not configured. Please check settings.", true);
+                  return;
                 }
-                showNotification(`Error saving clip: ${errMsg}`, true);
-                return;
+                const clipRes = await fetch(`${backendApiBase}/clip`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    title: response.title,
+                    url: response.url,
+                    body: response.body
+                  })
+                });
+                if (!clipRes.ok) {
+                  let errMsg = "Unknown error";
+                  try {
+                    const err = await clipRes.json();
+                    errMsg = err.error || errMsg;
+                  } catch (err) {
+                    log("Error parsing backend error response:", err);
+                  }
+                  showNotification(`Error saving clip: ${errMsg}`, true);
+                  return;
+                }
+                showNotification("Clip saved successfully!");
+              } catch (e) {
+                log("Fetch to backend failed:", e);
+                showNotification("Failed to communicate with backend. Please check your connection.", true);
               }
-              showNotification("Clip saved successfully!");
-            } catch (e) {
-              log("Fetch to backend failed:", e);
-              showNotification("Failed to communicate with backend. Please check your connection.", true);
-            }
-          }).catch((err) => {
-            log("Final failure after retries:", err);
+            }).catch((err) => {
+              log("Final failure after retries:", err);
+            });
           });
         } catch (e) {
           log("Unexpected error in onClicked handler:", e);

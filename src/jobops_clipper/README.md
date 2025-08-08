@@ -276,7 +276,7 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
 ### Permissions
 
 - `scripting`: Execute content scripts
-- `activeTab`: Access current tab
+- `activeTab`: Access current tab for on-demand script injection
 - `notifications`: Show status notifications
 - `clipboardWrite`: Copy content to clipboard
 - `storage`: Store API keys and settings
@@ -288,7 +288,8 @@ await jobOpsDataManager.updateJobStatus('interview_scheduled');
 - `https://api.linear.app/*`: Linear API
 - `https://libretranslate.de/*`: Translation API (primary)
 - `https://translate.argosopentech.com/*`: Translation API (fallback)
-- `<all_urls>`: Content script injection
+
+The extension injects `content.js` on-demand using `activeTab` + `scripting.executeScript`, eliminating the need for `<all_urls>` optional host permissions.
 
 ## Technical Details
 

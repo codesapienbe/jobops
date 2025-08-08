@@ -2,44 +2,44 @@
 > jobops_clipper@0.1.0 build
 > node build.js --outdir=../../dist/extension
 
-[2025-08-08T13:46:11.630Z] --- Build started ---
-[2025-08-08T13:46:11.631Z] Mode: dev | watch=false | minify=false | sourcemap=true
-[2025-08-08T13:46:11.631Z] Output directory: /Users/yilmaz/Projects/jobops/dist/extension
-[2025-08-08T13:46:11.632Z] Ensuring output directory exists...
-[2025-08-08T13:46:11.632Z] Output directory ready.
-[2025-08-08T13:46:11.632Z] Running TypeScript build...
-[2025-08-08T13:46:12.099Z] TypeScript build completed.
-[2025-08-08T13:46:12.099Z] Copying manifest and icon...
-[2025-08-08T13:46:12.100Z] Manifest and icon copied.
-[2025-08-08T13:46:12.101Z] Using BACKEND_API_BASE: http://localhost:8877
-[2025-08-08T13:46:12.101Z] Bundling background.ts with esbuild...
-[2025-08-08T13:46:12.114Z] background.ts bundled.
-[2025-08-08T13:46:12.114Z] Bundling content.ts with esbuild...
-[2025-08-08T13:46:12.123Z] content.ts bundled.
-[2025-08-08T13:46:12.123Z] Bundling popup.ts with esbuild...
-[2025-08-08T13:46:12.139Z] popup.ts bundled.
-[2025-08-08T13:46:12.139Z] Copying popup.html and popup.css...
-[2025-08-08T13:46:12.140Z] popup.html and popup.css copied.
-[2025-08-08T13:46:12.140Z] Copying locale files...
-[2025-08-08T13:46:12.140Z] Copied en.json
-[2025-08-08T13:46:12.140Z] Copied nl.json
-[2025-08-08T13:46:12.140Z] Copied fr.json
-[2025-08-08T13:46:12.141Z] Copied tr.json
-[2025-08-08T13:46:12.141Z] Locale files copied.
-[2025-08-08T13:46:12.141Z] --- Build completed successfully ---
+[2025-08-08T14:09:46.653Z] --- Build started ---
+[2025-08-08T14:09:46.655Z] Mode: dev | watch=false | minify=false | sourcemap=true
+[2025-08-08T14:09:46.655Z] Output directory: /Users/yilmaz/Projects/jobops/dist/extension
+[2025-08-08T14:09:46.655Z] Ensuring output directory exists...
+[2025-08-08T14:09:46.655Z] Output directory ready.
+[2025-08-08T14:09:46.655Z] Running TypeScript build...
+[2025-08-08T14:09:47.156Z] TypeScript build completed.
+[2025-08-08T14:09:47.156Z] Copying manifest and icon...
+[2025-08-08T14:09:47.157Z] Manifest and icon copied.
+[2025-08-08T14:09:47.157Z] Using BACKEND_API_BASE: http://localhost:8877
+[2025-08-08T14:09:47.157Z] Bundling background.ts with esbuild...
+[2025-08-08T14:09:47.184Z] background.ts bundled.
+[2025-08-08T14:09:47.185Z] Bundling content.ts with esbuild...
+[2025-08-08T14:09:47.195Z] content.ts bundled.
+[2025-08-08T14:09:47.195Z] Bundling popup.ts with esbuild...
+[2025-08-08T14:09:47.212Z] popup.ts bundled.
+[2025-08-08T14:09:47.212Z] Copying popup.html and popup.css...
+[2025-08-08T14:09:47.214Z] popup.html and popup.css copied.
+[2025-08-08T14:09:47.214Z] Copying locale files...
+[2025-08-08T14:09:47.214Z] Copied en.json
+[2025-08-08T14:09:47.215Z] Copied nl.json
+[2025-08-08T14:09:47.215Z] Copied fr.json
+[2025-08-08T14:09:47.215Z] Copied tr.json
+[2025-08-08T14:09:47.215Z] Locale files copied.
+[2025-08-08T14:09:47.215Z] --- Build completed successfully ---
 
 
-  ../../dist/extension/background.js       6.2kb
-  ../../dist/extension/background.js.map  10.3kb
+  ../../dist/extension/background.js       6.8kb
+  ../../dist/extension/background.js.map  11.4kb
 
-⚡ Done in 2ms
+⚡ Done in 6ms
 
   ../../dist/extension/content.js      3.5kb
   ../../dist/extension/content.js.map  6.3kb
 
-⚡ Done in 1ms
+⚡ Done in 2ms
 
-  ../../dist/extension/popup.js      224.1kb
-  ../../dist/extension/popup.js.map  413.4kb
+  ../../dist/extension/popup.js      228.6kb
+  ../../dist/extension/popup.js.map  420.0kb
 
-⚡ Done in 8ms
+⚡ Done in 9ms

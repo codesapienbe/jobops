@@ -16,6 +16,7 @@ const DOMPurify = (createDOMPurify as any)(window as unknown as Window);
 
 // Import i18n manager
 import { i18n, SupportedLanguage } from './i18n';
+import { LinearIntegrationService } from './integration';
 
 // LLM Configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -172,6 +173,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Initialize language system (browser locale only)
   initializeLanguage();
   
+  // Background worker health ping
+  try {
+    chrome.runtime.sendMessage({ action: 'ping' }, (resp) => {
+      if (chrome.runtime.lastError) {
+        logToConsole(`⚠️ Background worker unreachable: ${chrome.runtime.lastError.message}`, 'warning');
+      } else if (resp === 'pong') {
+        logToConsole('✅ Background worker healthy', 'debug');
+      } else {
+        logToConsole('⚠️ Unexpected background worker response', 'warning');
+      }
+    });
+  } catch (e) {
+    logToConsole(`⚠️ Background ping failed: ${e instanceof Error ? e.message : String(e)}`, 'warning');
+  }
 
   
   // Set up button event listeners
@@ -1002,6 +1017,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       (header as HTMLElement).setAttribute('role', 'button');
       (header as HTMLElement).setAttribute('tabindex', '0');
       (header as HTMLElement).setAttribute('aria-expanded', 'false');
+      const toggleTargetInit = (header as HTMLElement).getAttribute('data-toggle');
+      if (toggleTargetInit) {
+        (header as HTMLElement).setAttribute('aria-controls', toggleTargetInit);
+      }
 
       header.addEventListener('click', (event) => {
         if (event.target && (event.target as Element).closest('button')) return;
@@ -1200,18 +1219,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       
       logToConsole(i18n.getConsoleMessage('checkingContentScript'), "debug");
+      // On-demand inject the content script using activeTab permission
       chrome.scripting.executeScript(
         {
           target: { tabId: tabs[0].id },
-          func: () => !!window && !!window.document && !!window.document.body,
+          files: ['content.js']
         },
-        async (results) => {
-          if (chrome.runtime.lastError || !results || !results[0].result) {
-            logToConsole(i18n.getConsoleMessage('contentScriptNotLoaded'), "error");
+        async () => {
+          if (chrome.runtime.lastError) {
+            logToConsole(`❌ Failed to inject content script: ${chrome.runtime.lastError.message}`, 'error');
             return;
           }
-          
-          logToConsole(i18n.getConsoleMessage('contentScriptAvailable'), "success");
+          logToConsole('✅ Content script injected', 'success');
           chrome.tabs.sendMessage(
             tabs[0].id!,
             { action: "clip_page" },
@@ -1783,6 +1802,73 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.body.removeChild(modal);
     });
 
+    // Settings export/import handlers
+    const exportBtn = modal.querySelector('#export-settings');
+    exportBtn?.addEventListener('click', async (event) => {
+      event.preventDefault();
+      chrome.storage.sync.get(null, (all) => {
+        const keysToExport = [
+          'jobops_backend_url',
+          'groq_api_key',
+          'linear_api_key',
+          'linear_team_id',
+          'linear_project_id',
+          'linear_assignee_id',
+          'db_encryption_enabled',
+          'consent_send'
+        ];
+        const exported: Record<string, any> = {};
+        keysToExport.forEach((k) => {
+          if (k in all) exported[k] = all[k];
+        });
+        const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `jobops_settings_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        logToConsole('✅ Settings exported', 'success');
+      });
+    });
+
+    const importBtn = modal.querySelector('#import-settings');
+    importBtn?.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'application/json';
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          const allowedKeys = new Set([
+            'jobops_backend_url',
+            'groq_api_key',
+            'linear_api_key',
+            'linear_team_id',
+            'linear_project_id',
+            'linear_assignee_id',
+            'db_encryption_enabled',
+            'consent_send'
+          ]);
+          const sanitized: Record<string, any> = {};
+          Object.keys(data || {}).forEach((k) => {
+            if (allowedKeys.has(k)) sanitized[k] = data[k];
+          });
+          await new Promise<void>((resolve) => chrome.storage.sync.set(sanitized, () => resolve()));
+          logToConsole('✅ Settings imported', 'success');
+          showNotification('✅ Settings imported');
+        } catch (e) {
+          logToConsole(`❌ Failed to import settings: ${e instanceof Error ? e.message : String(e)}`, 'error');
+          showNotification('❌ Failed to import settings', true);
+        }
+      });
+      fileInput.click();
+    });
+
     // Cancel and backdrop
     const cancelBtn = modal.querySelector('#cancel-settings');
     cancelBtn?.addEventListener('click', (event) => {
@@ -1829,6 +1915,265 @@ document.addEventListener("DOMContentLoaded", async () => {
       showNotification(`❌ API test failed: ${errorMessage}`, true);
     }
   }
+
+  // Handle stop generation
+  function handleStopGeneration() {
+    if (abortController) {
+      logToConsole("⏹️ Stopping generation...", "warning");
+      abortController.abort();
+      isGenerating = false;
+      abortController = null;
+      
+      const stopGenerationBtn = document.getElementById("stop-generation") as HTMLButtonElement;
+      const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
+      
+      if (stopGenerationBtn) {
+        stopGenerationBtn.style.display = 'none';
+      }
+      if (realtimeResponse) {
+        realtimeResponse.classList.remove('typing');
+      }
+      
+      logToConsole("✅ Generation stopped", "info");
+      showNotification(i18n.getNotificationMessage('generationStopped'));
+    }
+  }
+
+  // Handle copy real-time response
+  async function handleCopyRealtime() {
+    const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
+    
+    if (!realtimeResponse || !realtimeResponse.textContent) {
+      logToConsole("❌ No real-time content to copy", "error");
+      showNotification(i18n.getNotificationMessage('noContentToCopy'), true);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(realtimeResponse.textContent);
+      logToConsole("✅ Real-time response copied to clipboard", "success");
+      showNotification(i18n.getNotificationMessage('copied'));
+    } catch (error) {
+      logToConsole(`❌ Failed to copy real-time response: ${error}`, "error");
+      showNotification(i18n.getNotificationMessage('copyFailed'), true);
+    }
+  }
+
+  // Helper function for shorter native notifications
+  function showNativeNotification(title: string, message: string, priority: number = 1) {
+    if (chrome.notifications) {
+      const notificationId = `jobops_${Date.now()}`;
+      chrome.notifications.create(notificationId, {
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: title,
+        message: message,
+        priority: priority
+      });
+      
+      // Auto-dismiss after 2 seconds (3x shorter than default)
+      setTimeout(() => {
+        chrome.notifications.clear(notificationId);
+      }, 2000);
+    }
+  }
+
+  // Scan for missing API keys and show notifications
+  async function scanForMissingApiKeys() {
+    logToConsole("🔍 Scanning for missing API keys...", "info");
+    
+    const groqApiKey = await getGroqApiKey();
+    const linearConfig = await getLinearConfig();
+    
+    const missingKeys = [];
+    
+    if (!groqApiKey) {
+      missingKeys.push('Groq API');
+      logToConsole("⚠️ Groq API key not configured", "warning");
+    }
+    
+    if (!linearConfig) {
+      missingKeys.push('Linear API');
+      logToConsole("⚠️ Linear API key not configured", "warning");
+    }
+    
+    if (missingKeys.length > 0) {
+      const message = `Missing API keys: ${missingKeys.join(', ')}. Click ⚙️ to configure.`;
+      logToConsole(message, "warning");
+      
+      // Show native notification with shorter duration
+      showNativeNotification('JobOps Clipper - API Configuration', message, 1);
+      
+      // Also show in-app notification
+      showNotification(message, true);
+    } else {
+      logToConsole("✅ All API keys configured", "success");
+    }
+  }
+
+    // Linear integration functions
+  async function getLinearConfig(): Promise<import('./integration').LinearIntegrationConfig | null> {
+    return new Promise((resolve) => {
+      chrome.storage.sync.get(['linear_api_key', 'linear_team_id', 'linear_project_id', 'linear_assignee_id'], (result) => {
+        if (result.linear_api_key && result.linear_team_id) {
+          resolve({
+            apiKey: result.linear_api_key,
+            teamId: result.linear_team_id,
+            projectId: result.linear_project_id || undefined,
+            assigneeId: result.linear_assignee_id || undefined,
+            autoCreateSubtasks: true,
+            defaultPriority: 2
+          });
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  let isExportingLinear = false;
+  async function handleExportToLinear() {
+    if (isExportingLinear) {
+      logToConsole('⚠️ Export already in progress', 'warning');
+      return;
+    }
+    isExportingLinear = true;
+    try {
+      const consent = await new Promise<boolean>((resolve) => {
+        chrome.storage.sync.get(['consent_send'], (res) => resolve(!!res['consent_send']));
+      });
+      if (!consent) {
+        logToConsole('❌ Consent is required before sending data to Linear', 'error');
+        showNotification(i18n.getNotificationMessage('consentRequired'), true);
+        return;
+      }
+      logToConsole("🚀 Starting Linear export...", "info");
+      const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
+      if (!currentJobId) {
+        logToConsole("❌ No active job application found", "error");
+        const message = "No active job application found. Please clip a job posting first.";
+        showNotification(message, true);
+        showNativeNotification('JobOps Clipper - No Job Application', message, 2);
+        return;
+      }
+
+      const alreadyExported = await new Promise<boolean>((resolve) => {
+        chrome.storage.sync.get([`linear_mapping_${currentJobId}`], (res) => {
+          resolve(!!res[`linear_mapping_${currentJobId}`]);
+        });
+      });
+      if (alreadyExported) {
+        logToConsole("⚠️ This job application was already exported to Linear", "warning");
+        showNotification("⚠️ Already exported to Linear", true);
+        return;
+      }
+
+      const baseConfig = await getLinearConfig();
+      if (!baseConfig) {
+        logToConsole("❌ Linear configuration not found", "error");
+        const message = "Linear configuration not found. Please configure Linear settings first.";
+        showNotification(message, true);
+        showNativeNotification('JobOps Clipper - Linear Configuration', message, 2);
+        return;
+      }
+
+      const svcForMeta = new LinearIntegrationService(baseConfig, jobOpsDataManager);
+      logToConsole("🔗 Testing Linear connection...", "progress");
+      const connectionTest = await svcForMeta.testConnection();
+      if (!connectionTest) {
+        logToConsole("❌ Linear connection test failed", "error");
+        const message = "Failed to connect to Linear. Please check your API key and try again.";
+        showNotification(message, true);
+        showNativeNotification('JobOps Clipper - Linear Connection Failed', message, 2);
+        return;
+      }
+      logToConsole("✅ Linear connection successful", "success");
+
+      // Fetch metadata and let user select project/labels
+      const [projects, labels] = await Promise.all([
+        svcForMeta.getProjects(baseConfig.teamId),
+        svcForMeta.getLabels(baseConfig.teamId)
+      ]);
+
+      const selection = await new Promise<{ projectId?: string; labelNames: string[] }>((resolve) => {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:10001;';
+        const projOptions = ["<option value=\"\">(None)</option>", ...projects.map(p => `<option value="${p.id}">${p.name}</option>`)].join('');
+        const labelOptions = labels.map(l => `<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 8px 4px 0;"><input type="checkbox" value="${l.name}"> ${l.name}</label>`).join('');
+        modal.innerHTML = `
+          <div style="background:#fff;border-radius:8px;padding:16px 16px;min-width:360px;max-width:560px;">
+            <h3 style="margin:0 0 8px 0;">Linear Export Options</h3>
+            <label>Project:
+              <select id="linear-project-select" style="width:100%;padding:6px;margin-top:4px;">${projOptions}</select>
+            </label>
+            <div style="margin-top:12px;">
+              <div style="margin-bottom:6px;">Labels:</div>
+              <div id="linear-labels-list" style="display:flex;flex-wrap:wrap;">${labelOptions}</div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+              <button id="cancel-export" type="button" style="padding:8px 12px;">Cancel</button>
+              <button id="confirm-export" type="button" style="padding:8px 12px;background:#4CAF50;color:#fff;border:none;border-radius:4px;">Export</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector('#cancel-export')?.addEventListener('click', () => {
+          document.body.removeChild(modal);
+          resolve({ projectId: undefined, labelNames: [] });
+        });
+        modal.querySelector('#confirm-export')?.addEventListener('click', () => {
+          const projectId = (modal.querySelector('#linear-project-select') as HTMLSelectElement).value || undefined;
+          const selected: string[] = Array.from(modal.querySelectorAll('#linear-labels-list input[type="checkbox"]:checked')).map((el: any) => el.value);
+          document.body.removeChild(modal);
+          resolve({ projectId, labelNames: selected });
+        });
+      });
+
+      const config: any = { ...baseConfig };
+      if (selection.projectId) config.projectId = selection.projectId;
+      if (selection.labelNames && selection.labelNames.length > 0) config.additionalLabels = selection.labelNames;
+
+      const linearService = new LinearIntegrationService(config, jobOpsDataManager);
+      logToConsole("📤 Exporting job application to Linear...", "progress");
+      const result = await linearService.exportJobToLinear(currentJobId);
+
+      if (result.success) {
+        chrome.storage.sync.set({ [`linear_mapping_${currentJobId}`]: result.mainTask?.id || true });
+        logToConsole("✅ Job exported to Linear successfully", "success");
+        if (result.failedSubtasks && result.failedSubtasks.length > 0) {
+          logToConsole(`⚠️ ${result.failedSubtasks.length} subtasks failed to create`, 'warning');
+          for (const f of result.failedSubtasks) {
+            logToConsole(`• ${f.section}: ${f.error}`, 'warning');
+          }
+        }
+        const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
+        showNotification(message);
+        if (result.mainTask.url) {
+          chrome.tabs.create({ url: result.mainTask.url });
+        }
+      } else {
+        logToConsole(`❌ Linear export failed: ${result.error}`, "error");
+        showNotification(`Failed to export to Linear: ${result.error}`, true);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logToConsole(`❌ Linear export error: ${errorMessage}`, "error");
+      showNotification(`Linear export failed: ${errorMessage}`, true);
+    } finally {
+      isExportingLinear = false;
+    }
+  }
+
+    // Global error boundary for popup
+  window.addEventListener('error', (event) => {
+    const message = event?.message || 'Unknown runtime error';
+    logToConsole(`❌ Uncaught error: ${message}`, 'error');
+    showNotification('❌ An unexpected error occurred. See console for details.', true);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = (event.reason instanceof Error ? event.reason.message : String(event.reason || 'Unknown'));
+    logToConsole(`❌ Unhandled promise rejection: ${reason}`, 'error');
+    showNotification('❌ A background error occurred. Some actions may not have completed.', true);
+  });
 });
 
 function generateMarkdown(jobData: Record<string, any>): string {
@@ -2351,261 +2696,17 @@ async function getGroqApiKey(): Promise<string | null> {
   });
 }
 
-// Handle stop generation
-function handleStopGeneration() {
-  if (abortController) {
-    logToConsole("⏹️ Stopping generation...", "warning");
-    abortController.abort();
-    isGenerating = false;
-    abortController = null;
-    
-    const stopGenerationBtn = document.getElementById("stop-generation") as HTMLButtonElement;
-    const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
-    
-    if (stopGenerationBtn) {
-      stopGenerationBtn.style.display = 'none';
-    }
-    if (realtimeResponse) {
-      realtimeResponse.classList.remove('typing');
-    }
-    
-    logToConsole("✅ Generation stopped", "info");
-    showNotification(i18n.getNotificationMessage('generationStopped'));
-  }
-}
-
-// Handle copy real-time response
-async function handleCopyRealtime() {
-  const realtimeResponse = document.getElementById("realtime-response") as HTMLDivElement;
-  
-  if (!realtimeResponse || !realtimeResponse.textContent) {
-    logToConsole("❌ No real-time content to copy", "error");
-    showNotification(i18n.getNotificationMessage('noContentToCopy'), true);
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(realtimeResponse.textContent);
-    logToConsole("✅ Real-time response copied to clipboard", "success");
-    showNotification(i18n.getNotificationMessage('copied'));
-  } catch (error) {
-    logToConsole(`❌ Failed to copy real-time response: ${error}`, "error");
-    showNotification(i18n.getNotificationMessage('copyFailed'), true);
-  }
-}
-
-// Helper function for shorter native notifications
-function showNativeNotification(title: string, message: string, priority: number = 1) {
-  if (chrome.notifications) {
-    const notificationId = `jobops_${Date.now()}`;
-    chrome.notifications.create(notificationId, {
-      type: 'basic',
-      iconUrl: 'icon.png',
-      title: title,
-      message: message,
-      priority: priority
-    });
-    
-    // Auto-dismiss after 2 seconds (3x shorter than default)
-    setTimeout(() => {
-      chrome.notifications.clear(notificationId);
-    }, 2000);
-  }
-}
-
-// Scan for missing API keys and show notifications
-async function scanForMissingApiKeys() {
-  logToConsole("🔍 Scanning for missing API keys...", "info");
-  
-  const groqApiKey = await getGroqApiKey();
-  const linearConfig = await getLinearConfig();
-  
-  const missingKeys = [];
-  
-  if (!groqApiKey) {
-    missingKeys.push('Groq API');
-    logToConsole("⚠️ Groq API key not configured", "warning");
-  }
-  
-  if (!linearConfig) {
-    missingKeys.push('Linear API');
-    logToConsole("⚠️ Linear API key not configured", "warning");
-  }
-  
-  if (missingKeys.length > 0) {
-    const message = `Missing API keys: ${missingKeys.join(', ')}. Click ⚙️ to configure.`;
-    logToConsole(message, "warning");
-    
-    // Show native notification with shorter duration
-    showNativeNotification('JobOps Clipper - API Configuration', message, 1);
-    
-    // Also show in-app notification
-    showNotification(message, true);
-  } else {
-    logToConsole("✅ All API keys configured", "success");
-  }
-}
-
-import { LinearIntegrationService, LinearIntegrationConfig } from './integration';
-
-// Linear integration functions
-async function getLinearConfig(): Promise<LinearIntegrationConfig | null> {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get(['linear_api_key', 'linear_team_id', 'linear_project_id', 'linear_assignee_id'], (result) => {
-      if (result.linear_api_key && result.linear_team_id) {
-        resolve({
-          apiKey: result.linear_api_key,
-          teamId: result.linear_team_id,
-          projectId: result.linear_project_id || undefined,
-          assigneeId: result.linear_assignee_id || undefined,
-          autoCreateSubtasks: true,
-          defaultPriority: 2
-        });
-      } else {
-        resolve(null);
-      }
-    });
-  });
-}
-
-let isExportingLinear = false;
-async function handleExportToLinear() {
-  if (isExportingLinear) {
-    logToConsole('⚠️ Export already in progress', 'warning');
-    return;
-  }
-  isExportingLinear = true;
-  try {
-    const consent = await new Promise<boolean>((resolve) => {
-      chrome.storage.sync.get(['consent_send'], (res) => resolve(!!res['consent_send']));
-    });
-    if (!consent) {
-      logToConsole('❌ Consent is required before sending data to Linear', 'error');
-      showNotification(i18n.getNotificationMessage('consentRequired'), true);
-      return;
-    }
-    logToConsole("🚀 Starting Linear export...", "info");
-    const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
-    if (!currentJobId) {
-      logToConsole("❌ No active job application found", "error");
-      const message = "No active job application found. Please clip a job posting first.";
-      showNotification(message, true);
-      showNativeNotification('JobOps Clipper - No Job Application', message, 2);
-      return;
-    }
-
-    const alreadyExported = await new Promise<boolean>((resolve) => {
-      chrome.storage.sync.get([`linear_mapping_${currentJobId}`], (res) => {
-        resolve(!!res[`linear_mapping_${currentJobId}`]);
-      });
-    });
-    if (alreadyExported) {
-      logToConsole("⚠️ This job application was already exported to Linear", "warning");
-      showNotification("⚠️ Already exported to Linear", true);
-      return;
-    }
-
-    const baseConfig = await getLinearConfig();
-    if (!baseConfig) {
-      logToConsole("❌ Linear configuration not found", "error");
-      const message = "Linear configuration not found. Please configure Linear settings first.";
-      showNotification(message, true);
-      showNativeNotification('JobOps Clipper - Linear Configuration', message, 2);
-      return;
-    }
-
-    const svcForMeta = new LinearIntegrationService(baseConfig, jobOpsDataManager);
-    logToConsole("🔗 Testing Linear connection...", "progress");
-    const connectionTest = await svcForMeta.testConnection();
-    if (!connectionTest) {
-      logToConsole("❌ Linear connection test failed", "error");
-      const message = "Failed to connect to Linear. Please check your API key and try again.";
-      showNotification(message, true);
-      showNativeNotification('JobOps Clipper - Linear Connection Failed', message, 2);
-      return;
-    }
-    logToConsole("✅ Linear connection successful", "success");
-
-    // Fetch metadata and let user select project/labels
-    const [projects, labels] = await Promise.all([
-      svcForMeta.getProjects(baseConfig.teamId),
-      svcForMeta.getLabels(baseConfig.teamId)
-    ]);
-
-    const selection = await new Promise<{ projectId?: string; labelNames: string[] }>((resolve) => {
-      const modal = document.createElement('div');
-      modal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:10001;';
-      const projOptions = ["<option value=\"\">(None)</option>", ...projects.map(p => `<option value="${p.id}">${p.name}</option>`)].join('');
-      const labelOptions = labels.map(l => `<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 8px 4px 0;"><input type="checkbox" value="${l.name}"> ${l.name}</label>`).join('');
-      modal.innerHTML = `
-        <div style="background:#fff;border-radius:8px;padding:16px 16px;min-width:360px;max-width:560px;">
-          <h3 style="margin:0 0 8px 0;">Linear Export Options</h3>
-          <label>Project:
-            <select id="linear-project-select" style="width:100%;padding:6px;margin-top:4px;">${projOptions}</select>
-          </label>
-          <div style="margin-top:12px;">
-            <div style="margin-bottom:6px;">Labels:</div>
-            <div id="linear-labels-list" style="display:flex;flex-wrap:wrap;">${labelOptions}</div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
-            <button id="cancel-export" type="button" style="padding:8px 12px;">Cancel</button>
-            <button id="confirm-export" type="button" style="padding:8px 12px;background:#4CAF50;color:#fff;border:none;border-radius:4px;">Export</button>
-          </div>
-        </div>`;
-      document.body.appendChild(modal);
-      modal.querySelector('#cancel-export')?.addEventListener('click', () => {
-        document.body.removeChild(modal);
-        resolve({ projectId: undefined, labelNames: [] });
-      });
-      modal.querySelector('#confirm-export')?.addEventListener('click', () => {
-        const projectId = (modal.querySelector('#linear-project-select') as HTMLSelectElement).value || undefined;
-        const selected: string[] = Array.from(modal.querySelectorAll('#linear-labels-list input[type="checkbox"]:checked')).map((el: any) => el.value);
-        document.body.removeChild(modal);
-        resolve({ projectId, labelNames: selected });
-      });
-    });
-
-    const config: any = { ...baseConfig };
-    if (selection.projectId) config.projectId = selection.projectId;
-    if (selection.labelNames && selection.labelNames.length > 0) config.additionalLabels = selection.labelNames;
-
-    const linearService = new LinearIntegrationService(config, jobOpsDataManager);
-    logToConsole("📤 Exporting job application to Linear...", "progress");
-    const result = await linearService.exportJobToLinear(currentJobId);
-
-    if (result.success) {
-      chrome.storage.sync.set({ [`linear_mapping_${currentJobId}`]: result.mainTask?.id || true });
-      logToConsole("✅ Job exported to Linear successfully", "success");
-      if (result.failedSubtasks && result.failedSubtasks.length > 0) {
-        logToConsole(`⚠️ ${result.failedSubtasks.length} subtasks failed to create`, 'warning');
-        for (const f of result.failedSubtasks) {
-          logToConsole(`• ${f.section}: ${f.error}`, 'warning');
-        }
-      }
-      const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
-      showNotification(message);
-      if (result.mainTask.url) {
-        chrome.tabs.create({ url: result.mainTask.url });
-      }
-    } else {
-      logToConsole(`❌ Linear export failed: ${result.error}`, "error");
-      showNotification(`Failed to export to Linear: ${result.error}`, true);
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logToConsole(`❌ Linear export error: ${errorMessage}`, "error");
-    showNotification(`Linear export failed: ${errorMessage}`, true);
-  } finally {
-    isExportingLinear = false;
-  }
-}
-
-// Enforce consent before Groq API calls
+// Consent enforcement for external API calls
 async function ensureConsent(): Promise<void> {
-  const consent = await new Promise<boolean>((resolve) => {
-    chrome.storage.sync.get(['consent_send'], (res) => resolve(!!res['consent_send']));
+  return new Promise<void>((resolve, reject) => {
+    try {
+      chrome.storage.sync.get(['consent_send'], (res) => {
+        const consent = !!res['consent_send'];
+        if (consent) resolve();
+        else reject(new Error('Consent required before calling Groq API'));
+      });
+    } catch (e) {
+      reject(new Error('Consent check failed'));
+    }
   });
-  if (!consent) {
-    throw new Error('Consent required before calling Groq API');
-  }
 }
