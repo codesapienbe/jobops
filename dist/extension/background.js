@@ -149,3 +149,4 @@
     console.error("[JobOps Clipper] Fatal error in background script:", fatal);
   }
 })();
+//# sourceMappingURL=background.js.map

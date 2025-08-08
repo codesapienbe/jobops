@@ -3,9 +3,19 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-// Parse --outdir argument or use default
-const outDirArg = process.argv.find(arg => arg.startsWith('--outdir='));
-const outDir = outDirArg ? path.resolve(process.cwd(), outDirArg.split('=')[1]) : path.resolve(__dirname, '../../dist/extension/');
+// Parse args
+const args = process.argv.slice(2);
+const getFlag = (name, def = false) => args.some(a => a === `--${name}`) ? true : def;
+const getValue = (name, def = null) => {
+  const found = args.find(a => a.startsWith(`--${name}=`));
+  return found ? found.split('=')[1] : def;
+};
+
+const outDir = path.resolve(__dirname, getValue('outdir', '../../dist/extension/'));
+const mode = getValue('mode', 'dev');
+const isWatch = getFlag('watch', false);
+const isMinify = getFlag('minify', mode === 'prod');
+const isSourceMap = getFlag('sourcemap', true);
 
 const logPath = path.join(__dirname, 'build.log');
 function logStep(message) {
@@ -17,11 +27,13 @@ function logStep(message) {
 
 try {
   logStep('--- Build started ---');
+  logStep(`Mode: ${mode} | watch=${isWatch} | minify=${isMinify} | sourcemap=${isSourceMap}`);
   logStep(`Output directory: ${outDir}`);
   logStep('Ensuring output directory exists...');
   fs.mkdirSync(outDir, { recursive: true });
   logStep('Output directory ready.');
 
+  // TypeScript build (transpile only; bundling done by esbuild below)
   logStep('Running TypeScript build...');
   execSync(`tsc --outDir "${outDir}"`, { stdio: 'inherit' });
   logStep('TypeScript build completed.');
@@ -34,16 +46,20 @@ try {
   const backendApiBase = process.env.BACKEND_API_BASE || 'http://localhost:8877';
   logStep(`Using BACKEND_API_BASE: ${backendApiBase}`);
 
+  // Build command helper
+  const esbuildBase = `esbuild --bundle --platform=browser ${isMinify ? '--minify' : ''} ${isSourceMap ? '--sourcemap' : ''}`;
+  const defineBackend = `--define:process.env.BACKEND_API_BASE='\"${backendApiBase}\"'`;
+
   logStep('Bundling background.ts with esbuild...');
-  execSync(`esbuild src/background.ts --bundle --platform=browser --outfile=${outDir}/background.js --format=iife --define:process.env.BACKEND_API_BASE='"${backendApiBase}"'`, { stdio: 'inherit' });
+  execSync(`${esbuildBase} src/background.ts --outfile=${outDir}/background.js --format=iife ${defineBackend}`, { stdio: 'inherit' });
   logStep('background.ts bundled.');
 
   logStep('Bundling content.ts with esbuild...');
-  execSync(`esbuild src/content.ts --bundle --platform=browser --outfile=${outDir}/content.js --format=iife --define:process.env.BACKEND_API_BASE='"${backendApiBase}"'`, { stdio: 'inherit' });
+  execSync(`${esbuildBase} src/content.ts --outfile=${outDir}/content.js --format=iife ${defineBackend}`, { stdio: 'inherit' });
   logStep('content.ts bundled.');
 
   logStep('Bundling popup.ts with esbuild...');
-  execSync(`esbuild src/popup.ts --bundle --platform=browser --outfile=${outDir}/popup.js --format=iife --define:process.env.BACKEND_API_BASE='"${backendApiBase}"'`, { stdio: 'inherit' });
+  execSync(`${esbuildBase} src/popup.ts --outfile=${outDir}/popup.js --format=iife ${defineBackend}`, { stdio: 'inherit' });
   logStep('popup.ts bundled.');
 
   logStep('Copying popup.html and popup.css...');
@@ -55,7 +71,7 @@ try {
   const localesDir = path.join(__dirname, 'src', 'locales');
   const outLocalesDir = path.join(outDir, 'src', 'locales');
   fs.mkdirSync(outLocalesDir, { recursive: true });
-  
+
   const localeFiles = ['en.json', 'nl.json', 'fr.json', 'tr.json'];
   localeFiles.forEach(file => {
     const srcPath = path.join(localesDir, file);
@@ -68,6 +84,20 @@ try {
     }
   });
   logStep('Locale files copied.');
+
+  // Optional: rudimentary watch by re-running build on changes (simple, non-incremental)
+  if (isWatch) {
+    logStep('Entering watch mode (simple). Watching src/ for changes...');
+    const chokidarPath = path.join(__dirname, 'node_modules', '.bin', 'chokidar');
+    if (fs.existsSync(chokidarPath)) {
+      // Use chokidar-cli if available
+      const watchCmd = `${process.platform === 'win32' ? 'npx.cmd' : 'npx'} chokidar \"src/**/*\" -c \"node build.js --outdir=${outDir} --mode=${mode} ${isMinify ? '--minify' : ''} ${isSourceMap ? '--sourcemap' : ''}\"`;
+      logStep(`Watch command: ${watchCmd}`);
+      execSync(watchCmd, { stdio: 'inherit' });
+    } else {
+      logStep('chokidar not installed; watch mode requires manual re-run.');
+    }
+  }
 
   logStep('--- Build completed successfully ---');
 } catch (err) {

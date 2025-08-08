@@ -430,7 +430,10 @@ class I18nManager {
       { id: 'copy-markdown', key: 'copyToClipboard' },
       { id: 'generate-report', key: 'generateReport' },
       { id: 'settings', key: 'settings' },
-      { id: 'clear-console', key: 'clearConsole' }
+      { id: 'clear-console', key: 'clearConsole' },
+      { id: 'export-linear', key: 'exportToLinear' },
+      { id: 'expand-all', key: 'expandAll' },
+      { id: 'collapse-all', key: 'collapseAll' }
     ];
 
     ariaLabels.forEach(({ id, key }) => {

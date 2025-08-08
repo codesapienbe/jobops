@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "description": "Chrome extension to clip web pages and send to JobOps app.",
   "scripts": {
-    "build": "node build.js",
-    "clean": "rm -rf ../../../dist/extension"
+    "build": "node build.js --outdir=../../dist/extension",
+    "build:dev": "node build.js --mode=dev --watch --sourcemap --outdir=../../dist/extension",
+    "build:prod": "node build.js --mode=prod --minify --sourcemap --outdir=../../dist/extension",
+    "clean": "rimraf ../../dist/extension"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
     "@types/chrome": "^0.0.258",
-    "esbuild": "^0.20.2"
+    "esbuild": "^0.20.2",
+    "rimraf": "^5.0.5"
+  },
+  "dependencies": {
+    "dompurify": "^3.0.6"
   }
 } 

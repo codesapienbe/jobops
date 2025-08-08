@@ -93,7 +93,10 @@
     "toggleTheme": "Basculer le Thème",
     "settings": "Paramètres",
     "languageSelector": "Sélecteur de Langue",
-    "clearConsole": "Effacer la console"
+    "clearConsole": "Effacer la console",
+    "exportToLinear": "Exporter vers Linear",
+    "expandAll": "Tout développer",
+    "collapseAll": "Tout réduire"
   },
   "notifications": {
     "copied": "Copié dans le presse-papiers !",
@@ -127,7 +130,9 @@
     "sectionSaved": "Section enregistrée",
     "sectionSaveFailed": "Échec de l'enregistrement de section",
     "insufficientContent": "Contenu insuffisant pour la création de base de données",
-    "contentQuality": "contenu"
+    "contentQuality": "contenu",
+    "settingsSaved": "Paramètres enregistrés !",
+    "consentRequired": "Veuillez fournir votre consentement dans les paramètres avant d’exporter."
   },
   "console": {
     "initialized": "Moniteur de console initialisé",

@@ -7,6 +7,12 @@ declare const JOBOPS_BACKEND_URL: string | undefined;
 
 // Import database and data manager
 import { jobOpsDataManager } from './repository';
+import { jobOpsDatabase } from './database';
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import createDOMPurify from 'dompurify';
+const DOMPurify = (createDOMPurify as any)(window as unknown as Window);
 
 // Import i18n manager
 import { i18n, SupportedLanguage } from './i18n';
@@ -90,18 +96,41 @@ function initializeLanguage(): void {
 
 
 
+function sanitizeLogMessage(message: string): string {
+  try {
+    let sanitized = message;
+    sanitized = sanitized.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted-email]');
+    sanitized = sanitized.replace(/\b(\+?\d{1,3}[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b/g, '[redacted-phone]');
+    return sanitized;
+  } catch {
+    return message;
+  }
+}
+
+let logQueue: Array<{ html: string; level: 'info' | 'success' | 'warning' | 'error' | 'debug' | 'progress' }> = [];
+let logFlushTimer: number | null = null;
 function logToConsole(message: string, level: 'info' | 'success' | 'warning' | 'error' | 'debug' | 'progress' = 'info') {
   if (!consoleOutput) return;
-  
+  const safe = escapeHtml(sanitizeLogMessage(message));
   const timestamp = new Date().toLocaleTimeString();
-  const line = document.createElement('div');
-  line.className = `console-line ${level}`;
-  line.innerHTML = `<span style="color: #888;">[${timestamp}]</span> ${message}`;
-  
-  consoleOutput.appendChild(line);
-  consoleOutput.scrollTop = consoleOutput.scrollHeight;
-  
-  // Also log to browser console for debugging
+  const html = `<span style="color: #888;">[${timestamp}]</span> ${safe}`;
+  logQueue.push({ html, level });
+  if (logFlushTimer === null) {
+    logFlushTimer = window.setTimeout(() => {
+      if (!consoleOutput) { logQueue = []; logFlushTimer = null; return; }
+      const fragment = document.createDocumentFragment();
+      for (const entry of logQueue) {
+        const line = document.createElement('div');
+        line.className = `console-line ${entry.level}`;
+        line.innerHTML = entry.html;
+        fragment.appendChild(line);
+      }
+      consoleOutput.appendChild(fragment);
+      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+      logQueue = [];
+      logFlushTimer = null;
+    }, 50);
+  }
   console.log(`[${level.toUpperCase()}] ${message}`);
 }
 
@@ -650,6 +679,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     return element ? element.checked : false;
   }
 
+  function debounce<F extends (...args: any[]) => void>(fn: F, delayMs: number): F {
+    let timer: number | undefined;
+    return ((...args: any[]) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = window.setTimeout(() => fn(...args), delayMs);
+    }) as F;
+  }
+
   // Collect all form data as JSON
   function collectAllFormData(): any {
     const formData = {
@@ -959,15 +998,85 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Add click event listeners to all toggle headers
     const toggleHeaders = document.querySelectorAll('.properties-header, .markdown-header, .realtime-header, .job-header, .console-header');
     toggleHeaders.forEach(header => {
+      // Accessibility roles/attributes
+      (header as HTMLElement).setAttribute('role', 'button');
+      (header as HTMLElement).setAttribute('tabindex', '0');
+      (header as HTMLElement).setAttribute('aria-expanded', 'false');
+
       header.addEventListener('click', (event) => {
-        // Prevent toggle when clicking on buttons inside the header
-        if (event.target && (event.target as Element).closest('button')) {
-          return;
-        }
-        
-        const toggleTarget = header.getAttribute('data-toggle');
+        if (event.target && (event.target as Element).closest('button')) return;
+        const toggleTarget = (header as HTMLElement).getAttribute('data-toggle');
         if (toggleTarget) {
           toggleSection(toggleTarget);
+        }
+      });
+      // Keyboard support
+      (header as HTMLElement).addEventListener('keydown', (e) => {
+        const evt = e as KeyboardEvent;
+        const toggleTarget = (header as HTMLElement).getAttribute('data-toggle');
+        if (!toggleTarget) return;
+        if (evt.key === 'Enter' || evt.key === ' ') {
+          evt.preventDefault();
+          toggleSection(toggleTarget);
+        } else if (evt.key === 'ArrowRight') {
+          ensureExpanded(toggleTarget);
+        } else if (evt.key === 'ArrowLeft') {
+          ensureCollapsed(toggleTarget);
+        }
+      });
+    });
+
+    // Expand/Collapse All buttons
+    const expandAll = document.getElementById('expand-all');
+    const collapseAll = document.getElementById('collapse-all');
+    expandAll?.addEventListener('click', () => setAllSections(true));
+    collapseAll?.addEventListener('click', () => setAllSections(false));
+  }
+
+  function ensureExpanded(sectionId: string) {
+    const content = document.getElementById(sectionId);
+    if (content && content.classList.contains('collapsed')) toggleSection(sectionId);
+  }
+
+  function ensureCollapsed(sectionId: string) {
+    const content = document.getElementById(sectionId);
+    if (content && content.classList.contains('expanded')) toggleSection(sectionId);
+  }
+
+  function setAllSections(expand: boolean) {
+    const sectionIds: string[] = [
+      'properties-content', 'markdown-content', 'realtime-content', 'console-output',
+      'position-details-content', 'job-requirements-content', 'company-information-content',
+      'skills-matrix-content', 'application-materials-content', 'interview-schedule-content',
+      'interview-preparation-content', 'communication-log-content', 'key-contacts-content',
+      'interview-feedback-content', 'offer-details-content', 'rejection-analysis-content',
+      'privacy-policy-content', 'lessons-learned-content', 'performance-metrics-content',
+      'advisor-review-content', 'application-summary-content'
+    ];
+    sectionIds.forEach(id => {
+      if (expand) ensureExpanded(id); else ensureCollapsed(id);
+    });
+  }
+
+  // Persist collapse state
+  function saveCollapseState(sectionId: string, isCollapsed: boolean) {
+    chrome.storage.sync.get(['collapse_state'], (res) => {
+      const state = res['collapse_state'] || {};
+      state[sectionId] = isCollapsed;
+      chrome.storage.sync.set({ collapse_state: state });
+    });
+  }
+
+  function restoreCollapseState() {
+    chrome.storage.sync.get(['collapse_state'], (res) => {
+      const state = res['collapse_state'] || {};
+      Object.entries(state).forEach(([sectionId, collapsed]) => {
+        const content = document.getElementById(sectionId);
+        if (!content) return;
+        const isCollapsed = !!collapsed;
+        const currentlyCollapsed = content.classList.contains('collapsed');
+        if (isCollapsed !== currentlyCollapsed) {
+          toggleSection(sectionId);
         }
       });
     });
@@ -979,62 +1088,56 @@ document.addEventListener("DOMContentLoaded", async () => {
       logToConsole(`❌ Section element not found: ${sectionId}`, "error");
       return;
     }
-    
     const header = content.parentElement?.querySelector('[data-toggle="' + sectionId + '"]');
     const toggleIcon = header?.querySelector('.toggle-icon');
-    
     if (content && header && toggleIcon) {
       const isCollapsed = content.classList.contains('collapsed');
-      
       if (isCollapsed) {
         content.classList.remove('collapsed');
         content.classList.add('expanded');
-        // Handle console toggle icon differently
+        (header as HTMLElement).setAttribute('aria-expanded', 'true');
         if (sectionId === 'console-output') {
           toggleIcon.textContent = '▼';
           const consoleMonitor = content.closest('.console-monitor');
           if (consoleMonitor) {
             consoleMonitor.setAttribute('data-collapsed', 'false');
-            // Update button position
             document.documentElement.style.setProperty('--button-bottom', '208px');
-            // Update form padding
             const form = document.querySelector('#properties-form');
-            if (form) {
-              (form as HTMLElement).style.paddingBottom = '120px';
-            }
+            if (form) (form as HTMLElement).style.paddingBottom = '120px';
           }
           logToApplicationLog('INFO', 'Debug console expanded', { section: sectionId });
         } else {
           toggleIcon.textContent = '▼';
         }
         logToConsole(`✅ Section expanded: ${sectionId}`, "debug");
+        saveCollapseState(sectionId, false);
       } else {
         content.classList.remove('expanded');
         content.classList.add('collapsed');
-        // Handle console toggle icon differently
+        (header as HTMLElement).setAttribute('aria-expanded', 'false');
         if (sectionId === 'console-output') {
           toggleIcon.textContent = '▶';
           const consoleMonitor = content.closest('.console-monitor');
           if (consoleMonitor) {
             consoleMonitor.setAttribute('data-collapsed', 'true');
-            // Update button position
             document.documentElement.style.setProperty('--button-bottom', '48px');
-            // Update form padding
             const form = document.querySelector('#properties-form');
-            if (form) {
-              (form as HTMLElement).style.paddingBottom = '80px';
-            }
+            if (form) (form as HTMLElement).style.paddingBottom = '80px';
           }
           logToApplicationLog('INFO', 'Debug console collapsed', { section: sectionId });
         } else {
           toggleIcon.textContent = '▶';
         }
         logToConsole(`✅ Section collapsed: ${sectionId}`, "debug");
+        saveCollapseState(sectionId, true);
       }
     } else {
       logToConsole(`❌ Header or toggle icon not found for section: ${sectionId}`, "error");
     }
   }
+
+  // After UI init, restore previous collapse state
+  restoreCollapseState();
 
   function populatePropertyFields(data: Record<string, any>) {
     propTitle.value = data.title || '';
@@ -1081,8 +1184,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     markdownEditor.value = generateMarkdown(jobData);
   }
 
+  const updateJobDataFromFieldsDebounced = debounce(() => updateJobDataFromFields(), 200);
+
   [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation].forEach(input => {
-    input.addEventListener('input', updateJobDataFromFields);
+    input.addEventListener('input', updateJobDataFromFieldsDebounced);
   });
 
   async function requestJobData() {
@@ -1234,17 +1339,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Notification function using Chrome notifications
   function showNotification(message: string, isError: boolean = false) {
-    // Try to use Chrome notifications first
     if (chrome.notifications) {
-      chrome.notifications.create({
+      const id = `jobops_${Date.now()}`;
+      chrome.notifications.create(id, {
         type: "basic",
         iconUrl: "icon.png",
         title: "JobOps Clipper",
         message: message,
         priority: isError ? 2 : 1
       });
+      setTimeout(() => chrome.notifications.clear(id), 2500);
     } else {
-      // Fallback to status message
       logToConsole(message, isError ? "error" : "info");
     }
   }
@@ -1403,7 +1508,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Initialize real-time response with test message
       const realtimeResponse = document.getElementById("realtime-response");
       if (realtimeResponse) {
-        realtimeResponse.innerHTML = '<span class="typing-text">🚀 Starting report generation...</span>';
+        const safe = DOMPurify.sanitize('<span class="typing-text">🚀 Starting report generation...</span>');
+        realtimeResponse.innerHTML = safe;
         realtimeResponse.classList.add('typing');
         logToConsole("✅ Real-time response element initialized with test message", "debug");
       } else {
@@ -1428,7 +1534,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (realtimeResponse) {
           const span = document.createElement('span');
           span.className = 'typing-text';
-          span.textContent = chunk;
+          span.textContent = chunk; // textContent is safe (no HTML)
           realtimeResponse.appendChild(span);
           realtimeResponse.scrollTop = realtimeResponse.scrollHeight;
           logToConsole(`📝 Real-time chunk added to UI: ${chunk.length} characters`, "debug");
@@ -1471,7 +1577,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const realtimeResponse = document.getElementById("realtime-response");
       if (realtimeResponse) {
         realtimeResponse.classList.remove('typing');
-        realtimeResponse.innerHTML += `<br><span style="color: #ff6b6b;">❌ Error: ${errorMessage}</span>`;
+        const safe = DOMPurify.sanitize(`<br><span style="color: #ff6b6b;">❌ Error: ${escapeHtml(errorMessage)}</span>`);
+        realtimeResponse.innerHTML += safe;
         logToConsole("✅ Error message added to real-time response", "debug");
       }
       if (stopGenerationBtn) {
@@ -1516,86 +1623,173 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function handleSettings() {
     logToConsole("⚙️ Settings dialog opened", "info");
     
-    // Get current settings
     const groqApiKey = await getGroqApiKey();
     const linearConfig = await getLinearConfig();
-    
-    // Create settings dialog
+
+    // Load backend URL
+    const backendUrl = await new Promise<string | null>((resolve) => {
+      chrome.storage.sync.get(['jobops_backend_url'], (res) => resolve(res['jobops_backend_url'] || null));
+    });
+
+    // Load encryption setting (flag only; passphrase not stored)
+    const encryptionEnabled = await new Promise<boolean>((resolve) => {
+      chrome.storage.sync.get(['db_encryption_enabled'], (res) => resolve(!!res['db_encryption_enabled']));
+    });
+
     const settingsHtml = `
-      <div style="padding: 20px; max-width: 500px;">
+      <div style=\"padding: 20px; max-width: 620px;\">
+        <h3>🌐 Backend</h3>
+        <div style=\"display:flex; gap:8px; align-items:center;\">
+          <input type=\"text\" id=\"backend-url\" placeholder=\"Backend API Base (e.g., http://localhost:8877)\" value=\"${backendUrl || ''}\" style=\"flex:1; padding:8px;\" aria-label=\"Backend API Base\">
+        </div>
+        <div id=\"backend-error\" style=\"color:#d33; font-size:12px; min-height:18px; margin-top:4px;\"></div>
+
+        <h3>🔐 Database Encryption (optional)</h3>
+        <div style=\"display:flex; gap:8px; align-items:center;\">
+          <label style=\"display:flex;align-items:center;gap:6px;\"><input id=\"db-encryption-enabled\" type=\"checkbox\" ${encryptionEnabled ? 'checked' : ''}> Enable encryption</label>
+          <input type=\"password\" id=\"db-encryption-pass\" placeholder=\"Passphrase (min 8 chars)\" style=\"flex:1; padding:8px;\" aria-label=\"Encryption Passphrase\" ${encryptionEnabled ? '' : 'disabled'}>
+          <button id=\"toggle-db-pass\" type=\"button\" style=\"padding:8px 12px;\">👁️</button>
+        </div>
+        <div id=\"db-encryption-error\" style=\"color:#d33; font-size:12px; min-height:18px; margin-top:4px;\"></div>
+
         <h3>🔑 Groq API Settings</h3>
-        <p>Enter your Groq API key for AI report generation:</p>
-        <input type="password" id="groq-api-key" placeholder="Groq API Key" value="${groqApiKey || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <div style=\"display:flex; gap:8px; align-items:center;\">
+          <input type=\"password\" id=\"groq-api-key\" placeholder=\"Groq API Key\" value=\"${groqApiKey || ''}\" style=\"flex:1; padding:8px;\" aria-label=\"Groq API Key\">
+          <button id=\"toggle-groq-key\" type=\"button\" style=\"padding:8px 12px;\">👁️</button>
+          <button id=\"test-groq\" type=\"button\" style=\"padding:8px 12px;\">🧪 Test</button>
+        </div>
+        <div id=\"groq-key-error\" style=\"color:#d33; font-size:12px; min-height:18px; margin-top:4px;\"></div>
         
-        <h3>📤 Linear Integration Settings</h3>
-        <p>Configure Linear integration for task creation:</p>
-        <input type="password" id="linear-api-key" placeholder="Linear API Key" value="${linearConfig?.apiKey || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
-        <input type="text" id="linear-team-id" placeholder="Linear Team ID" value="${linearConfig?.teamId || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
-        <input type="text" id="linear-project-id" placeholder="Linear Project ID (optional)" value="${linearConfig?.projectId || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
-        <input type="text" id="linear-assignee-id" placeholder="Linear Assignee ID (optional)" value="${linearConfig?.assigneeId || ''}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <h3 style=\"margin-top:16px;\">📤 Linear Integration Settings</h3>
+        <div style=\"display:flex; gap:8px; align-items:center;\">
+          <input type=\"password\" id=\"linear-api-key\" placeholder=\"Linear API Key\" value=\"${linearConfig?.apiKey || ''}\" style=\"flex:1; padding:8px;\" aria-label=\"Linear API Key\">
+          <button id=\"toggle-linear-key\" type=\"button\" style=\"padding:8px 12px;\">👁️</button>
+        </div>
+        <div style=\"display:flex; gap:8px; margin-top:8px;\">
+          <input type=\"text\" id=\"linear-team-id\" placeholder=\"Linear Team ID\" value=\"${linearConfig?.teamId || ''}\" style=\"flex:1; padding:8px;\" aria-label=\"Linear Team ID\">
+          <input type=\"text\" id=\"linear-project-id\" placeholder=\"Linear Project ID (optional)\" value=\"${linearConfig?.projectId || ''}\" style=\"flex:1; padding:8px;\" aria-label=\"Linear Project ID\">
+        </div>
+        <div style=\"display:flex; gap:8px; margin-top:8px; align-items:center;\">
+          <input type=\"text\" id=\"linear-assignee-id\" placeholder=\"Linear Assignee ID (optional)\" value=\"${linearConfig?.assigneeId || ''}\" style=\"flex:1; padding:8px;\" aria-label=\"Linear Assignee ID\">
+          <button id=\"test-linear\" type=\"button\" style=\"padding:8px 12px;\">🧪 Test</button>
+        </div>
+        <div id=\"linear-error\" style=\"color:#d33; font-size:12px; min-height:18px; margin-top:4px;\"></div>
         
-        <div style="margin-top: 20px;">
-          <button id="save-settings" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px;">Save Settings</button>
-          <button id="cancel-settings" style="background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 4px;">Cancel</button>
+        <div style=\"display:flex; gap:8px; margin-top:16px;\">
+          <button id=\"export-settings\" type=\"button\" style=\"padding:8px 12px;\">⬇️ Export</button>
+          <button id=\"import-settings\" type=\"button\" style=\"padding:8px 12px;\">⬆️ Import</button>
+          <label style=\"display:flex; align-items:center; gap:6px; margin-left:auto; font-size:12px;\">
+            <input id=\"consent-send\" type=\"checkbox\"> Explicit consent to send data to APIs
+          </label>
+        </div>
+        
+        <div style=\"margin-top: 20px;\">
+          <button id=\"save-settings\" style=\"background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px;\">Save Settings</button>
+          <button id=\"cancel-settings\" style=\"background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 4px;\">Cancel</button>
         </div>
       </div>
     `;
-    
-    // Create modal dialog
+
     const modal = document.createElement('div');
-    modal.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-      background: rgba(0,0,0,0.5); z-index: 10000; display: flex; 
-      align-items: center; justify-content: center;
-    `;
-    modal.innerHTML = `
-      <div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">
-        ${settingsHtml}
-      </div>
-    `;
-    
+    modal.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;`;
+    modal.innerHTML = `<div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">${settingsHtml}</div>`;
     document.body.appendChild(modal);
-    
-    // Handle save button
+
+    const backendUrlInput = modal.querySelector('#backend-url') as HTMLInputElement;
+    const encEnabledInput = modal.querySelector('#db-encryption-enabled') as HTMLInputElement;
+    const encPassInput = modal.querySelector('#db-encryption-pass') as HTMLInputElement;
+    const groqKeyInput = modal.querySelector('#groq-api-key') as HTMLInputElement;
+    const linearKeyInput = modal.querySelector('#linear-api-key') as HTMLInputElement;
+    const teamIdInput = modal.querySelector('#linear-team-id') as HTMLInputElement;
+    const consentCheckbox = modal.querySelector('#consent-send') as HTMLInputElement;
+
+    modal.querySelector('#toggle-db-pass')?.addEventListener('click', () => {
+      encPassInput.type = encPassInput.type === 'password' ? 'text' : 'password';
+    });
+    encEnabledInput.addEventListener('change', () => {
+      encPassInput.disabled = !encEnabledInput.checked;
+    });
+
+    chrome.storage.sync.get(['consent_send'], (res) => {
+      consentCheckbox.checked = !!res['consent_send'];
+    });
+
+    const setError = (id: string, msg: string) => {
+      const el = modal.querySelector(id) as HTMLElement;
+      if (el) el.textContent = msg;
+    };
+
+    const validUrl = (value: string) => {
+      try { const u = new URL(value); return !!u.protocol && !!u.host; } catch { return false; }
+    };
+
+    backendUrlInput.addEventListener('input', () => {
+      const v = backendUrlInput.value.trim();
+      setError('#backend-error', v.length === 0 || validUrl(v) ? '' : 'Invalid URL');
+    });
+
+    // Save settings
     const saveBtn = modal.querySelector('#save-settings');
     saveBtn?.addEventListener('click', async (event) => {
       event.preventDefault();
-      const groqKey = (modal.querySelector('#groq-api-key') as HTMLInputElement)?.value.trim();
-      const linearKey = (modal.querySelector('#linear-api-key') as HTMLInputElement)?.value.trim();
-      const linearTeamId = (modal.querySelector('#linear-team-id') as HTMLInputElement)?.value.trim();
+      const groqKey = groqKeyInput?.value.trim();
+      const linearKey = linearKeyInput?.value.trim();
+      const linearTeamId = teamIdInput?.value.trim();
       const linearProjectId = (modal.querySelector('#linear-project-id') as HTMLInputElement)?.value.trim();
       const linearAssigneeId = (modal.querySelector('#linear-assignee-id') as HTMLInputElement)?.value.trim();
-      
-      // Save settings
-      const settings: any = {};
-      if (groqKey) settings.groq_api_key = groqKey;
-      if (linearKey && linearTeamId) {
-        settings.linear_api_key = linearKey;
-        settings.linear_team_id = linearTeamId;
-        if (linearProjectId) settings.linear_project_id = linearProjectId;
-        if (linearAssigneeId) settings.linear_assignee_id = linearAssigneeId;
+      const backend = backendUrlInput?.value.trim();
+      const encEnabled = encEnabledInput?.checked;
+      const encPass = encPassInput?.value.trim();
+
+      if (backend && !validUrl(backend)) {
+        setError('#backend-error', 'Invalid URL');
+        return;
       }
-      
+      if (linearKey && !linearTeamId) {
+        setError('#linear-error', 'Team ID is required when Linear API key is provided');
+        return;
+      }
+      if (encEnabled && (!encPass || encPass.length < 8)) {
+        setError('#db-encryption-error', 'Passphrase must be at least 8 characters');
+        return;
+      }
+
+      const settings: any = { consent_send: !!consentCheckbox.checked };
+      if (backend) settings.jobops_backend_url = backend;
+      if (groqKey) settings.groq_api_key = groqKey;
+      if (linearKey) settings.linear_api_key = linearKey;
+      if (linearTeamId) settings.linear_team_id = linearTeamId;
+      if (linearProjectId) settings.linear_project_id = linearProjectId;
+      if (linearAssigneeId) settings.linear_assignee_id = linearAssigneeId;
+      settings.db_encryption_enabled = !!encEnabled;
+
       await new Promise<void>((resolve) => {
         chrome.storage.sync.set(settings, () => {
           logToConsole("✅ Settings saved successfully!", "success");
-          showNotification("✅ Settings saved!");
+          showNotification(i18n.getNotificationMessage('settingsSaved'));
           resolve();
         });
       });
-      
+
+      // Apply encryption setting (passphrase is not stored; configured only for current session)
+      try {
+        await jobOpsDatabase.configureEncryption(!!encEnabled, encEnabled ? encPass : undefined);
+        logToConsole(encEnabled ? '🔐 Database encryption enabled for this session' : '🔓 Database encryption disabled', 'success');
+      } catch (e) {
+        setError('#db-encryption-error', `Failed to configure encryption: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+
       document.body.removeChild(modal);
     });
-    
-    // Handle cancel button
+
+    // Cancel and backdrop
     const cancelBtn = modal.querySelector('#cancel-settings');
     cancelBtn?.addEventListener('click', (event) => {
       event.preventDefault();
       document.body.removeChild(modal);
       logToConsole("❌ Settings dialog cancelled", "info");
     });
-    
-    // Handle modal background click
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
         document.body.removeChild(modal);
@@ -1922,6 +2116,7 @@ Fill in all template placeholders with concrete, actionable information based on
 // Call Groq API with streaming support
 async function callGroqAPI(prompt: string, onChunk?: (chunk: string) => void): Promise<string | null> {
   try {
+    await ensureConsent();
     logToConsole("🔑 Retrieving Groq API key from storage...", "debug");
     
     // Get API key from storage or environment
@@ -2273,81 +2468,144 @@ async function getLinearConfig(): Promise<LinearIntegrationConfig | null> {
   });
 }
 
+let isExportingLinear = false;
 async function handleExportToLinear() {
-  logToConsole("🚀 Starting Linear export...", "info");
-  
+  if (isExportingLinear) {
+    logToConsole('⚠️ Export already in progress', 'warning');
+    return;
+  }
+  isExportingLinear = true;
   try {
-    // Check if we have a current job application
+    const consent = await new Promise<boolean>((resolve) => {
+      chrome.storage.sync.get(['consent_send'], (res) => resolve(!!res['consent_send']));
+    });
+    if (!consent) {
+      logToConsole('❌ Consent is required before sending data to Linear', 'error');
+      showNotification(i18n.getNotificationMessage('consentRequired'), true);
+      return;
+    }
+    logToConsole("🚀 Starting Linear export...", "info");
     const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
     if (!currentJobId) {
       logToConsole("❌ No active job application found", "error");
       const message = "No active job application found. Please clip a job posting first.";
       showNotification(message, true);
-      
-      // Show native notification with shorter duration
       showNativeNotification('JobOps Clipper - No Job Application', message, 2);
       return;
     }
 
-    // Get Linear configuration
-    const config = await getLinearConfig();
-    if (!config) {
+    const alreadyExported = await new Promise<boolean>((resolve) => {
+      chrome.storage.sync.get([`linear_mapping_${currentJobId}`], (res) => {
+        resolve(!!res[`linear_mapping_${currentJobId}`]);
+      });
+    });
+    if (alreadyExported) {
+      logToConsole("⚠️ This job application was already exported to Linear", "warning");
+      showNotification("⚠️ Already exported to Linear", true);
+      return;
+    }
+
+    const baseConfig = await getLinearConfig();
+    if (!baseConfig) {
       logToConsole("❌ Linear configuration not found", "error");
       const message = "Linear configuration not found. Please configure Linear settings first.";
       showNotification(message, true);
-      
-      // Show native notification with shorter duration
       showNativeNotification('JobOps Clipper - Linear Configuration', message, 2);
       return;
     }
 
-    logToConsole("🔧 Linear configuration loaded", "debug");
-    logToConsole(`📋 Team ID: ${config.teamId}`, "debug");
-    logToConsole(`📁 Project ID: ${config.projectId || 'None'}`, "debug");
-
-    // Create Linear integration service
-    const linearService = new LinearIntegrationService(config, jobOpsDataManager);
-    
-    // Test connection
+    const svcForMeta = new LinearIntegrationService(baseConfig, jobOpsDataManager);
     logToConsole("🔗 Testing Linear connection...", "progress");
-    const connectionTest = await linearService.testConnection();
+    const connectionTest = await svcForMeta.testConnection();
     if (!connectionTest) {
       logToConsole("❌ Linear connection test failed", "error");
       const message = "Failed to connect to Linear. Please check your API key and try again.";
       showNotification(message, true);
-      
-      // Show native notification with shorter duration
       showNativeNotification('JobOps Clipper - Linear Connection Failed', message, 2);
       return;
     }
     logToConsole("✅ Linear connection successful", "success");
 
-    // Export job to Linear
+    // Fetch metadata and let user select project/labels
+    const [projects, labels] = await Promise.all([
+      svcForMeta.getProjects(baseConfig.teamId),
+      svcForMeta.getLabels(baseConfig.teamId)
+    ]);
+
+    const selection = await new Promise<{ projectId?: string; labelNames: string[] }>((resolve) => {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:10001;';
+      const projOptions = ["<option value=\"\">(None)</option>", ...projects.map(p => `<option value="${p.id}">${p.name}</option>`)].join('');
+      const labelOptions = labels.map(l => `<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 8px 4px 0;"><input type="checkbox" value="${l.name}"> ${l.name}</label>`).join('');
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:8px;padding:16px 16px;min-width:360px;max-width:560px;">
+          <h3 style="margin:0 0 8px 0;">Linear Export Options</h3>
+          <label>Project:
+            <select id="linear-project-select" style="width:100%;padding:6px;margin-top:4px;">${projOptions}</select>
+          </label>
+          <div style="margin-top:12px;">
+            <div style="margin-bottom:6px;">Labels:</div>
+            <div id="linear-labels-list" style="display:flex;flex-wrap:wrap;">${labelOptions}</div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+            <button id="cancel-export" type="button" style="padding:8px 12px;">Cancel</button>
+            <button id="confirm-export" type="button" style="padding:8px 12px;background:#4CAF50;color:#fff;border:none;border-radius:4px;">Export</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('#cancel-export')?.addEventListener('click', () => {
+        document.body.removeChild(modal);
+        resolve({ projectId: undefined, labelNames: [] });
+      });
+      modal.querySelector('#confirm-export')?.addEventListener('click', () => {
+        const projectId = (modal.querySelector('#linear-project-select') as HTMLSelectElement).value || undefined;
+        const selected: string[] = Array.from(modal.querySelectorAll('#linear-labels-list input[type="checkbox"]:checked')).map((el: any) => el.value);
+        document.body.removeChild(modal);
+        resolve({ projectId, labelNames: selected });
+      });
+    });
+
+    const config: any = { ...baseConfig };
+    if (selection.projectId) config.projectId = selection.projectId;
+    if (selection.labelNames && selection.labelNames.length > 0) config.additionalLabels = selection.labelNames;
+
+    const linearService = new LinearIntegrationService(config, jobOpsDataManager);
     logToConsole("📤 Exporting job application to Linear...", "progress");
     const result = await linearService.exportJobToLinear(currentJobId);
-    
+
     if (result.success) {
+      chrome.storage.sync.set({ [`linear_mapping_${currentJobId}`]: result.mainTask?.id || true });
       logToConsole("✅ Job exported to Linear successfully", "success");
-      logToConsole(`📋 Main task created: ${result.mainTask.title}`, "info");
-      logToConsole(`📋 Subtasks created: ${result.subtasks.length}`, "info");
-      
-      // Show success notification with link
+      if (result.failedSubtasks && result.failedSubtasks.length > 0) {
+        logToConsole(`⚠️ ${result.failedSubtasks.length} subtasks failed to create`, 'warning');
+        for (const f of result.failedSubtasks) {
+          logToConsole(`• ${f.section}: ${f.error}`, 'warning');
+        }
+      }
       const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
       showNotification(message);
-      
-      // Open the main task in Linear
       if (result.mainTask.url) {
-        logToConsole(`🔗 Opening Linear task: ${result.mainTask.url}`, "info");
         chrome.tabs.create({ url: result.mainTask.url });
       }
     } else {
       logToConsole(`❌ Linear export failed: ${result.error}`, "error");
       showNotification(`Failed to export to Linear: ${result.error}`, true);
     }
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logToConsole(`❌ Linear export error: ${errorMessage}`, "error");
     showNotification(`Linear export failed: ${errorMessage}`, true);
+  } finally {
+    isExportingLinear = false;
+  }
+}
+
+// Enforce consent before Groq API calls
+async function ensureConsent(): Promise<void> {
+  const consent = await new Promise<boolean>((resolve) => {
+    chrome.storage.sync.get(['consent_send'], (res) => resolve(!!res['consent_send']));
+  });
+  if (!consent) {
+    throw new Error('Consent required before calling Groq API');
   }
 }

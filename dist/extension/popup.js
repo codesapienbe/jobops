@@ -5,8 +5,170 @@
     constructor() {
       this.db = null;
       this.dbName = "JobOpsDatabase";
-      this.dbVersion = 1;
+      this.dbVersion = 2;
+      this.allTables = [
+        "job_applications",
+        "position_details",
+        "job_requirements",
+        "company_information",
+        "skills_matrix",
+        "skill_assessments",
+        "application_materials",
+        "interview_schedule",
+        "interview_preparation",
+        "communication_log",
+        "key_contacts",
+        "interview_feedback",
+        "offer_details",
+        "rejection_analysis",
+        "privacy_policy",
+        "lessons_learned",
+        "performance_metrics",
+        "advisor_review"
+      ];
+      // Encryption state
+      this.encryptionEnabled = false;
+      this.cryptoKey = null;
+      this.pbkdf2Iterations = 25e4;
       this.initializeDatabase();
+    }
+    // Public API to configure encryption for the session
+    async configureEncryption(enabled, passphrase) {
+      this.encryptionEnabled = enabled;
+      if (!enabled) {
+        this.cryptoKey = null;
+        return;
+      }
+      if (!passphrase || passphrase.trim().length < 8) {
+        throw new Error("Passphrase must be at least 8 characters");
+      }
+      const salt = await this.getOrCreateSalt();
+      this.cryptoKey = await this.deriveKey(passphrase, salt);
+    }
+    isEncryptionEnabled() {
+      return this.encryptionEnabled && !!this.cryptoKey;
+    }
+    async getOrCreateSalt() {
+      const existing = await this.getMetadata("encryption_salt");
+      if (existing && existing.value) {
+        return this.base64ToBytes(existing.value);
+      }
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      await this.setMetadata("encryption_salt", this.bytesToBase64(salt));
+      return salt;
+    }
+    async getMetadata(key) {
+      if (!this.db)
+        throw new Error("Database not initialized");
+      return new Promise((resolve, reject) => {
+        if (!this.db.objectStoreNames.contains("metadata")) {
+          resolve(null);
+          return;
+        }
+        const tx = this.db.transaction(["metadata"], "readonly");
+        const store = tx.objectStore("metadata");
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async setMetadata(key, value) {
+      if (!this.db)
+        throw new Error("Database not initialized");
+      return new Promise((resolve, reject) => {
+        if (!this.db.objectStoreNames.contains("metadata")) {
+          resolve();
+          return;
+        }
+        const tx = this.db.transaction(["metadata"], "readwrite");
+        const store = tx.objectStore("metadata");
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const req = store.put({ key, value, updated_at: now });
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async deriveKey(passphrase, salt) {
+      const enc = new TextEncoder();
+      const baseKey = await crypto.subtle.importKey("raw", enc.encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+      return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations: this.pbkdf2Iterations, hash: "SHA-256" },
+        baseKey,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+      );
+    }
+    async encryptPayload(obj) {
+      if (!this.cryptoKey)
+        throw new Error("Encryption key not configured");
+      const ivBytes = crypto.getRandomValues(new Uint8Array(12));
+      const enc = new TextEncoder();
+      const plaintext = enc.encode(JSON.stringify(obj));
+      const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: ivBytes }, this.cryptoKey, plaintext);
+      return { iv: this.bytesToBase64(ivBytes), data: this.bytesToBase64(new Uint8Array(ciphertext)), alg: "AES-GCM", v: 1 };
+    }
+    async decryptPayload(encBlob) {
+      if (!this.cryptoKey)
+        throw new Error("Encryption key not configured");
+      const iv = this.base64ToBytes(encBlob.iv);
+      const data = this.base64ToBytes(encBlob.data);
+      const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, this.cryptoKey, data);
+      const dec = new TextDecoder();
+      return JSON.parse(dec.decode(new Uint8Array(plaintext)));
+    }
+    bytesToBase64(bytes) {
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++)
+        binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    }
+    base64ToBytes(b64) {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++)
+        bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+    // Split record into index fields (plaintext) and payload (to encrypt)
+    splitForEncryption(tableName, record) {
+      const indexFields = /* @__PURE__ */ new Set(["id", "created_at", "updated_at"]);
+      if ("job_application_id" in record)
+        indexFields.add("job_application_id");
+      if (tableName === "skill_assessments" && "skills_matrix_id" in record)
+        indexFields.add("skills_matrix_id");
+      if (tableName === "job_applications") {
+        if ("canonical_url" in record)
+          indexFields.add("canonical_url");
+        if ("status" in record)
+          indexFields.add("status");
+      }
+      const indexPart = {};
+      const payload = {};
+      for (const [k, v] of Object.entries(record)) {
+        if (indexFields.has(k))
+          indexPart[k] = v;
+        else
+          payload[k] = v;
+      }
+      return { indexPart, payload };
+    }
+    async prepareRecordForStore(tableName, record) {
+      if (!this.isEncryptionEnabled())
+        return record;
+      const { indexPart, payload } = this.splitForEncryption(tableName, record);
+      const enc = await this.encryptPayload(payload);
+      return { ...indexPart, __encrypted: true, __enc: enc };
+    }
+    async reconstructRecordFromStore(tableName, stored) {
+      if (!stored || !stored.__encrypted)
+        return stored;
+      if (!this.isEncryptionEnabled()) {
+        throw new Error("Encryption is enabled for data but no key configured. Please set passphrase in settings.");
+      }
+      const decrypted = await this.decryptPayload(stored.__enc);
+      const { __encrypted, __enc, ...indexPart } = stored;
+      return { ...indexPart, ...decrypted };
     }
     async initializeDatabase() {
       return new Promise((resolve, reject) => {
@@ -22,7 +184,27 @@
         };
         request.onupgradeneeded = (event) => {
           const db = event.target.result;
+          const oldVersion = event.oldVersion || 0;
           this.createTables(db);
+          if (oldVersion < 2) {
+            if (!db.objectStoreNames.contains("metadata")) {
+              const meta = db.createObjectStore("metadata", { keyPath: "key" });
+              try {
+                meta.put({ key: "schemaVersion", value: 2, updated_at: (/* @__PURE__ */ new Date()).toISOString() });
+              } catch {
+              }
+            }
+            const addUpdatedAtIndex = (storeName) => {
+              if (db.objectStoreNames.contains(storeName)) {
+                const store = event.currentTarget.transaction?.objectStore(storeName) || db.transaction([storeName], "versionchange").objectStore(storeName);
+                try {
+                  store.createIndex("updated_at", "updated_at", { unique: false });
+                } catch {
+                }
+              }
+            };
+            this.allTables.forEach(addUpdatedAtIndex);
+          }
         };
       });
     }
@@ -32,74 +214,92 @@
         jobApplicationsStore.createIndex("canonical_url", "canonical_url", { unique: true });
         jobApplicationsStore.createIndex("status", "status", { unique: false });
         jobApplicationsStore.createIndex("created_at", "created_at", { unique: false });
+        jobApplicationsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("position_details")) {
         const positionDetailsStore = db.createObjectStore("position_details", { keyPath: "id" });
         positionDetailsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        positionDetailsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("job_requirements")) {
         const jobRequirementsStore = db.createObjectStore("job_requirements", { keyPath: "id" });
         jobRequirementsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        jobRequirementsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("company_information")) {
         const companyInformationStore = db.createObjectStore("company_information", { keyPath: "id" });
         companyInformationStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        companyInformationStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("skills_matrix")) {
         const skillsMatrixStore = db.createObjectStore("skills_matrix", { keyPath: "id" });
         skillsMatrixStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        skillsMatrixStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("skill_assessments")) {
         const skillAssessmentsStore = db.createObjectStore("skill_assessments", { keyPath: "id" });
         skillAssessmentsStore.createIndex("skills_matrix_id", "skills_matrix_id", { unique: false });
+        skillAssessmentsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("application_materials")) {
         const applicationMaterialsStore = db.createObjectStore("application_materials", { keyPath: "id" });
         applicationMaterialsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        applicationMaterialsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("interview_schedule")) {
         const interviewScheduleStore = db.createObjectStore("interview_schedule", { keyPath: "id" });
         interviewScheduleStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        interviewScheduleStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("interview_preparation")) {
         const interviewPreparationStore = db.createObjectStore("interview_preparation", { keyPath: "id" });
         interviewPreparationStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        interviewPreparationStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("communication_log")) {
         const communicationLogStore = db.createObjectStore("communication_log", { keyPath: "id" });
         communicationLogStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        communicationLogStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("key_contacts")) {
         const keyContactsStore = db.createObjectStore("key_contacts", { keyPath: "id" });
         keyContactsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        keyContactsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("interview_feedback")) {
         const interviewFeedbackStore = db.createObjectStore("interview_feedback", { keyPath: "id" });
         interviewFeedbackStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        interviewFeedbackStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("offer_details")) {
         const offerDetailsStore = db.createObjectStore("offer_details", { keyPath: "id" });
         offerDetailsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        offerDetailsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("rejection_analysis")) {
         const rejectionAnalysisStore = db.createObjectStore("rejection_analysis", { keyPath: "id" });
         rejectionAnalysisStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        rejectionAnalysisStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("privacy_policy")) {
         const privacyPolicyStore = db.createObjectStore("privacy_policy", { keyPath: "id" });
         privacyPolicyStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        privacyPolicyStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("lessons_learned")) {
         const lessonsLearnedStore = db.createObjectStore("lessons_learned", { keyPath: "id" });
         lessonsLearnedStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        lessonsLearnedStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("performance_metrics")) {
         const performanceMetricsStore = db.createObjectStore("performance_metrics", { keyPath: "id" });
         performanceMetricsStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        performanceMetricsStore.createIndex("updated_at", "updated_at", { unique: false });
       }
       if (!db.objectStoreNames.contains("advisor_review")) {
         const advisorReviewStore = db.createObjectStore("advisor_review", { keyPath: "id" });
         advisorReviewStore.createIndex("job_application_id", "job_application_id", { unique: false });
+        advisorReviewStore.createIndex("updated_at", "updated_at", { unique: false });
       }
     }
     // Check if job application exists by canonical URL
@@ -113,8 +313,18 @@
         const store = transaction.objectStore("job_applications");
         const index = store.index("canonical_url");
         const request = index.get(canonicalUrl);
-        request.onsuccess = () => {
-          resolve(request.result || null);
+        request.onsuccess = async () => {
+          const stored = request.result || null;
+          if (!stored) {
+            resolve(null);
+            return;
+          }
+          try {
+            const rec = await this.reconstructRecordFromStore("job_applications", stored);
+            resolve(rec || null);
+          } catch (e) {
+            reject(e);
+          }
         };
         request.onerror = () => {
           reject(request.error);
@@ -138,13 +348,16 @@
         };
         const transaction = this.db.transaction(["job_applications"], "readwrite");
         const store = transaction.objectStore("job_applications");
-        const request = store.add(record);
-        request.onsuccess = () => {
-          resolve(id);
-        };
-        request.onerror = () => {
-          reject(request.error);
-        };
+        (async () => {
+          try {
+            const prepared = await this.prepareRecordForStore("job_applications", record);
+            const request = store.add(prepared);
+            request.onsuccess = () => resolve(id);
+            request.onerror = () => reject(request.error);
+          } catch (e) {
+            reject(e);
+          }
+        })();
       });
     }
     // Get job application by ID
@@ -157,8 +370,18 @@
         const transaction = this.db.transaction(["job_applications"], "readonly");
         const store = transaction.objectStore("job_applications");
         const request = store.get(id);
-        request.onsuccess = () => {
-          resolve(request.result || null);
+        request.onsuccess = async () => {
+          const stored = request.result || null;
+          if (!stored) {
+            resolve(null);
+            return;
+          }
+          try {
+            const rec = await this.reconstructRecordFromStore("job_applications", stored);
+            resolve(rec || null);
+          } catch (e) {
+            reject(e);
+          }
         };
         request.onerror = () => {
           reject(request.error);
@@ -181,14 +404,22 @@
             reject(new Error("Job application not found"));
             return;
           }
-          const updated = {
-            ...existing,
-            ...data,
-            updated_at: (/* @__PURE__ */ new Date()).toISOString()
-          };
-          const putRequest = store.put(updated);
-          putRequest.onsuccess = () => resolve();
-          putRequest.onerror = () => reject(putRequest.error);
+          (async () => {
+            try {
+              const fullExisting = await this.reconstructRecordFromStore("job_applications", existing);
+              const updated = {
+                ...fullExisting,
+                ...data,
+                updated_at: (/* @__PURE__ */ new Date()).toISOString()
+              };
+              const prepared = await this.prepareRecordForStore("job_applications", updated);
+              const putRequest = store.put(prepared);
+              putRequest.onsuccess = () => resolve();
+              putRequest.onerror = () => reject(putRequest.error);
+            } catch (e) {
+              reject(e);
+            }
+          })();
         };
         getRequest.onerror = () => reject(getRequest.error);
       });
@@ -203,8 +434,14 @@
         const transaction = this.db.transaction(["job_applications"], "readonly");
         const store = transaction.objectStore("job_applications");
         const request = store.getAll();
-        request.onsuccess = () => {
-          resolve(request.result || []);
+        request.onsuccess = async () => {
+          try {
+            const list = request.result || [];
+            const decrypted = await Promise.all(list.map((r) => this.reconstructRecordFromStore("job_applications", r)));
+            resolve(decrypted);
+          } catch (e) {
+            reject(e);
+          }
         };
         request.onerror = () => {
           reject(request.error);
@@ -228,13 +465,20 @@
         };
         const transaction = this.db.transaction([tableName], "readwrite");
         const store = transaction.objectStore(tableName);
-        const request = store.add(record);
-        request.onsuccess = () => {
-          resolve(id);
-        };
-        request.onerror = () => {
-          reject(request.error);
-        };
+        (async () => {
+          try {
+            const prepared = await this.prepareRecordForStore(tableName, record);
+            const request = store.add(prepared);
+            request.onsuccess = () => {
+              resolve(id);
+            };
+            request.onerror = () => {
+              reject(request.error);
+            };
+          } catch (e) {
+            reject(e);
+          }
+        })();
       });
     }
     // Generic method to get section data by job application ID
@@ -248,8 +492,14 @@
         const store = transaction.objectStore(tableName);
         const index = store.index("job_application_id");
         const request = index.getAll(jobApplicationId);
-        request.onsuccess = () => {
-          resolve(request.result || []);
+        request.onsuccess = async () => {
+          try {
+            const list = request.result || [];
+            const decrypted = await Promise.all(list.map((r) => this.reconstructRecordFromStore(tableName, r)));
+            resolve(decrypted);
+          } catch (e) {
+            reject(e);
+          }
         };
         request.onerror = () => {
           reject(request.error);
@@ -272,17 +522,78 @@
             reject(new Error("Record not found"));
             return;
           }
-          const updated = {
-            ...existing,
-            ...data,
-            updated_at: (/* @__PURE__ */ new Date()).toISOString()
-          };
-          const putRequest = store.put(updated);
-          putRequest.onsuccess = () => resolve();
-          putRequest.onerror = () => reject(putRequest.error);
+          (async () => {
+            try {
+              const fullExisting = await this.reconstructRecordFromStore(tableName, existing);
+              const updated = {
+                ...fullExisting,
+                ...data,
+                updated_at: (/* @__PURE__ */ new Date()).toISOString()
+              };
+              const prepared = await this.prepareRecordForStore(tableName, updated);
+              const putRequest = store.put(prepared);
+              putRequest.onsuccess = () => resolve();
+              putRequest.onerror = () => reject(putRequest.error);
+            } catch (e) {
+              reject(e);
+            }
+          })();
         };
         getRequest.onerror = () => reject(getRequest.error);
       });
+    }
+    // Per-table export
+    async exportTable(tableName) {
+      if (!this.db)
+        throw new Error("Database not initialized");
+      return new Promise((resolve, reject) => {
+        const transaction = this.db.transaction([tableName], "readonly");
+        const store = transaction.objectStore(tableName);
+        const request = store.getAll();
+        request.onsuccess = async () => {
+          try {
+            const list = request.result || [];
+            const decrypted = await Promise.all(list.map((r) => this.reconstructRecordFromStore(tableName, r)));
+            resolve(decrypted);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+    // Per-table import (append)
+    async importTable(tableName, records) {
+      if (!this.db)
+        throw new Error("Database not initialized");
+      return new Promise((resolve, reject) => {
+        const transaction = this.db.transaction([tableName], "readwrite");
+        const store = transaction.objectStore(tableName);
+        (async () => {
+          try {
+            for (const rec of records) {
+              const prepared = await this.prepareRecordForStore(tableName, rec);
+              store.put(prepared);
+            }
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+          } catch (e) {
+            reject(e);
+          }
+        })();
+      });
+    }
+    // Space usage diagnostics (approximate)
+    async getSpaceUsage() {
+      if (!this.db)
+        throw new Error("Database not initialized");
+      const results = [];
+      for (const table of this.allTables) {
+        const rows = await this.exportTable(table);
+        const approxBytes = new TextEncoder().encode(JSON.stringify(rows)).length;
+        results.push({ table, count: rows.length, approxBytes });
+      }
+      return results;
     }
     // Get complete job application with all sections
     async getCompleteJobApplication(jobApplicationId) {
@@ -1021,6 +1332,995 @@
   };
   var jobOpsDataManager = new JobOpsDataManager();
 
+  // node_modules/dompurify/dist/purify.es.mjs
+  var {
+    entries,
+    setPrototypeOf,
+    isFrozen,
+    getPrototypeOf,
+    getOwnPropertyDescriptor
+  } = Object;
+  var {
+    freeze,
+    seal,
+    create
+  } = Object;
+  var {
+    apply,
+    construct
+  } = typeof Reflect !== "undefined" && Reflect;
+  if (!freeze) {
+    freeze = function freeze2(x) {
+      return x;
+    };
+  }
+  if (!seal) {
+    seal = function seal2(x) {
+      return x;
+    };
+  }
+  if (!apply) {
+    apply = function apply2(fun, thisValue, args) {
+      return fun.apply(thisValue, args);
+    };
+  }
+  if (!construct) {
+    construct = function construct2(Func, args) {
+      return new Func(...args);
+    };
+  }
+  var arrayForEach = unapply(Array.prototype.forEach);
+  var arrayLastIndexOf = unapply(Array.prototype.lastIndexOf);
+  var arrayPop = unapply(Array.prototype.pop);
+  var arrayPush = unapply(Array.prototype.push);
+  var arraySplice = unapply(Array.prototype.splice);
+  var stringToLowerCase = unapply(String.prototype.toLowerCase);
+  var stringToString = unapply(String.prototype.toString);
+  var stringMatch = unapply(String.prototype.match);
+  var stringReplace = unapply(String.prototype.replace);
+  var stringIndexOf = unapply(String.prototype.indexOf);
+  var stringTrim = unapply(String.prototype.trim);
+  var objectHasOwnProperty = unapply(Object.prototype.hasOwnProperty);
+  var regExpTest = unapply(RegExp.prototype.test);
+  var typeErrorCreate = unconstruct(TypeError);
+  function unapply(func) {
+    return function(thisArg) {
+      if (thisArg instanceof RegExp) {
+        thisArg.lastIndex = 0;
+      }
+      for (var _len = arguments.length, args = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+        args[_key - 1] = arguments[_key];
+      }
+      return apply(func, thisArg, args);
+    };
+  }
+  function unconstruct(func) {
+    return function() {
+      for (var _len2 = arguments.length, args = new Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
+        args[_key2] = arguments[_key2];
+      }
+      return construct(func, args);
+    };
+  }
+  function addToSet(set, array) {
+    let transformCaseFunc = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : stringToLowerCase;
+    if (setPrototypeOf) {
+      setPrototypeOf(set, null);
+    }
+    let l = array.length;
+    while (l--) {
+      let element = array[l];
+      if (typeof element === "string") {
+        const lcElement = transformCaseFunc(element);
+        if (lcElement !== element) {
+          if (!isFrozen(array)) {
+            array[l] = lcElement;
+          }
+          element = lcElement;
+        }
+      }
+      set[element] = true;
+    }
+    return set;
+  }
+  function cleanArray(array) {
+    for (let index = 0; index < array.length; index++) {
+      const isPropertyExist = objectHasOwnProperty(array, index);
+      if (!isPropertyExist) {
+        array[index] = null;
+      }
+    }
+    return array;
+  }
+  function clone(object) {
+    const newObject = create(null);
+    for (const [property, value] of entries(object)) {
+      const isPropertyExist = objectHasOwnProperty(object, property);
+      if (isPropertyExist) {
+        if (Array.isArray(value)) {
+          newObject[property] = cleanArray(value);
+        } else if (value && typeof value === "object" && value.constructor === Object) {
+          newObject[property] = clone(value);
+        } else {
+          newObject[property] = value;
+        }
+      }
+    }
+    return newObject;
+  }
+  function lookupGetter(object, prop) {
+    while (object !== null) {
+      const desc = getOwnPropertyDescriptor(object, prop);
+      if (desc) {
+        if (desc.get) {
+          return unapply(desc.get);
+        }
+        if (typeof desc.value === "function") {
+          return unapply(desc.value);
+        }
+      }
+      object = getPrototypeOf(object);
+    }
+    function fallbackValue() {
+      return null;
+    }
+    return fallbackValue;
+  }
+  var html$1 = freeze(["a", "abbr", "acronym", "address", "area", "article", "aside", "audio", "b", "bdi", "bdo", "big", "blink", "blockquote", "body", "br", "button", "canvas", "caption", "center", "cite", "code", "col", "colgroup", "content", "data", "datalist", "dd", "decorator", "del", "details", "dfn", "dialog", "dir", "div", "dl", "dt", "element", "em", "fieldset", "figcaption", "figure", "font", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "i", "img", "input", "ins", "kbd", "label", "legend", "li", "main", "map", "mark", "marquee", "menu", "menuitem", "meter", "nav", "nobr", "ol", "optgroup", "option", "output", "p", "picture", "pre", "progress", "q", "rp", "rt", "ruby", "s", "samp", "section", "select", "shadow", "small", "source", "spacer", "span", "strike", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "time", "tr", "track", "tt", "u", "ul", "var", "video", "wbr"]);
+  var svg$1 = freeze(["svg", "a", "altglyph", "altglyphdef", "altglyphitem", "animatecolor", "animatemotion", "animatetransform", "circle", "clippath", "defs", "desc", "ellipse", "filter", "font", "g", "glyph", "glyphref", "hkern", "image", "line", "lineargradient", "marker", "mask", "metadata", "mpath", "path", "pattern", "polygon", "polyline", "radialgradient", "rect", "stop", "style", "switch", "symbol", "text", "textpath", "title", "tref", "tspan", "view", "vkern"]);
+  var svgFilters = freeze(["feBlend", "feColorMatrix", "feComponentTransfer", "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB", "feFuncG", "feFuncR", "feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset", "fePointLight", "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence"]);
+  var svgDisallowed = freeze(["animate", "color-profile", "cursor", "discard", "font-face", "font-face-format", "font-face-name", "font-face-src", "font-face-uri", "foreignobject", "hatch", "hatchpath", "mesh", "meshgradient", "meshpatch", "meshrow", "missing-glyph", "script", "set", "solidcolor", "unknown", "use"]);
+  var mathMl$1 = freeze(["math", "menclose", "merror", "mfenced", "mfrac", "mglyph", "mi", "mlabeledtr", "mmultiscripts", "mn", "mo", "mover", "mpadded", "mphantom", "mroot", "mrow", "ms", "mspace", "msqrt", "mstyle", "msub", "msup", "msubsup", "mtable", "mtd", "mtext", "mtr", "munder", "munderover", "mprescripts"]);
+  var mathMlDisallowed = freeze(["maction", "maligngroup", "malignmark", "mlongdiv", "mscarries", "mscarry", "msgroup", "mstack", "msline", "msrow", "semantics", "annotation", "annotation-xml", "mprescripts", "none"]);
+  var text = freeze(["#text"]);
+  var html = freeze(["accept", "action", "align", "alt", "autocapitalize", "autocomplete", "autopictureinpicture", "autoplay", "background", "bgcolor", "border", "capture", "cellpadding", "cellspacing", "checked", "cite", "class", "clear", "color", "cols", "colspan", "controls", "controlslist", "coords", "crossorigin", "datetime", "decoding", "default", "dir", "disabled", "disablepictureinpicture", "disableremoteplayback", "download", "draggable", "enctype", "enterkeyhint", "face", "for", "headers", "height", "hidden", "high", "href", "hreflang", "id", "inputmode", "integrity", "ismap", "kind", "label", "lang", "list", "loading", "loop", "low", "max", "maxlength", "media", "method", "min", "minlength", "multiple", "muted", "name", "nonce", "noshade", "novalidate", "nowrap", "open", "optimum", "pattern", "placeholder", "playsinline", "popover", "popovertarget", "popovertargetaction", "poster", "preload", "pubdate", "radiogroup", "readonly", "rel", "required", "rev", "reversed", "role", "rows", "rowspan", "spellcheck", "scope", "selected", "shape", "size", "sizes", "span", "srclang", "start", "src", "srcset", "step", "style", "summary", "tabindex", "title", "translate", "type", "usemap", "valign", "value", "width", "wrap", "xmlns", "slot"]);
+  var svg = freeze(["accent-height", "accumulate", "additive", "alignment-baseline", "amplitude", "ascent", "attributename", "attributetype", "azimuth", "basefrequency", "baseline-shift", "begin", "bias", "by", "class", "clip", "clippathunits", "clip-path", "clip-rule", "color", "color-interpolation", "color-interpolation-filters", "color-profile", "color-rendering", "cx", "cy", "d", "dx", "dy", "diffuseconstant", "direction", "display", "divisor", "dur", "edgemode", "elevation", "end", "exponent", "fill", "fill-opacity", "fill-rule", "filter", "filterunits", "flood-color", "flood-opacity", "font-family", "font-size", "font-size-adjust", "font-stretch", "font-style", "font-variant", "font-weight", "fx", "fy", "g1", "g2", "glyph-name", "glyphref", "gradientunits", "gradienttransform", "height", "href", "id", "image-rendering", "in", "in2", "intercept", "k", "k1", "k2", "k3", "k4", "kerning", "keypoints", "keysplines", "keytimes", "lang", "lengthadjust", "letter-spacing", "kernelmatrix", "kernelunitlength", "lighting-color", "local", "marker-end", "marker-mid", "marker-start", "markerheight", "markerunits", "markerwidth", "maskcontentunits", "maskunits", "max", "mask", "media", "method", "mode", "min", "name", "numoctaves", "offset", "operator", "opacity", "order", "orient", "orientation", "origin", "overflow", "paint-order", "path", "pathlength", "patterncontentunits", "patterntransform", "patternunits", "points", "preservealpha", "preserveaspectratio", "primitiveunits", "r", "rx", "ry", "radius", "refx", "refy", "repeatcount", "repeatdur", "restart", "result", "rotate", "scale", "seed", "shape-rendering", "slope", "specularconstant", "specularexponent", "spreadmethod", "startoffset", "stddeviation", "stitchtiles", "stop-color", "stop-opacity", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "stroke-opacity", "stroke", "stroke-width", "style", "surfacescale", "systemlanguage", "tabindex", "tablevalues", "targetx", "targety", "transform", "transform-origin", "text-anchor", "text-decoration", "text-rendering", "textlength", "type", "u1", "u2", "unicode", "values", "viewbox", "visibility", "version", "vert-adv-y", "vert-origin-x", "vert-origin-y", "width", "word-spacing", "wrap", "writing-mode", "xchannelselector", "ychannelselector", "x", "x1", "x2", "xmlns", "y", "y1", "y2", "z", "zoomandpan"]);
+  var mathMl = freeze(["accent", "accentunder", "align", "bevelled", "close", "columnsalign", "columnlines", "columnspan", "denomalign", "depth", "dir", "display", "displaystyle", "encoding", "fence", "frame", "height", "href", "id", "largeop", "length", "linethickness", "lspace", "lquote", "mathbackground", "mathcolor", "mathsize", "mathvariant", "maxsize", "minsize", "movablelimits", "notation", "numalign", "open", "rowalign", "rowlines", "rowspacing", "rowspan", "rspace", "rquote", "scriptlevel", "scriptminsize", "scriptsizemultiplier", "selection", "separator", "separators", "stretchy", "subscriptshift", "supscriptshift", "symmetric", "voffset", "width", "xmlns"]);
+  var xml = freeze(["xlink:href", "xml:id", "xlink:title", "xml:space", "xmlns:xlink"]);
+  var MUSTACHE_EXPR = seal(/\{\{[\w\W]*|[\w\W]*\}\}/gm);
+  var ERB_EXPR = seal(/<%[\w\W]*|[\w\W]*%>/gm);
+  var TMPLIT_EXPR = seal(/\$\{[\w\W]*/gm);
+  var DATA_ATTR = seal(/^data-[\-\w.\u00B7-\uFFFF]+$/);
+  var ARIA_ATTR = seal(/^aria-[\-\w]+$/);
+  var IS_ALLOWED_URI = seal(
+    /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+    // eslint-disable-line no-useless-escape
+  );
+  var IS_SCRIPT_OR_DATA = seal(/^(?:\w+script|data):/i);
+  var ATTR_WHITESPACE = seal(
+    /[\u0000-\u0020\u00A0\u1680\u180E\u2000-\u2029\u205F\u3000]/g
+    // eslint-disable-line no-control-regex
+  );
+  var DOCTYPE_NAME = seal(/^html$/i);
+  var CUSTOM_ELEMENT = seal(/^[a-z][.\w]*(-[.\w]+)+$/i);
+  var EXPRESSIONS = /* @__PURE__ */ Object.freeze({
+    __proto__: null,
+    ARIA_ATTR,
+    ATTR_WHITESPACE,
+    CUSTOM_ELEMENT,
+    DATA_ATTR,
+    DOCTYPE_NAME,
+    ERB_EXPR,
+    IS_ALLOWED_URI,
+    IS_SCRIPT_OR_DATA,
+    MUSTACHE_EXPR,
+    TMPLIT_EXPR
+  });
+  var NODE_TYPE = {
+    element: 1,
+    attribute: 2,
+    text: 3,
+    cdataSection: 4,
+    entityReference: 5,
+    // Deprecated
+    entityNode: 6,
+    // Deprecated
+    progressingInstruction: 7,
+    comment: 8,
+    document: 9,
+    documentType: 10,
+    documentFragment: 11,
+    notation: 12
+    // Deprecated
+  };
+  var getGlobal = function getGlobal2() {
+    return typeof window === "undefined" ? null : window;
+  };
+  var _createTrustedTypesPolicy = function _createTrustedTypesPolicy2(trustedTypes, purifyHostElement) {
+    if (typeof trustedTypes !== "object" || typeof trustedTypes.createPolicy !== "function") {
+      return null;
+    }
+    let suffix = null;
+    const ATTR_NAME = "data-tt-policy-suffix";
+    if (purifyHostElement && purifyHostElement.hasAttribute(ATTR_NAME)) {
+      suffix = purifyHostElement.getAttribute(ATTR_NAME);
+    }
+    const policyName = "dompurify" + (suffix ? "#" + suffix : "");
+    try {
+      return trustedTypes.createPolicy(policyName, {
+        createHTML(html2) {
+          return html2;
+        },
+        createScriptURL(scriptUrl) {
+          return scriptUrl;
+        }
+      });
+    } catch (_) {
+      console.warn("TrustedTypes policy " + policyName + " could not be created.");
+      return null;
+    }
+  };
+  var _createHooksMap = function _createHooksMap2() {
+    return {
+      afterSanitizeAttributes: [],
+      afterSanitizeElements: [],
+      afterSanitizeShadowDOM: [],
+      beforeSanitizeAttributes: [],
+      beforeSanitizeElements: [],
+      beforeSanitizeShadowDOM: [],
+      uponSanitizeAttribute: [],
+      uponSanitizeElement: [],
+      uponSanitizeShadowNode: []
+    };
+  };
+  function createDOMPurify() {
+    let window2 = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : getGlobal();
+    const DOMPurify2 = (root) => createDOMPurify(root);
+    DOMPurify2.version = "3.2.6";
+    DOMPurify2.removed = [];
+    if (!window2 || !window2.document || window2.document.nodeType !== NODE_TYPE.document || !window2.Element) {
+      DOMPurify2.isSupported = false;
+      return DOMPurify2;
+    }
+    let {
+      document: document2
+    } = window2;
+    const originalDocument = document2;
+    const currentScript = originalDocument.currentScript;
+    const {
+      DocumentFragment,
+      HTMLTemplateElement,
+      Node,
+      Element,
+      NodeFilter,
+      NamedNodeMap = window2.NamedNodeMap || window2.MozNamedAttrMap,
+      HTMLFormElement,
+      DOMParser,
+      trustedTypes
+    } = window2;
+    const ElementPrototype = Element.prototype;
+    const cloneNode = lookupGetter(ElementPrototype, "cloneNode");
+    const remove = lookupGetter(ElementPrototype, "remove");
+    const getNextSibling = lookupGetter(ElementPrototype, "nextSibling");
+    const getChildNodes = lookupGetter(ElementPrototype, "childNodes");
+    const getParentNode = lookupGetter(ElementPrototype, "parentNode");
+    if (typeof HTMLTemplateElement === "function") {
+      const template = document2.createElement("template");
+      if (template.content && template.content.ownerDocument) {
+        document2 = template.content.ownerDocument;
+      }
+    }
+    let trustedTypesPolicy;
+    let emptyHTML = "";
+    const {
+      implementation,
+      createNodeIterator,
+      createDocumentFragment,
+      getElementsByTagName
+    } = document2;
+    const {
+      importNode
+    } = originalDocument;
+    let hooks = _createHooksMap();
+    DOMPurify2.isSupported = typeof entries === "function" && typeof getParentNode === "function" && implementation && implementation.createHTMLDocument !== void 0;
+    const {
+      MUSTACHE_EXPR: MUSTACHE_EXPR2,
+      ERB_EXPR: ERB_EXPR2,
+      TMPLIT_EXPR: TMPLIT_EXPR2,
+      DATA_ATTR: DATA_ATTR2,
+      ARIA_ATTR: ARIA_ATTR2,
+      IS_SCRIPT_OR_DATA: IS_SCRIPT_OR_DATA2,
+      ATTR_WHITESPACE: ATTR_WHITESPACE2,
+      CUSTOM_ELEMENT: CUSTOM_ELEMENT2
+    } = EXPRESSIONS;
+    let {
+      IS_ALLOWED_URI: IS_ALLOWED_URI$1
+    } = EXPRESSIONS;
+    let ALLOWED_TAGS = null;
+    const DEFAULT_ALLOWED_TAGS = addToSet({}, [...html$1, ...svg$1, ...svgFilters, ...mathMl$1, ...text]);
+    let ALLOWED_ATTR = null;
+    const DEFAULT_ALLOWED_ATTR = addToSet({}, [...html, ...svg, ...mathMl, ...xml]);
+    let CUSTOM_ELEMENT_HANDLING = Object.seal(create(null, {
+      tagNameCheck: {
+        writable: true,
+        configurable: false,
+        enumerable: true,
+        value: null
+      },
+      attributeNameCheck: {
+        writable: true,
+        configurable: false,
+        enumerable: true,
+        value: null
+      },
+      allowCustomizedBuiltInElements: {
+        writable: true,
+        configurable: false,
+        enumerable: true,
+        value: false
+      }
+    }));
+    let FORBID_TAGS = null;
+    let FORBID_ATTR = null;
+    let ALLOW_ARIA_ATTR = true;
+    let ALLOW_DATA_ATTR = true;
+    let ALLOW_UNKNOWN_PROTOCOLS = false;
+    let ALLOW_SELF_CLOSE_IN_ATTR = true;
+    let SAFE_FOR_TEMPLATES = false;
+    let SAFE_FOR_XML = true;
+    let WHOLE_DOCUMENT = false;
+    let SET_CONFIG = false;
+    let FORCE_BODY = false;
+    let RETURN_DOM = false;
+    let RETURN_DOM_FRAGMENT = false;
+    let RETURN_TRUSTED_TYPE = false;
+    let SANITIZE_DOM = true;
+    let SANITIZE_NAMED_PROPS = false;
+    const SANITIZE_NAMED_PROPS_PREFIX = "user-content-";
+    let KEEP_CONTENT = true;
+    let IN_PLACE = false;
+    let USE_PROFILES = {};
+    let FORBID_CONTENTS = null;
+    const DEFAULT_FORBID_CONTENTS = addToSet({}, ["annotation-xml", "audio", "colgroup", "desc", "foreignobject", "head", "iframe", "math", "mi", "mn", "mo", "ms", "mtext", "noembed", "noframes", "noscript", "plaintext", "script", "style", "svg", "template", "thead", "title", "video", "xmp"]);
+    let DATA_URI_TAGS = null;
+    const DEFAULT_DATA_URI_TAGS = addToSet({}, ["audio", "video", "img", "source", "image", "track"]);
+    let URI_SAFE_ATTRIBUTES = null;
+    const DEFAULT_URI_SAFE_ATTRIBUTES = addToSet({}, ["alt", "class", "for", "id", "label", "name", "pattern", "placeholder", "role", "summary", "title", "value", "style", "xmlns"]);
+    const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
+    const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+    const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+    let NAMESPACE = HTML_NAMESPACE;
+    let IS_EMPTY_INPUT = false;
+    let ALLOWED_NAMESPACES = null;
+    const DEFAULT_ALLOWED_NAMESPACES = addToSet({}, [MATHML_NAMESPACE, SVG_NAMESPACE, HTML_NAMESPACE], stringToString);
+    let MATHML_TEXT_INTEGRATION_POINTS = addToSet({}, ["mi", "mo", "mn", "ms", "mtext"]);
+    let HTML_INTEGRATION_POINTS = addToSet({}, ["annotation-xml"]);
+    const COMMON_SVG_AND_HTML_ELEMENTS = addToSet({}, ["title", "style", "font", "a", "script"]);
+    let PARSER_MEDIA_TYPE = null;
+    const SUPPORTED_PARSER_MEDIA_TYPES = ["application/xhtml+xml", "text/html"];
+    const DEFAULT_PARSER_MEDIA_TYPE = "text/html";
+    let transformCaseFunc = null;
+    let CONFIG = null;
+    const formElement = document2.createElement("form");
+    const isRegexOrFunction = function isRegexOrFunction2(testValue) {
+      return testValue instanceof RegExp || testValue instanceof Function;
+    };
+    const _parseConfig = function _parseConfig2() {
+      let cfg = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {};
+      if (CONFIG && CONFIG === cfg) {
+        return;
+      }
+      if (!cfg || typeof cfg !== "object") {
+        cfg = {};
+      }
+      cfg = clone(cfg);
+      PARSER_MEDIA_TYPE = // eslint-disable-next-line unicorn/prefer-includes
+      SUPPORTED_PARSER_MEDIA_TYPES.indexOf(cfg.PARSER_MEDIA_TYPE) === -1 ? DEFAULT_PARSER_MEDIA_TYPE : cfg.PARSER_MEDIA_TYPE;
+      transformCaseFunc = PARSER_MEDIA_TYPE === "application/xhtml+xml" ? stringToString : stringToLowerCase;
+      ALLOWED_TAGS = objectHasOwnProperty(cfg, "ALLOWED_TAGS") ? addToSet({}, cfg.ALLOWED_TAGS, transformCaseFunc) : DEFAULT_ALLOWED_TAGS;
+      ALLOWED_ATTR = objectHasOwnProperty(cfg, "ALLOWED_ATTR") ? addToSet({}, cfg.ALLOWED_ATTR, transformCaseFunc) : DEFAULT_ALLOWED_ATTR;
+      ALLOWED_NAMESPACES = objectHasOwnProperty(cfg, "ALLOWED_NAMESPACES") ? addToSet({}, cfg.ALLOWED_NAMESPACES, stringToString) : DEFAULT_ALLOWED_NAMESPACES;
+      URI_SAFE_ATTRIBUTES = objectHasOwnProperty(cfg, "ADD_URI_SAFE_ATTR") ? addToSet(clone(DEFAULT_URI_SAFE_ATTRIBUTES), cfg.ADD_URI_SAFE_ATTR, transformCaseFunc) : DEFAULT_URI_SAFE_ATTRIBUTES;
+      DATA_URI_TAGS = objectHasOwnProperty(cfg, "ADD_DATA_URI_TAGS") ? addToSet(clone(DEFAULT_DATA_URI_TAGS), cfg.ADD_DATA_URI_TAGS, transformCaseFunc) : DEFAULT_DATA_URI_TAGS;
+      FORBID_CONTENTS = objectHasOwnProperty(cfg, "FORBID_CONTENTS") ? addToSet({}, cfg.FORBID_CONTENTS, transformCaseFunc) : DEFAULT_FORBID_CONTENTS;
+      FORBID_TAGS = objectHasOwnProperty(cfg, "FORBID_TAGS") ? addToSet({}, cfg.FORBID_TAGS, transformCaseFunc) : clone({});
+      FORBID_ATTR = objectHasOwnProperty(cfg, "FORBID_ATTR") ? addToSet({}, cfg.FORBID_ATTR, transformCaseFunc) : clone({});
+      USE_PROFILES = objectHasOwnProperty(cfg, "USE_PROFILES") ? cfg.USE_PROFILES : false;
+      ALLOW_ARIA_ATTR = cfg.ALLOW_ARIA_ATTR !== false;
+      ALLOW_DATA_ATTR = cfg.ALLOW_DATA_ATTR !== false;
+      ALLOW_UNKNOWN_PROTOCOLS = cfg.ALLOW_UNKNOWN_PROTOCOLS || false;
+      ALLOW_SELF_CLOSE_IN_ATTR = cfg.ALLOW_SELF_CLOSE_IN_ATTR !== false;
+      SAFE_FOR_TEMPLATES = cfg.SAFE_FOR_TEMPLATES || false;
+      SAFE_FOR_XML = cfg.SAFE_FOR_XML !== false;
+      WHOLE_DOCUMENT = cfg.WHOLE_DOCUMENT || false;
+      RETURN_DOM = cfg.RETURN_DOM || false;
+      RETURN_DOM_FRAGMENT = cfg.RETURN_DOM_FRAGMENT || false;
+      RETURN_TRUSTED_TYPE = cfg.RETURN_TRUSTED_TYPE || false;
+      FORCE_BODY = cfg.FORCE_BODY || false;
+      SANITIZE_DOM = cfg.SANITIZE_DOM !== false;
+      SANITIZE_NAMED_PROPS = cfg.SANITIZE_NAMED_PROPS || false;
+      KEEP_CONTENT = cfg.KEEP_CONTENT !== false;
+      IN_PLACE = cfg.IN_PLACE || false;
+      IS_ALLOWED_URI$1 = cfg.ALLOWED_URI_REGEXP || IS_ALLOWED_URI;
+      NAMESPACE = cfg.NAMESPACE || HTML_NAMESPACE;
+      MATHML_TEXT_INTEGRATION_POINTS = cfg.MATHML_TEXT_INTEGRATION_POINTS || MATHML_TEXT_INTEGRATION_POINTS;
+      HTML_INTEGRATION_POINTS = cfg.HTML_INTEGRATION_POINTS || HTML_INTEGRATION_POINTS;
+      CUSTOM_ELEMENT_HANDLING = cfg.CUSTOM_ELEMENT_HANDLING || {};
+      if (cfg.CUSTOM_ELEMENT_HANDLING && isRegexOrFunction(cfg.CUSTOM_ELEMENT_HANDLING.tagNameCheck)) {
+        CUSTOM_ELEMENT_HANDLING.tagNameCheck = cfg.CUSTOM_ELEMENT_HANDLING.tagNameCheck;
+      }
+      if (cfg.CUSTOM_ELEMENT_HANDLING && isRegexOrFunction(cfg.CUSTOM_ELEMENT_HANDLING.attributeNameCheck)) {
+        CUSTOM_ELEMENT_HANDLING.attributeNameCheck = cfg.CUSTOM_ELEMENT_HANDLING.attributeNameCheck;
+      }
+      if (cfg.CUSTOM_ELEMENT_HANDLING && typeof cfg.CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements === "boolean") {
+        CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements = cfg.CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements;
+      }
+      if (SAFE_FOR_TEMPLATES) {
+        ALLOW_DATA_ATTR = false;
+      }
+      if (RETURN_DOM_FRAGMENT) {
+        RETURN_DOM = true;
+      }
+      if (USE_PROFILES) {
+        ALLOWED_TAGS = addToSet({}, text);
+        ALLOWED_ATTR = [];
+        if (USE_PROFILES.html === true) {
+          addToSet(ALLOWED_TAGS, html$1);
+          addToSet(ALLOWED_ATTR, html);
+        }
+        if (USE_PROFILES.svg === true) {
+          addToSet(ALLOWED_TAGS, svg$1);
+          addToSet(ALLOWED_ATTR, svg);
+          addToSet(ALLOWED_ATTR, xml);
+        }
+        if (USE_PROFILES.svgFilters === true) {
+          addToSet(ALLOWED_TAGS, svgFilters);
+          addToSet(ALLOWED_ATTR, svg);
+          addToSet(ALLOWED_ATTR, xml);
+        }
+        if (USE_PROFILES.mathMl === true) {
+          addToSet(ALLOWED_TAGS, mathMl$1);
+          addToSet(ALLOWED_ATTR, mathMl);
+          addToSet(ALLOWED_ATTR, xml);
+        }
+      }
+      if (cfg.ADD_TAGS) {
+        if (ALLOWED_TAGS === DEFAULT_ALLOWED_TAGS) {
+          ALLOWED_TAGS = clone(ALLOWED_TAGS);
+        }
+        addToSet(ALLOWED_TAGS, cfg.ADD_TAGS, transformCaseFunc);
+      }
+      if (cfg.ADD_ATTR) {
+        if (ALLOWED_ATTR === DEFAULT_ALLOWED_ATTR) {
+          ALLOWED_ATTR = clone(ALLOWED_ATTR);
+        }
+        addToSet(ALLOWED_ATTR, cfg.ADD_ATTR, transformCaseFunc);
+      }
+      if (cfg.ADD_URI_SAFE_ATTR) {
+        addToSet(URI_SAFE_ATTRIBUTES, cfg.ADD_URI_SAFE_ATTR, transformCaseFunc);
+      }
+      if (cfg.FORBID_CONTENTS) {
+        if (FORBID_CONTENTS === DEFAULT_FORBID_CONTENTS) {
+          FORBID_CONTENTS = clone(FORBID_CONTENTS);
+        }
+        addToSet(FORBID_CONTENTS, cfg.FORBID_CONTENTS, transformCaseFunc);
+      }
+      if (KEEP_CONTENT) {
+        ALLOWED_TAGS["#text"] = true;
+      }
+      if (WHOLE_DOCUMENT) {
+        addToSet(ALLOWED_TAGS, ["html", "head", "body"]);
+      }
+      if (ALLOWED_TAGS.table) {
+        addToSet(ALLOWED_TAGS, ["tbody"]);
+        delete FORBID_TAGS.tbody;
+      }
+      if (cfg.TRUSTED_TYPES_POLICY) {
+        if (typeof cfg.TRUSTED_TYPES_POLICY.createHTML !== "function") {
+          throw typeErrorCreate('TRUSTED_TYPES_POLICY configuration option must provide a "createHTML" hook.');
+        }
+        if (typeof cfg.TRUSTED_TYPES_POLICY.createScriptURL !== "function") {
+          throw typeErrorCreate('TRUSTED_TYPES_POLICY configuration option must provide a "createScriptURL" hook.');
+        }
+        trustedTypesPolicy = cfg.TRUSTED_TYPES_POLICY;
+        emptyHTML = trustedTypesPolicy.createHTML("");
+      } else {
+        if (trustedTypesPolicy === void 0) {
+          trustedTypesPolicy = _createTrustedTypesPolicy(trustedTypes, currentScript);
+        }
+        if (trustedTypesPolicy !== null && typeof emptyHTML === "string") {
+          emptyHTML = trustedTypesPolicy.createHTML("");
+        }
+      }
+      if (freeze) {
+        freeze(cfg);
+      }
+      CONFIG = cfg;
+    };
+    const ALL_SVG_TAGS = addToSet({}, [...svg$1, ...svgFilters, ...svgDisallowed]);
+    const ALL_MATHML_TAGS = addToSet({}, [...mathMl$1, ...mathMlDisallowed]);
+    const _checkValidNamespace = function _checkValidNamespace2(element) {
+      let parent = getParentNode(element);
+      if (!parent || !parent.tagName) {
+        parent = {
+          namespaceURI: NAMESPACE,
+          tagName: "template"
+        };
+      }
+      const tagName = stringToLowerCase(element.tagName);
+      const parentTagName = stringToLowerCase(parent.tagName);
+      if (!ALLOWED_NAMESPACES[element.namespaceURI]) {
+        return false;
+      }
+      if (element.namespaceURI === SVG_NAMESPACE) {
+        if (parent.namespaceURI === HTML_NAMESPACE) {
+          return tagName === "svg";
+        }
+        if (parent.namespaceURI === MATHML_NAMESPACE) {
+          return tagName === "svg" && (parentTagName === "annotation-xml" || MATHML_TEXT_INTEGRATION_POINTS[parentTagName]);
+        }
+        return Boolean(ALL_SVG_TAGS[tagName]);
+      }
+      if (element.namespaceURI === MATHML_NAMESPACE) {
+        if (parent.namespaceURI === HTML_NAMESPACE) {
+          return tagName === "math";
+        }
+        if (parent.namespaceURI === SVG_NAMESPACE) {
+          return tagName === "math" && HTML_INTEGRATION_POINTS[parentTagName];
+        }
+        return Boolean(ALL_MATHML_TAGS[tagName]);
+      }
+      if (element.namespaceURI === HTML_NAMESPACE) {
+        if (parent.namespaceURI === SVG_NAMESPACE && !HTML_INTEGRATION_POINTS[parentTagName]) {
+          return false;
+        }
+        if (parent.namespaceURI === MATHML_NAMESPACE && !MATHML_TEXT_INTEGRATION_POINTS[parentTagName]) {
+          return false;
+        }
+        return !ALL_MATHML_TAGS[tagName] && (COMMON_SVG_AND_HTML_ELEMENTS[tagName] || !ALL_SVG_TAGS[tagName]);
+      }
+      if (PARSER_MEDIA_TYPE === "application/xhtml+xml" && ALLOWED_NAMESPACES[element.namespaceURI]) {
+        return true;
+      }
+      return false;
+    };
+    const _forceRemove = function _forceRemove2(node) {
+      arrayPush(DOMPurify2.removed, {
+        element: node
+      });
+      try {
+        getParentNode(node).removeChild(node);
+      } catch (_) {
+        remove(node);
+      }
+    };
+    const _removeAttribute = function _removeAttribute2(name, element) {
+      try {
+        arrayPush(DOMPurify2.removed, {
+          attribute: element.getAttributeNode(name),
+          from: element
+        });
+      } catch (_) {
+        arrayPush(DOMPurify2.removed, {
+          attribute: null,
+          from: element
+        });
+      }
+      element.removeAttribute(name);
+      if (name === "is") {
+        if (RETURN_DOM || RETURN_DOM_FRAGMENT) {
+          try {
+            _forceRemove(element);
+          } catch (_) {
+          }
+        } else {
+          try {
+            element.setAttribute(name, "");
+          } catch (_) {
+          }
+        }
+      }
+    };
+    const _initDocument = function _initDocument2(dirty) {
+      let doc = null;
+      let leadingWhitespace = null;
+      if (FORCE_BODY) {
+        dirty = "<remove></remove>" + dirty;
+      } else {
+        const matches = stringMatch(dirty, /^[\r\n\t ]+/);
+        leadingWhitespace = matches && matches[0];
+      }
+      if (PARSER_MEDIA_TYPE === "application/xhtml+xml" && NAMESPACE === HTML_NAMESPACE) {
+        dirty = '<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>' + dirty + "</body></html>";
+      }
+      const dirtyPayload = trustedTypesPolicy ? trustedTypesPolicy.createHTML(dirty) : dirty;
+      if (NAMESPACE === HTML_NAMESPACE) {
+        try {
+          doc = new DOMParser().parseFromString(dirtyPayload, PARSER_MEDIA_TYPE);
+        } catch (_) {
+        }
+      }
+      if (!doc || !doc.documentElement) {
+        doc = implementation.createDocument(NAMESPACE, "template", null);
+        try {
+          doc.documentElement.innerHTML = IS_EMPTY_INPUT ? emptyHTML : dirtyPayload;
+        } catch (_) {
+        }
+      }
+      const body = doc.body || doc.documentElement;
+      if (dirty && leadingWhitespace) {
+        body.insertBefore(document2.createTextNode(leadingWhitespace), body.childNodes[0] || null);
+      }
+      if (NAMESPACE === HTML_NAMESPACE) {
+        return getElementsByTagName.call(doc, WHOLE_DOCUMENT ? "html" : "body")[0];
+      }
+      return WHOLE_DOCUMENT ? doc.documentElement : body;
+    };
+    const _createNodeIterator = function _createNodeIterator2(root) {
+      return createNodeIterator.call(
+        root.ownerDocument || root,
+        root,
+        // eslint-disable-next-line no-bitwise
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_PROCESSING_INSTRUCTION | NodeFilter.SHOW_CDATA_SECTION,
+        null
+      );
+    };
+    const _isClobbered = function _isClobbered2(element) {
+      return element instanceof HTMLFormElement && (typeof element.nodeName !== "string" || typeof element.textContent !== "string" || typeof element.removeChild !== "function" || !(element.attributes instanceof NamedNodeMap) || typeof element.removeAttribute !== "function" || typeof element.setAttribute !== "function" || typeof element.namespaceURI !== "string" || typeof element.insertBefore !== "function" || typeof element.hasChildNodes !== "function");
+    };
+    const _isNode = function _isNode2(value) {
+      return typeof Node === "function" && value instanceof Node;
+    };
+    function _executeHooks(hooks2, currentNode, data) {
+      arrayForEach(hooks2, (hook) => {
+        hook.call(DOMPurify2, currentNode, data, CONFIG);
+      });
+    }
+    const _sanitizeElements = function _sanitizeElements2(currentNode) {
+      let content = null;
+      _executeHooks(hooks.beforeSanitizeElements, currentNode, null);
+      if (_isClobbered(currentNode)) {
+        _forceRemove(currentNode);
+        return true;
+      }
+      const tagName = transformCaseFunc(currentNode.nodeName);
+      _executeHooks(hooks.uponSanitizeElement, currentNode, {
+        tagName,
+        allowedTags: ALLOWED_TAGS
+      });
+      if (SAFE_FOR_XML && currentNode.hasChildNodes() && !_isNode(currentNode.firstElementChild) && regExpTest(/<[/\w!]/g, currentNode.innerHTML) && regExpTest(/<[/\w!]/g, currentNode.textContent)) {
+        _forceRemove(currentNode);
+        return true;
+      }
+      if (currentNode.nodeType === NODE_TYPE.progressingInstruction) {
+        _forceRemove(currentNode);
+        return true;
+      }
+      if (SAFE_FOR_XML && currentNode.nodeType === NODE_TYPE.comment && regExpTest(/<[/\w]/g, currentNode.data)) {
+        _forceRemove(currentNode);
+        return true;
+      }
+      if (!ALLOWED_TAGS[tagName] || FORBID_TAGS[tagName]) {
+        if (!FORBID_TAGS[tagName] && _isBasicCustomElement(tagName)) {
+          if (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.tagNameCheck, tagName)) {
+            return false;
+          }
+          if (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.tagNameCheck(tagName)) {
+            return false;
+          }
+        }
+        if (KEEP_CONTENT && !FORBID_CONTENTS[tagName]) {
+          const parentNode = getParentNode(currentNode) || currentNode.parentNode;
+          const childNodes = getChildNodes(currentNode) || currentNode.childNodes;
+          if (childNodes && parentNode) {
+            const childCount = childNodes.length;
+            for (let i = childCount - 1; i >= 0; --i) {
+              const childClone = cloneNode(childNodes[i], true);
+              childClone.__removalCount = (currentNode.__removalCount || 0) + 1;
+              parentNode.insertBefore(childClone, getNextSibling(currentNode));
+            }
+          }
+        }
+        _forceRemove(currentNode);
+        return true;
+      }
+      if (currentNode instanceof Element && !_checkValidNamespace(currentNode)) {
+        _forceRemove(currentNode);
+        return true;
+      }
+      if ((tagName === "noscript" || tagName === "noembed" || tagName === "noframes") && regExpTest(/<\/no(script|embed|frames)/i, currentNode.innerHTML)) {
+        _forceRemove(currentNode);
+        return true;
+      }
+      if (SAFE_FOR_TEMPLATES && currentNode.nodeType === NODE_TYPE.text) {
+        content = currentNode.textContent;
+        arrayForEach([MUSTACHE_EXPR2, ERB_EXPR2, TMPLIT_EXPR2], (expr) => {
+          content = stringReplace(content, expr, " ");
+        });
+        if (currentNode.textContent !== content) {
+          arrayPush(DOMPurify2.removed, {
+            element: currentNode.cloneNode()
+          });
+          currentNode.textContent = content;
+        }
+      }
+      _executeHooks(hooks.afterSanitizeElements, currentNode, null);
+      return false;
+    };
+    const _isValidAttribute = function _isValidAttribute2(lcTag, lcName, value) {
+      if (SANITIZE_DOM && (lcName === "id" || lcName === "name") && (value in document2 || value in formElement)) {
+        return false;
+      }
+      if (ALLOW_DATA_ATTR && !FORBID_ATTR[lcName] && regExpTest(DATA_ATTR2, lcName))
+        ;
+      else if (ALLOW_ARIA_ATTR && regExpTest(ARIA_ATTR2, lcName))
+        ;
+      else if (!ALLOWED_ATTR[lcName] || FORBID_ATTR[lcName]) {
+        if (
+          // First condition does a very basic check if a) it's basically a valid custom element tagname AND
+          // b) if the tagName passes whatever the user has configured for CUSTOM_ELEMENT_HANDLING.tagNameCheck
+          // and c) if the attribute name passes whatever the user has configured for CUSTOM_ELEMENT_HANDLING.attributeNameCheck
+          _isBasicCustomElement(lcTag) && (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.tagNameCheck, lcTag) || CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.tagNameCheck(lcTag)) && (CUSTOM_ELEMENT_HANDLING.attributeNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.attributeNameCheck, lcName) || CUSTOM_ELEMENT_HANDLING.attributeNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.attributeNameCheck(lcName)) || // Alternative, second condition checks if it's an `is`-attribute, AND
+          // the value passes whatever the user has configured for CUSTOM_ELEMENT_HANDLING.tagNameCheck
+          lcName === "is" && CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements && (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.tagNameCheck, value) || CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.tagNameCheck(value))
+        )
+          ;
+        else {
+          return false;
+        }
+      } else if (URI_SAFE_ATTRIBUTES[lcName])
+        ;
+      else if (regExpTest(IS_ALLOWED_URI$1, stringReplace(value, ATTR_WHITESPACE2, "")))
+        ;
+      else if ((lcName === "src" || lcName === "xlink:href" || lcName === "href") && lcTag !== "script" && stringIndexOf(value, "data:") === 0 && DATA_URI_TAGS[lcTag])
+        ;
+      else if (ALLOW_UNKNOWN_PROTOCOLS && !regExpTest(IS_SCRIPT_OR_DATA2, stringReplace(value, ATTR_WHITESPACE2, "")))
+        ;
+      else if (value) {
+        return false;
+      } else
+        ;
+      return true;
+    };
+    const _isBasicCustomElement = function _isBasicCustomElement2(tagName) {
+      return tagName !== "annotation-xml" && stringMatch(tagName, CUSTOM_ELEMENT2);
+    };
+    const _sanitizeAttributes = function _sanitizeAttributes2(currentNode) {
+      _executeHooks(hooks.beforeSanitizeAttributes, currentNode, null);
+      const {
+        attributes
+      } = currentNode;
+      if (!attributes || _isClobbered(currentNode)) {
+        return;
+      }
+      const hookEvent = {
+        attrName: "",
+        attrValue: "",
+        keepAttr: true,
+        allowedAttributes: ALLOWED_ATTR,
+        forceKeepAttr: void 0
+      };
+      let l = attributes.length;
+      while (l--) {
+        const attr = attributes[l];
+        const {
+          name,
+          namespaceURI,
+          value: attrValue
+        } = attr;
+        const lcName = transformCaseFunc(name);
+        const initValue = attrValue;
+        let value = name === "value" ? initValue : stringTrim(initValue);
+        hookEvent.attrName = lcName;
+        hookEvent.attrValue = value;
+        hookEvent.keepAttr = true;
+        hookEvent.forceKeepAttr = void 0;
+        _executeHooks(hooks.uponSanitizeAttribute, currentNode, hookEvent);
+        value = hookEvent.attrValue;
+        if (SANITIZE_NAMED_PROPS && (lcName === "id" || lcName === "name")) {
+          _removeAttribute(name, currentNode);
+          value = SANITIZE_NAMED_PROPS_PREFIX + value;
+        }
+        if (SAFE_FOR_XML && regExpTest(/((--!?|])>)|<\/(style|title)/i, value)) {
+          _removeAttribute(name, currentNode);
+          continue;
+        }
+        if (hookEvent.forceKeepAttr) {
+          continue;
+        }
+        if (!hookEvent.keepAttr) {
+          _removeAttribute(name, currentNode);
+          continue;
+        }
+        if (!ALLOW_SELF_CLOSE_IN_ATTR && regExpTest(/\/>/i, value)) {
+          _removeAttribute(name, currentNode);
+          continue;
+        }
+        if (SAFE_FOR_TEMPLATES) {
+          arrayForEach([MUSTACHE_EXPR2, ERB_EXPR2, TMPLIT_EXPR2], (expr) => {
+            value = stringReplace(value, expr, " ");
+          });
+        }
+        const lcTag = transformCaseFunc(currentNode.nodeName);
+        if (!_isValidAttribute(lcTag, lcName, value)) {
+          _removeAttribute(name, currentNode);
+          continue;
+        }
+        if (trustedTypesPolicy && typeof trustedTypes === "object" && typeof trustedTypes.getAttributeType === "function") {
+          if (namespaceURI)
+            ;
+          else {
+            switch (trustedTypes.getAttributeType(lcTag, lcName)) {
+              case "TrustedHTML": {
+                value = trustedTypesPolicy.createHTML(value);
+                break;
+              }
+              case "TrustedScriptURL": {
+                value = trustedTypesPolicy.createScriptURL(value);
+                break;
+              }
+            }
+          }
+        }
+        if (value !== initValue) {
+          try {
+            if (namespaceURI) {
+              currentNode.setAttributeNS(namespaceURI, name, value);
+            } else {
+              currentNode.setAttribute(name, value);
+            }
+            if (_isClobbered(currentNode)) {
+              _forceRemove(currentNode);
+            } else {
+              arrayPop(DOMPurify2.removed);
+            }
+          } catch (_) {
+            _removeAttribute(name, currentNode);
+          }
+        }
+      }
+      _executeHooks(hooks.afterSanitizeAttributes, currentNode, null);
+    };
+    const _sanitizeShadowDOM = function _sanitizeShadowDOM2(fragment) {
+      let shadowNode = null;
+      const shadowIterator = _createNodeIterator(fragment);
+      _executeHooks(hooks.beforeSanitizeShadowDOM, fragment, null);
+      while (shadowNode = shadowIterator.nextNode()) {
+        _executeHooks(hooks.uponSanitizeShadowNode, shadowNode, null);
+        _sanitizeElements(shadowNode);
+        _sanitizeAttributes(shadowNode);
+        if (shadowNode.content instanceof DocumentFragment) {
+          _sanitizeShadowDOM2(shadowNode.content);
+        }
+      }
+      _executeHooks(hooks.afterSanitizeShadowDOM, fragment, null);
+    };
+    DOMPurify2.sanitize = function(dirty) {
+      let cfg = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
+      let body = null;
+      let importedNode = null;
+      let currentNode = null;
+      let returnNode = null;
+      IS_EMPTY_INPUT = !dirty;
+      if (IS_EMPTY_INPUT) {
+        dirty = "<!-->";
+      }
+      if (typeof dirty !== "string" && !_isNode(dirty)) {
+        if (typeof dirty.toString === "function") {
+          dirty = dirty.toString();
+          if (typeof dirty !== "string") {
+            throw typeErrorCreate("dirty is not a string, aborting");
+          }
+        } else {
+          throw typeErrorCreate("toString is not a function");
+        }
+      }
+      if (!DOMPurify2.isSupported) {
+        return dirty;
+      }
+      if (!SET_CONFIG) {
+        _parseConfig(cfg);
+      }
+      DOMPurify2.removed = [];
+      if (typeof dirty === "string") {
+        IN_PLACE = false;
+      }
+      if (IN_PLACE) {
+        if (dirty.nodeName) {
+          const tagName = transformCaseFunc(dirty.nodeName);
+          if (!ALLOWED_TAGS[tagName] || FORBID_TAGS[tagName]) {
+            throw typeErrorCreate("root node is forbidden and cannot be sanitized in-place");
+          }
+        }
+      } else if (dirty instanceof Node) {
+        body = _initDocument("<!---->");
+        importedNode = body.ownerDocument.importNode(dirty, true);
+        if (importedNode.nodeType === NODE_TYPE.element && importedNode.nodeName === "BODY") {
+          body = importedNode;
+        } else if (importedNode.nodeName === "HTML") {
+          body = importedNode;
+        } else {
+          body.appendChild(importedNode);
+        }
+      } else {
+        if (!RETURN_DOM && !SAFE_FOR_TEMPLATES && !WHOLE_DOCUMENT && // eslint-disable-next-line unicorn/prefer-includes
+        dirty.indexOf("<") === -1) {
+          return trustedTypesPolicy && RETURN_TRUSTED_TYPE ? trustedTypesPolicy.createHTML(dirty) : dirty;
+        }
+        body = _initDocument(dirty);
+        if (!body) {
+          return RETURN_DOM ? null : RETURN_TRUSTED_TYPE ? emptyHTML : "";
+        }
+      }
+      if (body && FORCE_BODY) {
+        _forceRemove(body.firstChild);
+      }
+      const nodeIterator = _createNodeIterator(IN_PLACE ? dirty : body);
+      while (currentNode = nodeIterator.nextNode()) {
+        _sanitizeElements(currentNode);
+        _sanitizeAttributes(currentNode);
+        if (currentNode.content instanceof DocumentFragment) {
+          _sanitizeShadowDOM(currentNode.content);
+        }
+      }
+      if (IN_PLACE) {
+        return dirty;
+      }
+      if (RETURN_DOM) {
+        if (RETURN_DOM_FRAGMENT) {
+          returnNode = createDocumentFragment.call(body.ownerDocument);
+          while (body.firstChild) {
+            returnNode.appendChild(body.firstChild);
+          }
+        } else {
+          returnNode = body;
+        }
+        if (ALLOWED_ATTR.shadowroot || ALLOWED_ATTR.shadowrootmode) {
+          returnNode = importNode.call(originalDocument, returnNode, true);
+        }
+        return returnNode;
+      }
+      let serializedHTML = WHOLE_DOCUMENT ? body.outerHTML : body.innerHTML;
+      if (WHOLE_DOCUMENT && ALLOWED_TAGS["!doctype"] && body.ownerDocument && body.ownerDocument.doctype && body.ownerDocument.doctype.name && regExpTest(DOCTYPE_NAME, body.ownerDocument.doctype.name)) {
+        serializedHTML = "<!DOCTYPE " + body.ownerDocument.doctype.name + ">\n" + serializedHTML;
+      }
+      if (SAFE_FOR_TEMPLATES) {
+        arrayForEach([MUSTACHE_EXPR2, ERB_EXPR2, TMPLIT_EXPR2], (expr) => {
+          serializedHTML = stringReplace(serializedHTML, expr, " ");
+        });
+      }
+      return trustedTypesPolicy && RETURN_TRUSTED_TYPE ? trustedTypesPolicy.createHTML(serializedHTML) : serializedHTML;
+    };
+    DOMPurify2.setConfig = function() {
+      let cfg = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {};
+      _parseConfig(cfg);
+      SET_CONFIG = true;
+    };
+    DOMPurify2.clearConfig = function() {
+      CONFIG = null;
+      SET_CONFIG = false;
+    };
+    DOMPurify2.isValidAttribute = function(tag, attr, value) {
+      if (!CONFIG) {
+        _parseConfig({});
+      }
+      const lcTag = transformCaseFunc(tag);
+      const lcName = transformCaseFunc(attr);
+      return _isValidAttribute(lcTag, lcName, value);
+    };
+    DOMPurify2.addHook = function(entryPoint, hookFunction) {
+      if (typeof hookFunction !== "function") {
+        return;
+      }
+      arrayPush(hooks[entryPoint], hookFunction);
+    };
+    DOMPurify2.removeHook = function(entryPoint, hookFunction) {
+      if (hookFunction !== void 0) {
+        const index = arrayLastIndexOf(hooks[entryPoint], hookFunction);
+        return index === -1 ? void 0 : arraySplice(hooks[entryPoint], index, 1)[0];
+      }
+      return arrayPop(hooks[entryPoint]);
+    };
+    DOMPurify2.removeHooks = function(entryPoint) {
+      hooks[entryPoint] = [];
+    };
+    DOMPurify2.removeAllHooks = function() {
+      hooks = _createHooksMap();
+    };
+    return DOMPurify2;
+  }
+  var purify = createDOMPurify();
+
   // src/i18n.ts
   var I18nManager = class {
     constructor() {
@@ -1149,16 +2449,16 @@
     /**
      * Translate dynamic content using free translation API
      */
-    async translateContent(text, targetLang) {
-      if (!text || text.trim() === "") {
-        return text;
+    async translateContent(text2, targetLang) {
+      if (!text2 || text2.trim() === "") {
+        return text2;
       }
       const targetLanguage = targetLang || this.currentLanguage;
       if (targetLanguage === "en") {
-        return text;
+        return text2;
       }
       try {
-        const translatedText = await this.callTranslationAPI(text, targetLanguage);
+        const translatedText = await this.callTranslationAPI(text2, targetLanguage);
         if (translatedText) {
           return translatedText;
         }
@@ -1166,19 +2466,19 @@
         console.warn("Primary translation API failed, trying fallback:", error);
       }
       try {
-        const translatedText = await this.callTranslationAPI(text, targetLanguage, true);
+        const translatedText = await this.callTranslationAPI(text2, targetLanguage, true);
         if (translatedText) {
           return translatedText;
         }
       } catch (error) {
         console.error("All translation APIs failed:", error);
       }
-      return text;
+      return text2;
     }
     /**
      * Call translation API
      */
-    async callTranslationAPI(text, targetLang, useFallback = false) {
+    async callTranslationAPI(text2, targetLang, useFallback = false) {
       const apiUrl = useFallback ? this.FALLBACK_API_URL : this.TRANSLATION_API_URL;
       const response = await fetch(apiUrl, {
         method: "POST",
@@ -1186,7 +2486,7 @@
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          q: text,
+          q: text2,
           source: "en",
           target: targetLang,
           format: "text"
@@ -1196,7 +2496,7 @@
         throw new Error(`Translation API error: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
-      return data.translatedText || text;
+      return data.translatedText || text2;
     }
     /**
      * Update all UI elements with current language
@@ -1353,7 +2653,10 @@
         { id: "copy-markdown", key: "copyToClipboard" },
         { id: "generate-report", key: "generateReport" },
         { id: "settings", key: "settings" },
-        { id: "clear-console", key: "clearConsole" }
+        { id: "clear-console", key: "clearConsole" },
+        { id: "export-linear", key: "exportToLinear" },
+        { id: "expand-all", key: "expandAll" },
+        { id: "collapse-all", key: "collapseAll" }
       ];
       ariaLabels.forEach(({ id, key }) => {
         const element = document.getElementById(id);
@@ -1415,25 +2718,48 @@
       this.apiKey = apiKey;
     }
     async makeGraphQLRequest(query, variables) {
-      const response = await fetch(this.baseUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          query,
-          variables
-        })
-      });
-      if (!response.ok) {
-        throw new Error(`Linear API error: ${response.status} ${response.statusText}`);
+      const maxRetries = 3;
+      let attempt = 0;
+      let lastError = null;
+      while (attempt <= maxRetries) {
+        try {
+          const response = await fetch(this.baseUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify({ query, variables })
+          });
+          if (!response.ok) {
+            const status = response.status;
+            const shouldRetry = status === 429 || status >= 500 && status < 600;
+            const errorText = await response.text().catch(() => "");
+            if (shouldRetry && attempt < maxRetries) {
+              const backoff = Math.min(1e3 * Math.pow(2, attempt) + Math.random() * 200, 5e3);
+              await new Promise((r) => setTimeout(r, backoff));
+              attempt++;
+              continue;
+            }
+            throw new Error(`Linear API error: ${status} ${response.statusText} ${errorText}`);
+          }
+          const result = await response.json();
+          if (result.errors) {
+            throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+          }
+          return result.data;
+        } catch (err) {
+          lastError = err;
+          if (attempt < maxRetries) {
+            const backoff = Math.min(1e3 * Math.pow(2, attempt) + Math.random() * 200, 5e3);
+            await new Promise((r) => setTimeout(r, backoff));
+            attempt++;
+            continue;
+          }
+          break;
+        }
       }
-      const result = await response.json();
-      if (result.errors) {
-        throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-      }
-      return result.data;
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
     }
     async getCurrentUser() {
       const query = `
@@ -1795,10 +3121,11 @@ ${sectionMappings.map((mapping) => `- ${mapping.taskTitle}`).join("\n")}
           projectId: this.config.projectId,
           priority: this.config.defaultPriority,
           assigneeId: this.config.assigneeId,
-          labels: await this.getLabelIds(["job-application", "tracking"], this.config.teamId)
+          labels: await this.getLabelIds(["job-application", "tracking", ...this.config.additionalLabels || []], this.config.teamId)
         };
         const mainTaskIssue = await this.client.createIssue(mainTask);
         const subtasks = [];
+        const failedSubtasks = [];
         if (this.config.autoCreateSubtasks) {
           for (const mapping of sectionMappings) {
             const sectionData = jobData[mapping.sectionName];
@@ -1818,20 +3145,21 @@ ${sectionContent}
             `.trim(),
               parentId: mainTaskIssue.id,
               priority: mapping.priority,
-              labels: await this.getLabelIds(mapping.labels, this.config.teamId)
+              labels: await this.getLabelIds([...mapping.labels, ...this.config.additionalLabels || []], this.config.teamId)
             };
             try {
               const subtaskIssue = await this.client.createSubtask(subtask);
               subtasks.push(subtaskIssue);
             } catch (error) {
-              console.error(`Failed to create subtask for ${mapping.sectionName}:`, error);
+              failedSubtasks.push({ section: mapping.sectionName, error: error instanceof Error ? error.message : String(error) });
             }
           }
         }
         return {
           mainTask: mainTaskIssue,
           subtasks,
-          success: true
+          success: true,
+          failedSubtasks
         };
       } catch (error) {
         console.error("Failed to export job to Linear:", error);
@@ -1858,6 +3186,7 @@ ${sectionContent}
   };
 
   // src/popup.ts
+  var DOMPurify = purify(window);
   var GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
   var GROQ_MODEL = "llama-3.1-8b-instant";
   var OLLAMA_URL = "http://localhost:11434";
@@ -1879,13 +3208,13 @@ ${sectionContent}
     }
   }
   function applyTheme(theme) {
-    const html = document.documentElement;
+    const html2 = document.documentElement;
     const isDark = theme === "dark" || theme === "system" && detectSystemTheme();
     if (isDark) {
-      html.classList.remove("theme-light");
+      html2.classList.remove("theme-light");
       isDarkMode = true;
     } else {
-      html.classList.add("theme-light");
+      html2.classList.add("theme-light");
       isDarkMode = false;
     }
     currentTheme = theme;
@@ -1907,15 +3236,45 @@ ${sectionContent}
       logToConsole(`\u274C Error initializing language system: ${error}`, "error");
     });
   }
+  function sanitizeLogMessage(message) {
+    try {
+      let sanitized = message;
+      sanitized = sanitized.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]");
+      sanitized = sanitized.replace(/\b(\+?\d{1,3}[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b/g, "[redacted-phone]");
+      return sanitized;
+    } catch {
+      return message;
+    }
+  }
+  var logQueue = [];
+  var logFlushTimer = null;
   function logToConsole(message, level = "info") {
     if (!consoleOutput)
       return;
+    const safe = escapeHtml(sanitizeLogMessage(message));
     const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-    const line = document.createElement("div");
-    line.className = `console-line ${level}`;
-    line.innerHTML = `<span style="color: #888;">[${timestamp}]</span> ${message}`;
-    consoleOutput.appendChild(line);
-    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    const html2 = `<span style="color: #888;">[${timestamp}]</span> ${safe}`;
+    logQueue.push({ html: html2, level });
+    if (logFlushTimer === null) {
+      logFlushTimer = window.setTimeout(() => {
+        if (!consoleOutput) {
+          logQueue = [];
+          logFlushTimer = null;
+          return;
+        }
+        const fragment = document.createDocumentFragment();
+        for (const entry of logQueue) {
+          const line = document.createElement("div");
+          line.className = `console-line ${entry.level}`;
+          line.innerHTML = entry.html;
+          fragment.appendChild(line);
+        }
+        consoleOutput.appendChild(fragment);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        logQueue = [];
+        logFlushTimer = null;
+      }, 50);
+    }
     console.log(`[${level.toUpperCase()}] ${message}`);
   }
   function clearConsole() {
@@ -2337,6 +3696,15 @@ ${sectionContent}
       const element = document.getElementById(id);
       return element ? element.checked : false;
     }
+    function debounce(fn, delayMs) {
+      let timer;
+      return (...args) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        timer = window.setTimeout(() => fn(...args), delayMs);
+      };
+    }
     function collectAllFormData() {
       const formData = {
         positionDetails: {
@@ -2599,13 +3967,96 @@ ${sectionContent}
     function setupToggleHandlers() {
       const toggleHeaders = document.querySelectorAll(".properties-header, .markdown-header, .realtime-header, .job-header, .console-header");
       toggleHeaders.forEach((header) => {
+        header.setAttribute("role", "button");
+        header.setAttribute("tabindex", "0");
+        header.setAttribute("aria-expanded", "false");
         header.addEventListener("click", (event) => {
-          if (event.target && event.target.closest("button")) {
+          if (event.target && event.target.closest("button"))
             return;
-          }
           const toggleTarget = header.getAttribute("data-toggle");
           if (toggleTarget) {
             toggleSection(toggleTarget);
+          }
+        });
+        header.addEventListener("keydown", (e) => {
+          const evt = e;
+          const toggleTarget = header.getAttribute("data-toggle");
+          if (!toggleTarget)
+            return;
+          if (evt.key === "Enter" || evt.key === " ") {
+            evt.preventDefault();
+            toggleSection(toggleTarget);
+          } else if (evt.key === "ArrowRight") {
+            ensureExpanded(toggleTarget);
+          } else if (evt.key === "ArrowLeft") {
+            ensureCollapsed(toggleTarget);
+          }
+        });
+      });
+      const expandAll = document.getElementById("expand-all");
+      const collapseAll = document.getElementById("collapse-all");
+      expandAll?.addEventListener("click", () => setAllSections(true));
+      collapseAll?.addEventListener("click", () => setAllSections(false));
+    }
+    function ensureExpanded(sectionId) {
+      const content = document.getElementById(sectionId);
+      if (content && content.classList.contains("collapsed"))
+        toggleSection(sectionId);
+    }
+    function ensureCollapsed(sectionId) {
+      const content = document.getElementById(sectionId);
+      if (content && content.classList.contains("expanded"))
+        toggleSection(sectionId);
+    }
+    function setAllSections(expand) {
+      const sectionIds = [
+        "properties-content",
+        "markdown-content",
+        "realtime-content",
+        "console-output",
+        "position-details-content",
+        "job-requirements-content",
+        "company-information-content",
+        "skills-matrix-content",
+        "application-materials-content",
+        "interview-schedule-content",
+        "interview-preparation-content",
+        "communication-log-content",
+        "key-contacts-content",
+        "interview-feedback-content",
+        "offer-details-content",
+        "rejection-analysis-content",
+        "privacy-policy-content",
+        "lessons-learned-content",
+        "performance-metrics-content",
+        "advisor-review-content",
+        "application-summary-content"
+      ];
+      sectionIds.forEach((id) => {
+        if (expand)
+          ensureExpanded(id);
+        else
+          ensureCollapsed(id);
+      });
+    }
+    function saveCollapseState(sectionId, isCollapsed) {
+      chrome.storage.sync.get(["collapse_state"], (res) => {
+        const state = res["collapse_state"] || {};
+        state[sectionId] = isCollapsed;
+        chrome.storage.sync.set({ collapse_state: state });
+      });
+    }
+    function restoreCollapseState() {
+      chrome.storage.sync.get(["collapse_state"], (res) => {
+        const state = res["collapse_state"] || {};
+        Object.entries(state).forEach(([sectionId, collapsed]) => {
+          const content = document.getElementById(sectionId);
+          if (!content)
+            return;
+          const isCollapsed = !!collapsed;
+          const currentlyCollapsed = content.classList.contains("collapsed");
+          if (isCollapsed !== currentlyCollapsed) {
+            toggleSection(sectionId);
           }
         });
       });
@@ -2623,6 +4074,7 @@ ${sectionContent}
         if (isCollapsed) {
           content.classList.remove("collapsed");
           content.classList.add("expanded");
+          header.setAttribute("aria-expanded", "true");
           if (sectionId === "console-output") {
             toggleIcon.textContent = "\u25BC";
             const consoleMonitor = content.closest(".console-monitor");
@@ -2630,18 +4082,19 @@ ${sectionContent}
               consoleMonitor.setAttribute("data-collapsed", "false");
               document.documentElement.style.setProperty("--button-bottom", "208px");
               const form2 = document.querySelector("#properties-form");
-              if (form2) {
+              if (form2)
                 form2.style.paddingBottom = "120px";
-              }
             }
             logToApplicationLog("INFO", "Debug console expanded", { section: sectionId });
           } else {
             toggleIcon.textContent = "\u25BC";
           }
           logToConsole(`\u2705 Section expanded: ${sectionId}`, "debug");
+          saveCollapseState(sectionId, false);
         } else {
           content.classList.remove("expanded");
           content.classList.add("collapsed");
+          header.setAttribute("aria-expanded", "false");
           if (sectionId === "console-output") {
             toggleIcon.textContent = "\u25B6";
             const consoleMonitor = content.closest(".console-monitor");
@@ -2649,20 +4102,21 @@ ${sectionContent}
               consoleMonitor.setAttribute("data-collapsed", "true");
               document.documentElement.style.setProperty("--button-bottom", "48px");
               const form2 = document.querySelector("#properties-form");
-              if (form2) {
+              if (form2)
                 form2.style.paddingBottom = "80px";
-              }
             }
             logToApplicationLog("INFO", "Debug console collapsed", { section: sectionId });
           } else {
             toggleIcon.textContent = "\u25B6";
           }
           logToConsole(`\u2705 Section collapsed: ${sectionId}`, "debug");
+          saveCollapseState(sectionId, true);
         }
       } else {
         logToConsole(`\u274C Header or toggle icon not found for section: ${sectionId}`, "error");
       }
     }
+    restoreCollapseState();
     function populatePropertyFields(data) {
       propTitle.value = data.title || "";
       propUrl.value = data.url || "";
@@ -2702,8 +4156,9 @@ ${sectionContent}
       jobData.location = propLocation.value;
       markdownEditor.value = generateMarkdown(jobData);
     }
+    const updateJobDataFromFieldsDebounced = debounce(() => updateJobDataFromFields(), 200);
     [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation].forEach((input) => {
-      input.addEventListener("input", updateJobDataFromFields);
+      input.addEventListener("input", updateJobDataFromFieldsDebounced);
     });
     async function requestJobData() {
       logToConsole(i18n.getConsoleMessage("requestingJobData"), "info");
@@ -2821,13 +4276,15 @@ ${sectionContent}
     };
     function showNotification2(message, isError = false) {
       if (chrome.notifications) {
-        chrome.notifications.create({
+        const id = `jobops_${Date.now()}`;
+        chrome.notifications.create(id, {
           type: "basic",
           iconUrl: "icon.png",
           title: "JobOps Clipper",
           message,
           priority: isError ? 2 : 1
         });
+        setTimeout(() => chrome.notifications.clear(id), 2500);
       } else {
         logToConsole(message, isError ? "error" : "info");
       }
@@ -2943,7 +4400,8 @@ ${sectionContent}
         }
         const realtimeResponse2 = document.getElementById("realtime-response");
         if (realtimeResponse2) {
-          realtimeResponse2.innerHTML = '<span class="typing-text">\u{1F680} Starting report generation...</span>';
+          const safe = DOMPurify.sanitize('<span class="typing-text">\u{1F680} Starting report generation...</span>');
+          realtimeResponse2.innerHTML = safe;
           realtimeResponse2.classList.add("typing");
           logToConsole("\u2705 Real-time response element initialized with test message", "debug");
         } else {
@@ -2994,7 +4452,8 @@ ${sectionContent}
         const realtimeResponse2 = document.getElementById("realtime-response");
         if (realtimeResponse2) {
           realtimeResponse2.classList.remove("typing");
-          realtimeResponse2.innerHTML += `<br><span style="color: #ff6b6b;">\u274C Error: ${errorMessage}</span>`;
+          const safe = DOMPurify.sanitize(`<br><span style="color: #ff6b6b;">\u274C Error: ${escapeHtml(errorMessage)}</span>`);
+          realtimeResponse2.innerHTML += safe;
           logToConsole("\u2705 Error message added to real-time response", "debug");
         }
         if (stopGenerationBtn) {
@@ -3036,18 +4495,58 @@ ${sectionContent}
       logToConsole("\u2699\uFE0F Settings dialog opened", "info");
       const groqApiKey = await getGroqApiKey();
       const linearConfig = await getLinearConfig();
+      const backendUrl2 = await new Promise((resolve) => {
+        chrome.storage.sync.get(["jobops_backend_url"], (res) => resolve(res["jobops_backend_url"] || null));
+      });
+      const encryptionEnabled = await new Promise((resolve) => {
+        chrome.storage.sync.get(["db_encryption_enabled"], (res) => resolve(!!res["db_encryption_enabled"]));
+      });
       const settingsHtml = `
-      <div style="padding: 20px; max-width: 500px;">
+      <div style="padding: 20px; max-width: 620px;">
+        <h3>\u{1F310} Backend</h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="backend-url" placeholder="Backend API Base (e.g., http://localhost:8877)" value="${backendUrl2 || ""}" style="flex:1; padding:8px;" aria-label="Backend API Base">
+        </div>
+        <div id="backend-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
+
+        <h3>\u{1F510} Database Encryption (optional)</h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;"><input id="db-encryption-enabled" type="checkbox" ${encryptionEnabled ? "checked" : ""}> Enable encryption</label>
+          <input type="password" id="db-encryption-pass" placeholder="Passphrase (min 8 chars)" style="flex:1; padding:8px;" aria-label="Encryption Passphrase" ${encryptionEnabled ? "" : "disabled"}>
+          <button id="toggle-db-pass" type="button" style="padding:8px 12px;">\u{1F441}\uFE0F</button>
+        </div>
+        <div id="db-encryption-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
+
         <h3>\u{1F511} Groq API Settings</h3>
-        <p>Enter your Groq API key for AI report generation:</p>
-        <input type="password" id="groq-api-key" placeholder="Groq API Key" value="${groqApiKey || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="password" id="groq-api-key" placeholder="Groq API Key" value="${groqApiKey || ""}" style="flex:1; padding:8px;" aria-label="Groq API Key">
+          <button id="toggle-groq-key" type="button" style="padding:8px 12px;">\u{1F441}\uFE0F</button>
+          <button id="test-groq" type="button" style="padding:8px 12px;">\u{1F9EA} Test</button>
+        </div>
+        <div id="groq-key-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
         
-        <h3>\u{1F4E4} Linear Integration Settings</h3>
-        <p>Configure Linear integration for task creation:</p>
-        <input type="password" id="linear-api-key" placeholder="Linear API Key" value="${linearConfig?.apiKey || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
-        <input type="text" id="linear-team-id" placeholder="Linear Team ID" value="${linearConfig?.teamId || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
-        <input type="text" id="linear-project-id" placeholder="Linear Project ID (optional)" value="${linearConfig?.projectId || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
-        <input type="text" id="linear-assignee-id" placeholder="Linear Assignee ID (optional)" value="${linearConfig?.assigneeId || ""}" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <h3 style="margin-top:16px;">\u{1F4E4} Linear Integration Settings</h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="password" id="linear-api-key" placeholder="Linear API Key" value="${linearConfig?.apiKey || ""}" style="flex:1; padding:8px;" aria-label="Linear API Key">
+          <button id="toggle-linear-key" type="button" style="padding:8px 12px;">\u{1F441}\uFE0F</button>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <input type="text" id="linear-team-id" placeholder="Linear Team ID" value="${linearConfig?.teamId || ""}" style="flex:1; padding:8px;" aria-label="Linear Team ID">
+          <input type="text" id="linear-project-id" placeholder="Linear Project ID (optional)" value="${linearConfig?.projectId || ""}" style="flex:1; padding:8px;" aria-label="Linear Project ID">
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+          <input type="text" id="linear-assignee-id" placeholder="Linear Assignee ID (optional)" value="${linearConfig?.assigneeId || ""}" style="flex:1; padding:8px;" aria-label="Linear Assignee ID">
+          <button id="test-linear" type="button" style="padding:8px 12px;">\u{1F9EA} Test</button>
+        </div>
+        <div id="linear-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
+        
+        <div style="display:flex; gap:8px; margin-top:16px;">
+          <button id="export-settings" type="button" style="padding:8px 12px;">\u2B07\uFE0F Export</button>
+          <button id="import-settings" type="button" style="padding:8px 12px;">\u2B06\uFE0F Import</button>
+          <label style="display:flex; align-items:center; gap:6px; margin-left:auto; font-size:12px;">
+            <input id="consent-send" type="checkbox"> Explicit consent to send data to APIs
+          </label>
+        </div>
         
         <div style="margin-top: 20px;">
           <button id="save-settings" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px;">Save Settings</button>
@@ -3056,43 +4555,93 @@ ${sectionContent}
       </div>
     `;
       const modal = document.createElement("div");
-      modal.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-      background: rgba(0,0,0,0.5); z-index: 10000; display: flex; 
-      align-items: center; justify-content: center;
-    `;
-      modal.innerHTML = `
-      <div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">
-        ${settingsHtml}
-      </div>
-    `;
+      modal.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;`;
+      modal.innerHTML = `<div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">${settingsHtml}</div>`;
       document.body.appendChild(modal);
+      const backendUrlInput = modal.querySelector("#backend-url");
+      const encEnabledInput = modal.querySelector("#db-encryption-enabled");
+      const encPassInput = modal.querySelector("#db-encryption-pass");
+      const groqKeyInput = modal.querySelector("#groq-api-key");
+      const linearKeyInput = modal.querySelector("#linear-api-key");
+      const teamIdInput = modal.querySelector("#linear-team-id");
+      const consentCheckbox = modal.querySelector("#consent-send");
+      modal.querySelector("#toggle-db-pass")?.addEventListener("click", () => {
+        encPassInput.type = encPassInput.type === "password" ? "text" : "password";
+      });
+      encEnabledInput.addEventListener("change", () => {
+        encPassInput.disabled = !encEnabledInput.checked;
+      });
+      chrome.storage.sync.get(["consent_send"], (res) => {
+        consentCheckbox.checked = !!res["consent_send"];
+      });
+      const setError = (id, msg) => {
+        const el = modal.querySelector(id);
+        if (el)
+          el.textContent = msg;
+      };
+      const validUrl = (value) => {
+        try {
+          const u = new URL(value);
+          return !!u.protocol && !!u.host;
+        } catch {
+          return false;
+        }
+      };
+      backendUrlInput.addEventListener("input", () => {
+        const v = backendUrlInput.value.trim();
+        setError("#backend-error", v.length === 0 || validUrl(v) ? "" : "Invalid URL");
+      });
       const saveBtn = modal.querySelector("#save-settings");
       saveBtn?.addEventListener("click", async (event) => {
         event.preventDefault();
-        const groqKey = modal.querySelector("#groq-api-key")?.value.trim();
-        const linearKey = modal.querySelector("#linear-api-key")?.value.trim();
-        const linearTeamId = modal.querySelector("#linear-team-id")?.value.trim();
+        const groqKey = groqKeyInput?.value.trim();
+        const linearKey = linearKeyInput?.value.trim();
+        const linearTeamId = teamIdInput?.value.trim();
         const linearProjectId = modal.querySelector("#linear-project-id")?.value.trim();
         const linearAssigneeId = modal.querySelector("#linear-assignee-id")?.value.trim();
-        const settings = {};
+        const backend = backendUrlInput?.value.trim();
+        const encEnabled = encEnabledInput?.checked;
+        const encPass = encPassInput?.value.trim();
+        if (backend && !validUrl(backend)) {
+          setError("#backend-error", "Invalid URL");
+          return;
+        }
+        if (linearKey && !linearTeamId) {
+          setError("#linear-error", "Team ID is required when Linear API key is provided");
+          return;
+        }
+        if (encEnabled && (!encPass || encPass.length < 8)) {
+          setError("#db-encryption-error", "Passphrase must be at least 8 characters");
+          return;
+        }
+        const settings = { consent_send: !!consentCheckbox.checked };
+        if (backend)
+          settings.jobops_backend_url = backend;
         if (groqKey)
           settings.groq_api_key = groqKey;
-        if (linearKey && linearTeamId) {
+        if (linearKey)
           settings.linear_api_key = linearKey;
+        if (linearTeamId)
           settings.linear_team_id = linearTeamId;
-          if (linearProjectId)
-            settings.linear_project_id = linearProjectId;
-          if (linearAssigneeId)
-            settings.linear_assignee_id = linearAssigneeId;
-        }
+        if (linearProjectId)
+          settings.linear_project_id = linearProjectId;
+        if (linearAssigneeId)
+          settings.linear_assignee_id = linearAssigneeId;
+        settings.db_encryption_enabled = !!encEnabled;
         await new Promise((resolve) => {
           chrome.storage.sync.set(settings, () => {
             logToConsole("\u2705 Settings saved successfully!", "success");
-            showNotification2("\u2705 Settings saved!");
+            showNotification2(i18n.getNotificationMessage("settingsSaved"));
             resolve();
           });
         });
+        try {
+          await jobOpsDatabase.configureEncryption(!!encEnabled, encEnabled ? encPass : void 0);
+          logToConsole(encEnabled ? "\u{1F510} Database encryption enabled for this session" : "\u{1F513} Database encryption disabled", "success");
+        } catch (e) {
+          setError("#db-encryption-error", `Failed to configure encryption: ${e instanceof Error ? e.message : String(e)}`);
+          return;
+        }
         document.body.removeChild(modal);
       });
       const cancelBtn = modal.querySelector("#cancel-settings");
@@ -3178,6 +4727,11 @@ ${value}
 [Source](${jobData.url})
 `;
     return md;
+  }
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, function(c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c;
+    });
   }
   async function extractPdfContent(file) {
     return new Promise(async (resolve, reject) => {
@@ -3381,6 +4935,7 @@ Fill in all template placeholders with concrete, actionable information based on
   }
   async function callGroqAPI(prompt2, onChunk) {
     try {
+      await ensureConsent();
       logToConsole("\u{1F511} Retrieving Groq API key from storage...", "debug");
       const apiKey = await getGroqApiKey();
       if (!apiKey) {
@@ -3662,9 +5217,23 @@ Fill in all template placeholders with concrete, actionable information based on
       });
     });
   }
+  var isExportingLinear = false;
   async function handleExportToLinear() {
-    logToConsole("\u{1F680} Starting Linear export...", "info");
+    if (isExportingLinear) {
+      logToConsole("\u26A0\uFE0F Export already in progress", "warning");
+      return;
+    }
+    isExportingLinear = true;
     try {
+      const consent = await new Promise((resolve) => {
+        chrome.storage.sync.get(["consent_send"], (res) => resolve(!!res["consent_send"]));
+      });
+      if (!consent) {
+        logToConsole("\u274C Consent is required before sending data to Linear", "error");
+        showNotification(i18n.getNotificationMessage("consentRequired"), true);
+        return;
+      }
+      logToConsole("\u{1F680} Starting Linear export...", "info");
       const currentJobId = jobOpsDataManager.getCurrentJobApplicationId();
       if (!currentJobId) {
         logToConsole("\u274C No active job application found", "error");
@@ -3673,20 +5242,27 @@ Fill in all template placeholders with concrete, actionable information based on
         showNativeNotification("JobOps Clipper - No Job Application", message, 2);
         return;
       }
-      const config = await getLinearConfig();
-      if (!config) {
+      const alreadyExported = await new Promise((resolve) => {
+        chrome.storage.sync.get([`linear_mapping_${currentJobId}`], (res) => {
+          resolve(!!res[`linear_mapping_${currentJobId}`]);
+        });
+      });
+      if (alreadyExported) {
+        logToConsole("\u26A0\uFE0F This job application was already exported to Linear", "warning");
+        showNotification("\u26A0\uFE0F Already exported to Linear", true);
+        return;
+      }
+      const baseConfig = await getLinearConfig();
+      if (!baseConfig) {
         logToConsole("\u274C Linear configuration not found", "error");
         const message = "Linear configuration not found. Please configure Linear settings first.";
         showNotification(message, true);
         showNativeNotification("JobOps Clipper - Linear Configuration", message, 2);
         return;
       }
-      logToConsole("\u{1F527} Linear configuration loaded", "debug");
-      logToConsole(`\u{1F4CB} Team ID: ${config.teamId}`, "debug");
-      logToConsole(`\u{1F4C1} Project ID: ${config.projectId || "None"}`, "debug");
-      const linearService = new LinearIntegrationService(config, jobOpsDataManager);
+      const svcForMeta = new LinearIntegrationService(baseConfig, jobOpsDataManager);
       logToConsole("\u{1F517} Testing Linear connection...", "progress");
-      const connectionTest = await linearService.testConnection();
+      const connectionTest = await svcForMeta.testConnection();
       if (!connectionTest) {
         logToConsole("\u274C Linear connection test failed", "error");
         const message = "Failed to connect to Linear. Please check your API key and try again.";
@@ -3695,16 +5271,62 @@ Fill in all template placeholders with concrete, actionable information based on
         return;
       }
       logToConsole("\u2705 Linear connection successful", "success");
+      const [projects, labels] = await Promise.all([
+        svcForMeta.getProjects(baseConfig.teamId),
+        svcForMeta.getLabels(baseConfig.teamId)
+      ]);
+      const selection = await new Promise((resolve) => {
+        const modal = document.createElement("div");
+        modal.style.cssText = "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:10001;";
+        const projOptions = ['<option value="">(None)</option>', ...projects.map((p) => `<option value="${p.id}">${p.name}</option>`)].join("");
+        const labelOptions = labels.map((l) => `<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 8px 4px 0;"><input type="checkbox" value="${l.name}"> ${l.name}</label>`).join("");
+        modal.innerHTML = `
+        <div style="background:#fff;border-radius:8px;padding:16px 16px;min-width:360px;max-width:560px;">
+          <h3 style="margin:0 0 8px 0;">Linear Export Options</h3>
+          <label>Project:
+            <select id="linear-project-select" style="width:100%;padding:6px;margin-top:4px;">${projOptions}</select>
+          </label>
+          <div style="margin-top:12px;">
+            <div style="margin-bottom:6px;">Labels:</div>
+            <div id="linear-labels-list" style="display:flex;flex-wrap:wrap;">${labelOptions}</div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+            <button id="cancel-export" type="button" style="padding:8px 12px;">Cancel</button>
+            <button id="confirm-export" type="button" style="padding:8px 12px;background:#4CAF50;color:#fff;border:none;border-radius:4px;">Export</button>
+          </div>
+        </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector("#cancel-export")?.addEventListener("click", () => {
+          document.body.removeChild(modal);
+          resolve({ projectId: void 0, labelNames: [] });
+        });
+        modal.querySelector("#confirm-export")?.addEventListener("click", () => {
+          const projectId = modal.querySelector("#linear-project-select").value || void 0;
+          const selected = Array.from(modal.querySelectorAll('#linear-labels-list input[type="checkbox"]:checked')).map((el) => el.value);
+          document.body.removeChild(modal);
+          resolve({ projectId, labelNames: selected });
+        });
+      });
+      const config = { ...baseConfig };
+      if (selection.projectId)
+        config.projectId = selection.projectId;
+      if (selection.labelNames && selection.labelNames.length > 0)
+        config.additionalLabels = selection.labelNames;
+      const linearService = new LinearIntegrationService(config, jobOpsDataManager);
       logToConsole("\u{1F4E4} Exporting job application to Linear...", "progress");
       const result = await linearService.exportJobToLinear(currentJobId);
       if (result.success) {
+        chrome.storage.sync.set({ [`linear_mapping_${currentJobId}`]: result.mainTask?.id || true });
         logToConsole("\u2705 Job exported to Linear successfully", "success");
-        logToConsole(`\u{1F4CB} Main task created: ${result.mainTask.title}`, "info");
-        logToConsole(`\u{1F4CB} Subtasks created: ${result.subtasks.length}`, "info");
+        if (result.failedSubtasks && result.failedSubtasks.length > 0) {
+          logToConsole(`\u26A0\uFE0F ${result.failedSubtasks.length} subtasks failed to create`, "warning");
+          for (const f of result.failedSubtasks) {
+            logToConsole(`\u2022 ${f.section}: ${f.error}`, "warning");
+          }
+        }
         const message = `Job exported to Linear! Created 1 main task and ${result.subtasks.length} subtasks.`;
         showNotification(message);
         if (result.mainTask.url) {
-          logToConsole(`\u{1F517} Opening Linear task: ${result.mainTask.url}`, "info");
           chrome.tabs.create({ url: result.mainTask.url });
         }
       } else {
@@ -3715,6 +5337,22 @@ Fill in all template placeholders with concrete, actionable information based on
       const errorMessage = error instanceof Error ? error.message : String(error);
       logToConsole(`\u274C Linear export error: ${errorMessage}`, "error");
       showNotification(`Linear export failed: ${errorMessage}`, true);
+    } finally {
+      isExportingLinear = false;
+    }
+  }
+  async function ensureConsent() {
+    const consent = await new Promise((resolve) => {
+      chrome.storage.sync.get(["consent_send"], (res) => resolve(!!res["consent_send"]));
+    });
+    if (!consent) {
+      throw new Error("Consent required before calling Groq API");
     }
   }
 })();
+/*! Bundled license information:
+
+dompurify/dist/purify.es.mjs:
+  (*! @license DOMPurify 3.2.6 | (c) Cure53 and other contributors | Released under the Apache license 2.0 and Mozilla Public License 2.0 | github.com/cure53/DOMPurify/blob/3.2.6/LICENSE *)
+*/
+//# sourceMappingURL=popup.js.map

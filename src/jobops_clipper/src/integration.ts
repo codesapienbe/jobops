@@ -9,6 +9,7 @@ export interface LinearIntegrationConfig {
   assigneeId?: string;
   autoCreateSubtasks: boolean;
   defaultPriority: number;
+  additionalLabels?: string[];
 }
 
 export interface LinearExportResult {
@@ -16,6 +17,7 @@ export interface LinearExportResult {
   subtasks: LinearIssue[];
   success: boolean;
   error?: string;
+  failedSubtasks?: { section: string; error: string }[];
 }
 
 export class LinearIntegrationService {
@@ -230,13 +232,14 @@ ${sectionMappings.map(mapping => `- ${mapping.taskTitle}`).join('\n')}
         projectId: this.config.projectId,
         priority: this.config.defaultPriority,
         assigneeId: this.config.assigneeId,
-        labels: await this.getLabelIds(['job-application', 'tracking'], this.config.teamId)
+        labels: await this.getLabelIds(['job-application', 'tracking', ...(this.config.additionalLabels || [])], this.config.teamId)
       };
 
       const mainTaskIssue = await this.client.createIssue(mainTask);
 
       // Create subtasks for each section
       const subtasks: LinearIssue[] = [];
+      const failedSubtasks: { section: string; error: string }[] = [];
 
       if (this.config.autoCreateSubtasks) {
         for (const mapping of sectionMappings) {
@@ -258,14 +261,14 @@ ${sectionContent}
             `.trim(),
             parentId: mainTaskIssue.id,
             priority: mapping.priority,
-            labels: await this.getLabelIds(mapping.labels, this.config.teamId)
+            labels: await this.getLabelIds([...mapping.labels, ...(this.config.additionalLabels || [])], this.config.teamId)
           };
 
           try {
             const subtaskIssue = await this.client.createSubtask(subtask);
             subtasks.push(subtaskIssue);
           } catch (error) {
-            console.error(`Failed to create subtask for ${mapping.sectionName}:`, error);
+            failedSubtasks.push({ section: mapping.sectionName, error: error instanceof Error ? error.message : String(error) });
           }
         }
       }
@@ -273,7 +276,8 @@ ${sectionContent}
       return {
         mainTask: mainTaskIssue,
         subtasks,
-        success: true
+        success: true,
+        failedSubtasks
       };
 
     } catch (error) {

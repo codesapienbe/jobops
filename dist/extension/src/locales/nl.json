@@ -93,7 +93,10 @@
     "toggleTheme": "Thema Wisselen",
     "settings": "Instellingen",
     "languageSelector": "Taalselector",
-    "clearConsole": "Console wissen"
+    "clearConsole": "Console wissen",
+    "exportToLinear": "Exporteren naar Linear",
+    "expandAll": "Alles uitklappen",
+    "collapseAll": "Alles inklappen"
   },
   "notifications": {
     "copied": "Gekopieerd naar klembord!",
@@ -127,7 +130,9 @@
     "sectionSaved": "Sectie opgeslagen",
     "sectionSaveFailed": "Sectie opslaan mislukt",
     "insufficientContent": "Onvoldoende inhoud voor database aanmaak",
-    "contentQuality": "inhoud"
+    "contentQuality": "inhoud",
+    "settingsSaved": "Instellingen opgeslagen!",
+    "consentRequired": "Geef eerst toestemming in de instellingen voordat je exporteert."
   },
   "console": {
     "initialized": "Console-monitor geïnitialiseerd",

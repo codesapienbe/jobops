@@ -277,3 +277,4 @@ export class JobApplicationManager {
 }
 // Export all types and classes
 export default JobApplication;
+//# sourceMappingURL=models.js.map

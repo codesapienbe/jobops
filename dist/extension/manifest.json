@@ -17,10 +17,5 @@
   "action": {
     "default_popup": "popup.html"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
-    }
-  ]
+  "optional_host_permissions": ["<all_urls>"]
 } 

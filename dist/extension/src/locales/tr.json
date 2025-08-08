@@ -93,7 +93,10 @@
     "toggleTheme": "Temayı Değiştir",
     "settings": "Ayarlar",
     "languageSelector": "Dil Seçici",
-    "clearConsole": "Konsolu temizle"
+    "clearConsole": "Konsolu temizle",
+    "exportToLinear": "Linear'a aktar",
+    "expandAll": "Tümünü genişlet",
+    "collapseAll": "Tümünü daralt"
   },
   "notifications": {
     "copied": "Panoya kopyalandı!",
@@ -127,7 +130,9 @@
     "sectionSaved": "Bölüm kaydedildi",
     "sectionSaveFailed": "Bölüm kaydetme başarısız",
     "insufficientContent": "Veritabanı oluşturma için yetersiz içerik",
-    "contentQuality": "içerik"
+    "contentQuality": "içerik",
+    "settingsSaved": "Ayarlar kaydedildi!",
+    "consentRequired": "Dışa aktarmadan önce ayarlarda izin verin."
   },
   "console": {
     "initialized": "Konsol monitörü başlatıldı",

@@ -20,6 +20,7 @@
 - [Quick Start](#quick-start)
 - [Usage](#usage)
 - [Configuration](#configuration)
+- [Threat Model](#threat-model)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -218,3 +219,56 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 ## Contact
 
 Created by the JobOps Team. For questions or feedback, open an issue or reach out via email: `support@jobops.com`.
+
+---
+
+## Threat Model
+
+This section summarizes key assets, data flows, threats, and mitigations for JobOps (Tray + API) and the JobOps Clipper (extension).
+
+### Assets
+- User job data (clipped content, metadata)
+- Credentials/API keys (Groq, Linear)
+- Local IndexedDB database (extension)
+- Application binaries and build artifacts
+
+### Trust Boundaries
+- Browser Extension sandbox (MV3 service worker, popup)
+- Local storage (Chrome sync storage, IndexedDB)
+- Network calls to: Backend API, Groq, Linear, Translation APIs
+- User workstation and OS
+
+### Data Flows
+1. Clipper: Page → Content Script → Popup → IndexedDB (local)
+2. Optional: Popup → Groq/Ollama for analysis (user consent required)
+3. Optional: Popup → Linear (task creation)
+4. Extension → Backend API (clip persistence when invoked)
+
+### Threats (STRIDE)
+- Spoofing: Malicious pages mimicking job boards; stolen API keys
+- Tampering: Content script manipulation; DB data corruption
+- Repudiation: Lack of audit for exports
+- Information Disclosure: Leaking PII, secrets, or job data
+- Denial of Service: Excessive network calls; UI hangs with large logs
+- Elevation of Privilege: Over-broad host permissions; content injection
+
+### Mitigations
+- Permissions minimization: activeTab + optional_host_permissions; no `<all_urls>` auto-injection
+- CSP: Strict CSP in popup; no inline scripts/styles; `object-src 'none'`
+- Sanitization: DOMPurify for HTML, `textContent` for dynamic text
+- Secrets: Stored only in Chrome sync storage; masked in UI; never logged; PII redaction in logs
+- Consent: Explicit toggle before sending to Groq/Linear; native notifications
+- Encryption: Optional AES-GCM encryption of IndexedDB payloads, PBKDF2-derived key; passphrase not stored
+- Reliability: Retry with backoff for Linear 429/5xx; duplicate-export guard; export-in-progress guard
+- Observability: Structured logs in console; partial-failure surfacing for subtasks
+
+### Residual Risks
+- User’s machine compromise can expose session secrets and local data
+- Network attackers if TLS is broken on third-party endpoints
+- Supply chain risk of dependencies (esbuild, dompurify)
+
+### Operational Guidance
+- Rotate API keys periodically and on suspicion of compromise
+- Prefer local LLM (Ollama) when feasible for sensitive data
+- Keep browser and OS up to date; enable full-disk encryption
+- Review extension permissions at install time; load unpacked builds from trusted source only

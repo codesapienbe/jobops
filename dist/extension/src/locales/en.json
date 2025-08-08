@@ -93,7 +93,10 @@
     "toggleTheme": "Toggle Theme",
     "settings": "Settings",
     "languageSelector": "Language Selector",
-    "clearConsole": "Clear console"
+    "clearConsole": "Clear console",
+    "exportToLinear": "Export to Linear",
+    "expandAll": "Expand All",
+    "collapseAll": "Collapse All"
   },
   "notifications": {
     "copied": "Copied to clipboard!",
@@ -127,7 +130,9 @@
     "sectionSaved": "Section saved",
     "sectionSaveFailed": "Failed to save section",
     "insufficientContent": "Insufficient content for database creation",
-    "contentQuality": "content"
+    "contentQuality": "content",
+    "settingsSaved": "Settings saved!",
+    "consentRequired": "Please provide consent in settings before exporting."
   },
   "console": {
     "initialized": "Console monitor initialized",

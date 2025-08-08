@@ -74,9 +74,9 @@ dev = [
 ] 
 
 [project.scripts]
-jobops_api = "jobops_api:main"
-jobops_tray = "jobops_tray:main"
-jobops_clipper = "jobops_clipper:main"
+api = "jobops_api:main"
+tray = "jobops_tray:main"
+clipper = "jobops_clipper:main"
 
 [tool.hatch.build.targets.wheel]
 packages = [

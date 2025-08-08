@@ -1,0 +1,125 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+# Python Enterprise Development Rules
+
+## Core Principles
+
+- Follow PEP 8 style guide strictly
+- Use type hints for all function parameters and return values
+- Implement async/await for I/O bound operations
+- Use virtual environments for dependency isolation
+- Write comprehensive docstrings and documentation
+- Follow the principle of least privilege for security
+
+## FastAPI Best Practices
+
+- Use Pydantic models for request/response validation
+- Implement dependency injection for shared resources
+- Use APIRouter to organize endpoints logically
+- Implement proper HTTP status codes (200, 201, 400, 404, 500)
+- Use background tasks for non-blocking operations
+- Implement proper error handling with HTTPException
+- Use FastAPI's automatic OpenAPI documentation
+- Implement request/response models with proper validation
+
+## Enterprise Architecture
+
+Structure projects with clear separation of concerns
+
+```
+app/
+├── main.py
+├── api/
+│   ├── v1/
+│   │   ├── endpoints/
+│   │   └── dependencies/
+├── core/
+│   ├── config.py
+│   ├── security.py
+│   └── database.py
+├── models/
+├── schemas/
+├── services/
+└── tests/
+```
+
+- Use dependency injection containers
+- Implement repository pattern for data access
+- Use service layer for business logic
+- Implement proper configuration management
+
+## Security Implementation
+
+- Use OAuth2 with JWT for authentication
+- Implement proper password hashing with bcrypt
+- Validate all input data using Pydantic
+- Implement CORS policies correctly
+- Use HTTPS in production
+- Implement rate limiting and request throttling
+- Sanitize all user inputs to prevent injection attacks
+- Use security headers (HSTS, CSP, X-Frame-Options)
+- Implement audit logging for security events
+
+## Database & ORM
+
+- Use SQLAlchemy for database operations
+- Implement database migrations with Alembic
+- Use connection pooling for better performance
+- Implement proper transaction management
+- Use async database drivers (asyncpg, aiomysql)
+- Implement database query optimization
+- Use proper indexing strategies
+- Implement soft deletes for audit trails
+
+## Performance & Scalability
+
+- Use caching with Redis for frequently accessed data
+- Implement async database operations
+- Use connection pooling
+- Implement proper pagination for large datasets
+- Use background tasks for heavy computations
+- Implement request/response compression
+- Use CDN for static assets
+- Monitor performance with APM tools
+- Implement horizontal scaling strategies
+
+## Testing Framework
+
+- Use pytest for all testing needs
+- Implement unit tests with high coverage (>85%)
+- Use pytest fixtures for test data setup
+- Implement integration tests with TestClient
+- Use factory_boy for test data generation
+- Mock external dependencies properly
+- Implement contract testing for APIs
+- Use property-based testing with Hypothesis
+- Implement load testing with locust
+
+## Code Quality & Maintenance
+
+- Use black for code formatting
+- Use isort for import sorting
+- Use flake8 or pylint for linting
+- Use mypy for static type checking
+- Implement pre-commit hooks
+- Use bandit for security vulnerability scanning
+- Write comprehensive documentation with Sphinx
+- Implement proper logging with structured logs
+- Use semantic versioning for releases
+
+## Deployment & Operations
+
+- Use Docker for containerization
+- Implement multi-stage Docker builds
+- Use docker-compose for local development
+- Implement CI/CD with GitHub Actions/GitLab CI
+- Use environment variables for configuration
+- Implement health checks and readiness probes
+- Use Gunicorn/Uvicorn for production deployment
+- Implement log aggregation (ELK stack)
+- Set up monitoring with Prometheus/Grafana
+- Implement backup strategies for data persistence

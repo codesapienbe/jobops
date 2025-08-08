@@ -340,6 +340,16 @@ The extension supports multiple languages with automatic language detection and 
 
 See `src/locales/README.md` for detailed documentation on the i18n system.
 
+## Security
+
+- Content Security Policy: The popup includes a strict CSP disallowing inline scripts/styles, permitting only required connect-src endpoints.
+- HTML sanitization: All HTML rendered in the popup (e.g., real-time response fragments) is sanitized via DOMPurify; dynamic text uses textContent.
+- Secrets handling: API keys are stored in Chrome sync storage and never logged. UI masks secrets with show/hide toggles. Crash/console logs redact likely PII.
+- Optional encryption: IndexedDB payloads can be encrypted with a user-provided passphrase (AES-GCM with PBKDF2-derived key). Passphrase is not stored.
+- Consent: Users must opt-in before sending data to Groq/Linear.
+
+See `src/popup.html` for CSP meta tag and `src/popup.ts` for sanitization and consent enforcement.
+
 ## Development
 
 ### Project Structure
@@ -395,3 +405,23 @@ src/
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Build Scripts
+
+- `npm run build:dev`: Fast dev build with watch and sourcemaps
+- `npm run build:prod`: Optimized production build (minified + sourcemaps)
+- `npm run clean`: Cross-platform clean using rimraf
+
+## Permissions Rationale
+
+This extension follows the principle of least privilege:
+
+- **activeTab**: Grants temporary access to the current tab when the user interacts, enabling on-demand script injection
+- **optional_host_permissions: <all_urls>**: Required only to inject `content.js` on-demand into user-initiated pages; permission is optional and requested at runtime
+- **host_permissions**: Specific APIs used by features
+  - Backend API (`http://localhost:8877/*`)
+  - Groq API (`https://api.groq.com/*`)
+  - Linear API (`https://api.linear.app/*`)
+  - Translation APIs (LibreTranslate/Argos)
+
+The extension no longer auto-injects `content.js` on all sites. Instead, it injects on-demand via `activeTab`, reducing always-on permissions and improving privacy.

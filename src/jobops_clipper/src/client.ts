@@ -47,29 +47,52 @@ export class LinearClient {
   }
 
   private async makeGraphQLRequest<T>(query: string, variables?: any): Promise<T> {
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
-    });
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError: any = null;
 
-    if (!response.ok) {
-      throw new Error(`Linear API error: ${response.status} ${response.statusText}`);
+    while (attempt <= maxRetries) {
+      try {
+        const response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({ query, variables }),
+        });
+
+        if (!response.ok) {
+          const status = response.status;
+          const shouldRetry = status === 429 || (status >= 500 && status < 600);
+          const errorText = await response.text().catch(() => '');
+          if (shouldRetry && attempt < maxRetries) {
+            const backoff = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 200, 5000);
+            await new Promise(r => setTimeout(r, backoff));
+            attempt++;
+            continue;
+          }
+          throw new Error(`Linear API error: ${status} ${response.statusText} ${errorText}`);
+        }
+
+        const result = await response.json();
+        if (result.errors) {
+          throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+        }
+        return result.data;
+      } catch (err) {
+        lastError = err;
+        // Retry on network errors
+        if (attempt < maxRetries) {
+          const backoff = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 200, 5000);
+          await new Promise(r => setTimeout(r, backoff));
+          attempt++;
+          continue;
+        }
+        break;
+      }
     }
-
-    const result = await response.json();
-    
-    if (result.errors) {
-      throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-    }
-
-    return result.data;
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   async getCurrentUser(): Promise<LinearUser> {
