@@ -1477,21 +1477,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     logToConsole("🎯 BUTTON CLICK VERIFICATION - This should appear immediately", "info");
 
     try {
-      // Step 1: Check API key
+      // Step 1: Check API configuration (will fall back to Ollama if needed)
       logToConsole("🔑 Checking API configuration...", "progress");
       logToConsole("🔑 Checking API configuration...", "info");
       const apiKey = await getGroqApiKey();
-      if (!apiKey) {
-        const message = 'Groq API key not configured. Please configure in settings.';
-        logToConsole("❌ " + message, "error");
-        showNotification(message, true);
-        
-        // Show native notification with shorter duration
-        showNativeNotification('JobOps Clipper - Groq API Configuration', message, 2);
-        return;
+      if (apiKey) {
+        logToConsole("✅ Groq API key found, will use Groq API", "success");
+      } else {
+        logToConsole("ℹ️ No Groq API key found, will use Ollama fallback", "info");
       }
-      logToConsole("✅ API key found, proceeding with report generation", "success");
-      showNotification("✅ API key found, proceeding...");
+      showNotification("✅ Proceeding with report generation...");
 
       // Step 2: Prepare data
       logToConsole("📊 Preparing job data and resume content...", "progress");
@@ -1598,10 +1593,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         stopGenerationBtn.style.display = 'none';
       }
       
-      if (errorMessage.includes('API key')) {
-        logToConsole("🔧 API key required - please configure in settings", "warning");
-        showNotification("❌ Groq API key not configured. Click ⚙️ to set it up.", true);
-      } else if (errorMessage.includes('Groq API')) {
+      if (errorMessage.includes('Groq API')) {
         logToConsole("⚠️ Groq API failed, trying Ollama fallback...", "warning");
         showNotification("⚠️ Groq API failed, trying Ollama...");
         try {
@@ -1952,12 +1944,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const apiKey = await getGroqApiKey();
       if (!apiKey) {
-        logToConsole("❌ No API key configured", "error");
-        showNotification("❌ No API key configured", true);
-        return;
+        logToConsole("🔑 No Groq API key found, will test Ollama fallback...", "info");
+      } else {
+        logToConsole("🔑 Groq API key found, testing Groq API...", "progress");
       }
       
-      logToConsole("🔑 API key found, testing Groq API...", "progress");
       const testResponse = await callGroqAPI("Say 'Hello, API test successful!'", (chunk) => {
         logToConsole(`🧪 Test chunk: ${chunk}`, "debug");
       });
@@ -2048,8 +2039,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const missingKeys = [];
     
     if (!groqApiKey) {
-      missingKeys.push('Groq API');
-      logToConsole("⚠️ Groq API key not configured", "warning");
+      logToConsole("ℹ️ Groq API key not configured - will use Ollama fallback", "info");
     }
     
     if (!linearConfig) {
@@ -2058,7 +2048,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     
     if (missingKeys.length > 0) {
-      const message = `Missing API keys: ${missingKeys.join(', ')}. Click ⚙️ to configure.`;
+      const message = `Missing required API keys: ${missingKeys.join(', ')}. Click ⚙️ to configure.`;
       logToConsole(message, "warning");
       
       // Show native notification with shorter duration
@@ -2067,7 +2057,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Also show in-app notification
       showNotification(message, true);
     } else {
-      logToConsole("✅ All API keys configured", "success");
+      logToConsole("✅ All required API keys configured", "success");
     }
   }
 
@@ -2350,6 +2340,44 @@ async function extractPdfContent(file: File): Promise<string> {
   });
 }
 
+// Parse PDF content using Ollama API (fallback)
+async function parsePdfWithOllama(base64Data: string, fileName: string): Promise<string> {
+  try {
+    logToConsole("🤖 Sending PDF to Ollama API for parsing...", "progress");
+    
+    const prompt = `You are an expert PDF parser. I will provide you with a base64-encoded PDF file. Please extract all the text content from this PDF and return it as clean, readable text.
+
+PDF File: ${fileName}
+Base64 Data: ${base64Data}
+
+Instructions:
+1. Decode the base64 data to access the PDF content
+2. Extract all text content from the PDF
+3. Preserve the structure and formatting as much as possible
+4. Remove any PDF artifacts or formatting codes
+5. Return only the clean, readable text content
+6. If the PDF contains images with text, describe the text content
+7. If the PDF is mostly images, describe what you can see
+
+Please extract and return the text content from this PDF:`;
+
+    logToConsole("📤 Sending PDF parsing request to Ollama API...", "progress");
+    
+    const response = await callOllamaAPI(prompt);
+    if (response) {
+      logToConsole(`✅ Ollama PDF parsing successful: ${response.length} characters`, "success");
+      return response;
+    } else {
+      throw new Error('Ollama API returned empty response');
+    }
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logToConsole(`❌ Ollama PDF parsing failed: ${errorMessage}`, "error");
+    throw error;
+  }
+}
+
 // Parse PDF content using Groq API
 async function parsePdfWithGroq(base64Data: string, fileName: string): Promise<string> {
   try {
@@ -2357,7 +2385,9 @@ async function parsePdfWithGroq(base64Data: string, fileName: string): Promise<s
     
     const apiKey = await getGroqApiKey();
     if (!apiKey) {
-      throw new Error('No Groq API key available');
+      logToConsole("🔑 No Groq API key found, falling back to Ollama for PDF parsing", "info");
+      // For PDF parsing, we'll use a simpler approach with Ollama
+      return await parsePdfWithOllama(base64Data, fileName);
     }
     
     const prompt = `You are an expert PDF parser. I will provide you with a base64-encoded PDF file. Please extract all the text content from this PDF and return it as clean, readable text.
@@ -2449,34 +2479,20 @@ Please analyze this information and fill out the job application tracking report
 Fill in all template placeholders with concrete, actionable information based on the provided data.`;
 
   try {
-    // Try Groq first with streaming
+    // Try Groq first with streaming (will automatically fall back to Ollama if no API key)
     logToConsole("🤖 Attempting Groq API with streaming...", "progress");
-    const groqResponse = await callGroqAPI(prompt, onChunk);
-    if (groqResponse) {
-      logToConsole("✅ Groq API succeeded with streaming", "success");
-      return groqResponse;
+    const response = await callGroqAPI(prompt, onChunk);
+    if (response) {
+      logToConsole("✅ API call succeeded", "success");
+      return response;
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logToConsole(`⚠️ Groq API failed: ${errorMessage}`, "warning");
-    logToConsole("🔄 Falling back to Ollama...", "progress");
-    
-    try {
-      // Try Ollama as fallback
-      logToConsole("🤖 Attempting Ollama API fallback...", "progress");
-      const ollamaResponse = await callOllamaAPI(prompt);
-      if (ollamaResponse) {
-        logToConsole("✅ Ollama API succeeded", "success");
-        return ollamaResponse;
-      }
-    } catch (ollamaError) {
-      const ollamaErrorMessage = ollamaError instanceof Error ? ollamaError.message : String(ollamaError);
-      logToConsole(`❌ Ollama API also failed: ${ollamaErrorMessage}`, "error");
-    }
+    logToConsole(`❌ API call failed: ${errorMessage}`, "error");
   }
 
-  logToConsole("❌ Both Groq and Ollama APIs failed", "error");
-  throw new Error('Both Groq and Ollama APIs failed');
+  logToConsole("❌ All API attempts failed", "error");
+  throw new Error('All API attempts failed');
 }
 
 // Generate comprehensive job report using LLM (non-streaming version for backward compatibility)
@@ -2510,7 +2526,7 @@ Please analyze this information and fill out the job application tracking report
 
 Fill in all template placeholders with concrete, actionable information based on the provided data.`;
 
-  const ollamaResponse = await callOllamaAPI(prompt);
+  const ollamaResponse = await callOllamaAPI(prompt, undefined);
   if (ollamaResponse) {
     return ollamaResponse;
   }
@@ -2527,8 +2543,9 @@ async function callGroqAPI(prompt: string, onChunk?: (chunk: string) => void): P
     // Get API key from storage or environment
     const apiKey = await getGroqApiKey();
     if (!apiKey) {
-      logToConsole("❌ No Groq API key found in storage", "error");
-      throw new Error('Groq API key not configured');
+      logToConsole("🔑 No Groq API key found, falling back to Ollama with qwen3:1.7b", "info");
+      // Silently fall back to Ollama without throwing an error
+      return await callOllamaAPI(prompt, onChunk);
     }
     
     logToConsole("✅ Groq API key retrieved successfully", "debug");
@@ -2673,7 +2690,7 @@ async function callGroqAPI(prompt: string, onChunk?: (chunk: string) => void): P
 }
 
 // Call Ollama API (fallback)
-async function callOllamaAPI(prompt: string): Promise<string | null> {
+async function callOllamaAPI(prompt: string, onChunk?: (chunk: string) => void): Promise<string | null> {
   try {
     logToConsole("🔄 Preparing Ollama API fallback request...", "debug");
     logToConsole(`🌐 Ollama URL: ${OLLAMA_URL}/api/generate`, "debug");
@@ -2683,7 +2700,7 @@ async function callOllamaAPI(prompt: string): Promise<string | null> {
     const requestBody = {
       model: OLLAMA_MODEL,
       prompt: prompt,
-      stream: false
+      stream: onChunk ? true : false
     };
     
     logToConsole("📤 Sending request to Ollama API...", "debug");
@@ -2709,19 +2726,63 @@ async function callOllamaAPI(prompt: string): Promise<string | null> {
       throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    logToConsole("📥 Parsing Ollama JSON response...", "debug");
-    const data = await response.json();
-    
-    logToConsole(`📊 Ollama response data keys: ${Object.keys(data).join(', ')}`, "debug");
-    
-    if (data.response) {
-      logToConsole(`✅ Successfully extracted Ollama response content (${data.response.length} characters)`, "success");
-      logToConsole(`📝 Ollama response preview: ${data.response.substring(0, 200)}${data.response.length > 200 ? '...' : ''}`, "debug");
-      return data.response;
+    // Handle streaming response
+    if (onChunk && requestBody.stream) {
+      logToConsole("🔄 Processing Ollama streaming response...", "debug");
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+      
+      if (!reader) {
+        throw new Error('Response body reader not available');
+      }
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.trim() === '') continue;
+            
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.response) {
+                fullResponse += parsed.response;
+                onChunk(parsed.response);
+                logToConsole(`📝 Ollama streamed chunk: ${parsed.response.length} characters`, "debug");
+              }
+            } catch (e) {
+              // Skip invalid JSON lines
+              continue;
+            }
+          }
+        }
+        
+        logToConsole("✅ Ollama streaming completed", "success");
+        return fullResponse;
+      } finally {
+        reader.releaseLock();
+      }
     } else {
-      logToConsole("⚠️ Ollama response content is empty or undefined", "warning");
-      logToConsole(`🔍 Full Ollama response structure: ${JSON.stringify(data, null, 2)}`, "debug");
-      return null;
+      // Handle non-streaming response
+      logToConsole("📥 Parsing Ollama JSON response...", "debug");
+      const data = await response.json();
+      
+      logToConsole(`📊 Ollama response data keys: ${Object.keys(data).join(', ')}`, "debug");
+      
+      if (data.response) {
+        logToConsole(`✅ Successfully extracted Ollama response content (${data.response.length} characters)`, "success");
+        logToConsole(`📝 Ollama response preview: ${data.response.substring(0, 200)}${data.response.length > 200 ? '...' : ''}`, "debug");
+        return data.response;
+      } else {
+        logToConsole("⚠️ Ollama response content is empty or undefined", "warning");
+        logToConsole(`🔍 Full Ollama response structure: ${JSON.stringify(data, null, 2)}`, "debug");
+        return null;
+      }
     }
     
   } catch (error) {

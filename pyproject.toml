@@ -9,55 +9,14 @@ authors = [
 
 requires-python = ">=3.11"
 dependencies = [
-    "requests",
-    "beautifulsoup4",
-    "openai",
-    "ollama",
-    "groq",
-    "pynput",         
-    "Pillow",         
-    "python-dotenv",  
-    "pystray",        
-    "Pillow",         
-    "pdfplumber",      
-    "plyer",
-    "reportlab",
-    "markdown2",
-    "fpdf",
-    "PySide6",        
-    "opentelemetry-api",
-    "opentelemetry-sdk",
-    "opentelemetry-instrumentation",
-    "opentelemetry-exporter-otlp",
-    "reportlab",
-    "python-multipart",
-    "pyperclip",
-    "markitdown[all]",
-    "python-json-logger",
-    "sentence-transformers",
-    "torch",
-    "numpy",
-    "matplotlib",
-    "langdetect",
-    "markdownify",
-    "scikit-learn",
-    "joblib",
-    "pandas",
-    "scipy",
-    "pyzmq",
-    "emoji",
-    "nltk",
-    "markdown",
-    "python-docx",
-    "crawl4ai",
-    "fastapi",
-    "uvicorn",
-    "twine",
-    "typer",
-    "typing-extensions",
-    "kivy",
-    "psutil",
-    "rich"
+    "python-dotenv",
+    "rich",
+    "kivy>=2.3.0",
+    "kivymd==1.1.1",
+    "pydantic>=2.7",
+    "requests>=2.32",
+    "pystray>=0.19.5",
+    "Pillow>=10.3.0"
 ]
 
 [build-system]
@@ -74,14 +33,15 @@ dev = [
 ] 
 
 [project.scripts]
-api = "jobops_api:main"
-tray = "jobops_tray:main"
 clipper = "jobops_clipper:main"
+app = "jobops_app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "src/jobops_api",
-    "src/jobops_tray",
-    "src/jobops_clipper"
+    "src/jobops_clipper",
+    "src/jobops_app"
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
