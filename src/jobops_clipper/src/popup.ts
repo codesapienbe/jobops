@@ -778,47 +778,41 @@ document.addEventListener("DOMContentLoaded", async () => {
   function setupAutoSave() {
     // Auto-save job data when property fields change
     const autoSaveFields = [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation];
-    
-    autoSaveFields.forEach(field => {
-      let saveTimeout: number;
-      
-      field.addEventListener('input', () => {
-        // Clear existing timeout
-        clearTimeout(saveTimeout);
-        
-        // Set new timeout for auto-save (2 seconds after user stops typing)
-        saveTimeout = setTimeout(async () => {
-          try {
-            updateJobDataFromFields();
-            
-            // Check if we have sufficient content to create a database record
-            const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
-            
-            if (hasContent) {
-              // Save position details with updated job data
-              if (jobData.title || jobData.description || jobData.location) {
-                await saveSectionData('position_details', {
-                  job_title: jobData.title,
-                  job_description: jobData.description,
-                  location: jobData.location,
-                  source_url: jobData.url,
-                  company_name: jobData.company || '',
-                  salary_range: '',
-                  employment_type: '',
-                  experience_level: '',
-                  remote_work_policy: ''
-                });
-              }
-              
-              logToConsole(i18n.getConsoleMessage('autoSaved'), "debug");
-            } else {
-              logToConsole(`${i18n.getConsoleMessage('insufficientContent')}. Missing: ${missingSections.join(', ')}`, "debug");
-            }
-          } catch (error) {
-            logToConsole(`❌ Auto-save failed: ${error}`, "error");
+
+    const triggerAutoSaveDebounced = debounce(async () => {
+      try {
+        updateJobDataFromFields();
+
+        // Check if we have sufficient content to create a database record
+        const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
+
+        if (hasContent) {
+          // Save position details with updated job data
+          if (jobData.title || jobData.description || jobData.location) {
+            await saveSectionData('position_details', {
+              job_title: jobData.title,
+              job_description: jobData.description,
+              location: jobData.location,
+              source_url: jobData.url,
+              company_name: jobData.company || '',
+              salary_range: '',
+              employment_type: '',
+              experience_level: '',
+              remote_work_policy: ''
+            });
           }
-        }, 2000);
-      });
+
+          logToConsole(i18n.getConsoleMessage('autoSaved'), 'debug');
+        } else {
+          logToConsole(`${i18n.getConsoleMessage('insufficientContent')}. Missing: ${missingSections.join(', ')}`, 'debug');
+        }
+      } catch (error) {
+        logToConsole(`❌ Auto-save failed: ${error}`, 'error');
+      }
+    }, 2000);
+
+    autoSaveFields.forEach(field => {
+      field.addEventListener('input', triggerAutoSaveDebounced);
     });
   }
 
@@ -1742,10 +1736,42 @@ document.addEventListener("DOMContentLoaded", async () => {
       try { const u = new URL(value); return !!u.protocol && !!u.host; } catch { return false; }
     };
 
-    backendUrlInput.addEventListener('input', () => {
+    backendUrlInput.addEventListener('input', debounce(() => {
       const v = backendUrlInput.value.trim();
       setError('#backend-error', v.length === 0 || validUrl(v) ? '' : 'Invalid URL');
-    });
+    }, 200));
+
+    // Debounced validation: Linear team id required when API key provided
+    const validateLinearConfigDebounced = debounce(() => {
+      const key = linearKeyInput?.value.trim() || '';
+      const teamId = teamIdInput?.value.trim() || '';
+      if (key && !teamId) {
+        setError('#linear-error', 'Team ID is required when Linear API key is provided');
+      } else {
+        setError('#linear-error', '');
+      }
+    }, 200);
+
+    linearKeyInput?.addEventListener('input', validateLinearConfigDebounced);
+    teamIdInput?.addEventListener('input', validateLinearConfigDebounced);
+
+    // Debounced validation: encryption passphrase length when enabled
+    const validateEncryptionPassDebounced = debounce(() => {
+      const enabled = !!encEnabledInput?.checked;
+      const pass = encPassInput?.value.trim() || '';
+      if (enabled && (!pass || pass.length < 8)) {
+        setError('#db-encryption-error', 'Passphrase must be at least 8 characters');
+      } else {
+        setError('#db-encryption-error', '');
+      }
+    }, 200);
+
+    encEnabledInput?.addEventListener('change', validateEncryptionPassDebounced);
+    encPassInput?.addEventListener('input', validateEncryptionPassDebounced);
+
+    // Initial run to reflect current values
+    validateLinearConfigDebounced();
+    validateEncryptionPassDebounced();
 
     // Save settings
     const saveBtn = modal.querySelector('#save-settings');

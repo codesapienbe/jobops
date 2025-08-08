@@ -3787,37 +3787,34 @@ ${sectionContent}
     }
     function setupAutoSave() {
       const autoSaveFields = [propTitle, propUrl, propAuthor, propPublished, propCreated, propDescription, propTags, propLocation];
-      autoSaveFields.forEach((field) => {
-        let saveTimeout;
-        field.addEventListener("input", () => {
-          clearTimeout(saveTimeout);
-          saveTimeout = setTimeout(async () => {
-            try {
-              updateJobDataFromFields();
-              const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
-              if (hasContent) {
-                if (jobData.title || jobData.description || jobData.location) {
-                  await saveSectionData("position_details", {
-                    job_title: jobData.title,
-                    job_description: jobData.description,
-                    location: jobData.location,
-                    source_url: jobData.url,
-                    company_name: jobData.company || "",
-                    salary_range: "",
-                    employment_type: "",
-                    experience_level: "",
-                    remote_work_policy: ""
-                  });
-                }
-                logToConsole(i18n.getConsoleMessage("autoSaved"), "debug");
-              } else {
-                logToConsole(`${i18n.getConsoleMessage("insufficientContent")}. Missing: ${missingSections.join(", ")}`, "debug");
-              }
-            } catch (error) {
-              logToConsole(`\u274C Auto-save failed: ${error}`, "error");
+      const triggerAutoSaveDebounced = debounce(async () => {
+        try {
+          updateJobDataFromFields();
+          const { hasContent, missingSections, contentQuality } = checkRequiredSectionsContent();
+          if (hasContent) {
+            if (jobData.title || jobData.description || jobData.location) {
+              await saveSectionData("position_details", {
+                job_title: jobData.title,
+                job_description: jobData.description,
+                location: jobData.location,
+                source_url: jobData.url,
+                company_name: jobData.company || "",
+                salary_range: "",
+                employment_type: "",
+                experience_level: "",
+                remote_work_policy: ""
+              });
             }
-          }, 2e3);
-        });
+            logToConsole(i18n.getConsoleMessage("autoSaved"), "debug");
+          } else {
+            logToConsole(`${i18n.getConsoleMessage("insufficientContent")}. Missing: ${missingSections.join(", ")}`, "debug");
+          }
+        } catch (error) {
+          logToConsole(`\u274C Auto-save failed: ${error}`, "error");
+        }
+      }, 2e3);
+      autoSaveFields.forEach((field) => {
+        field.addEventListener("input", triggerAutoSaveDebounced);
       });
     }
     function setupSaveOnCollapse() {
@@ -4604,10 +4601,34 @@ ${sectionContent}
           return false;
         }
       };
-      backendUrlInput.addEventListener("input", () => {
+      backendUrlInput.addEventListener("input", debounce(() => {
         const v = backendUrlInput.value.trim();
         setError("#backend-error", v.length === 0 || validUrl(v) ? "" : "Invalid URL");
-      });
+      }, 200));
+      const validateLinearConfigDebounced = debounce(() => {
+        const key = linearKeyInput?.value.trim() || "";
+        const teamId = teamIdInput?.value.trim() || "";
+        if (key && !teamId) {
+          setError("#linear-error", "Team ID is required when Linear API key is provided");
+        } else {
+          setError("#linear-error", "");
+        }
+      }, 200);
+      linearKeyInput?.addEventListener("input", validateLinearConfigDebounced);
+      teamIdInput?.addEventListener("input", validateLinearConfigDebounced);
+      const validateEncryptionPassDebounced = debounce(() => {
+        const enabled = !!encEnabledInput?.checked;
+        const pass = encPassInput?.value.trim() || "";
+        if (enabled && (!pass || pass.length < 8)) {
+          setError("#db-encryption-error", "Passphrase must be at least 8 characters");
+        } else {
+          setError("#db-encryption-error", "");
+        }
+      }, 200);
+      encEnabledInput?.addEventListener("change", validateEncryptionPassDebounced);
+      encPassInput?.addEventListener("input", validateEncryptionPassDebounced);
+      validateLinearConfigDebounced();
+      validateEncryptionPassDebounced();
       const saveBtn = modal.querySelector("#save-settings");
       saveBtn?.addEventListener("click", async (event) => {
         event.preventDefault();
