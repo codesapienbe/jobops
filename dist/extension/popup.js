@@ -4516,61 +4516,77 @@ ${sectionContent}
         chrome.storage.sync.get(["db_encryption_enabled"], (res) => resolve(!!res["db_encryption_enabled"]));
       });
       const settingsHtml = `
-      <div style="padding: 20px; max-width: 620px;">
-        <h3>\u{1F310} Backend</h3>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input type="text" id="backend-url" placeholder="Backend API Base (e.g., http://localhost:8877)" value="${backendUrl2 || ""}" style="flex:1; padding:8px;" aria-label="Backend API Base">
+      <div class="settings-container">
+        <div class="settings-section">
+          <h3>\u{1F310} Backend</h3>
+          <div class="settings-input-group">
+            <input type="text" id="backend-url" class="settings-input" placeholder="Backend API Base (e.g., http://localhost:8877)" value="${backendUrl2 || ""}" aria-label="Backend API Base">
+          </div>
+          <div id="backend-error" class="settings-error"></div>
         </div>
-        <div id="backend-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
 
-        <h3>\u{1F510} Database Encryption (optional)</h3>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <label style="display:flex;align-items:center;gap:6px;"><input id="db-encryption-enabled" type="checkbox" ${encryptionEnabled ? "checked" : ""}> Enable encryption</label>
-          <input type="password" id="db-encryption-pass" placeholder="Passphrase (min 8 chars)" style="flex:1; padding:8px;" aria-label="Encryption Passphrase" ${encryptionEnabled ? "" : "disabled"}>
-          <button id="toggle-db-pass" type="button" style="padding:8px 12px;">\u{1F441}\uFE0F</button>
+        <div class="settings-section">
+          <h3>\u{1F510} Database Encryption (optional)</h3>
+          <div class="settings-checkbox-group">
+            <label>
+              <input id="db-encryption-enabled" type="checkbox" ${encryptionEnabled ? "checked" : ""}>
+              Enable encryption
+            </label>
+          </div>
+          <div class="settings-input-group">
+            <input type="password" id="db-encryption-pass" class="settings-input" placeholder="Passphrase (min 8 chars)" aria-label="Encryption Passphrase" ${encryptionEnabled ? "" : "disabled"}>
+            <button id="toggle-db-pass" type="button" class="settings-button">\u{1F441}\uFE0F</button>
+          </div>
+          <div id="db-encryption-error" class="settings-error"></div>
         </div>
-        <div id="db-encryption-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
 
-        <h3>\u{1F511} Groq API Settings</h3>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input type="password" id="groq-api-key" placeholder="Groq API Key" value="${groqApiKey || ""}" style="flex:1; padding:8px;" aria-label="Groq API Key">
-          <button id="toggle-groq-key" type="button" style="padding:8px 12px;">\u{1F441}\uFE0F</button>
-          <button id="test-groq" type="button" style="padding:8px 12px;">\u{1F9EA} Test</button>
-        </div>
-        <div id="groq-key-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
-        
-        <h3 style="margin-top:16px;">\u{1F4E4} Linear Integration Settings</h3>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input type="password" id="linear-api-key" placeholder="Linear API Key" value="${linearConfig?.apiKey || ""}" style="flex:1; padding:8px;" aria-label="Linear API Key">
-          <button id="toggle-linear-key" type="button" style="padding:8px 12px;">\u{1F441}\uFE0F</button>
-        </div>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <input type="text" id="linear-team-id" placeholder="Linear Team ID" value="${linearConfig?.teamId || ""}" style="flex:1; padding:8px;" aria-label="Linear Team ID">
-          <input type="text" id="linear-project-id" placeholder="Linear Project ID (optional)" value="${linearConfig?.projectId || ""}" style="flex:1; padding:8px;" aria-label="Linear Project ID">
-        </div>
-        <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
-          <input type="text" id="linear-assignee-id" placeholder="Linear Assignee ID (optional)" value="${linearConfig?.assigneeId || ""}" style="flex:1; padding:8px;" aria-label="Linear Assignee ID">
-          <button id="test-linear" type="button" style="padding:8px 12px;">\u{1F9EA} Test</button>
-        </div>
-        <div id="linear-error" style="color:#d33; font-size:12px; min-height:18px; margin-top:4px;"></div>
-        
-        <div style="display:flex; gap:8px; margin-top:16px;">
-          <button id="export-settings" type="button" style="padding:8px 12px;">\u2B07\uFE0F Export</button>
-          <button id="import-settings" type="button" style="padding:8px 12px;">\u2B06\uFE0F Import</button>
-          <label style="display:flex; align-items:center; gap:6px; margin-left:auto; font-size:12px;">
-            <input id="consent-send" type="checkbox"> Explicit consent to send data to APIs
-          </label>
+        <div class="settings-section">
+          <h3>\u{1F511} Groq API Settings</h3>
+          <div class="settings-input-group">
+            <input type="password" id="groq-api-key" class="settings-input" placeholder="Groq API Key" value="${groqApiKey || ""}" aria-label="Groq API Key">
+            <button id="toggle-groq-key" type="button" class="settings-button">\u{1F441}\uFE0F</button>
+            <button id="test-groq" type="button" class="settings-button">\u{1F9EA} Test</button>
+          </div>
+          <div id="groq-key-error" class="settings-error"></div>
         </div>
         
-        <div style="margin-top: 20px;">
-          <button id="save-settings" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px;">Save Settings</button>
-          <button id="cancel-settings" style="background: #f44336; color: white; padding: 10px 20px; border: none; border-radius: 4px;">Cancel</button>
+        <div class="settings-section">
+          <h3>\u{1F4E4} Linear Integration Settings</h3>
+          <div class="settings-input-group">
+            <input type="password" id="linear-api-key" class="settings-input" placeholder="Linear API Key" value="${linearConfig?.apiKey || ""}" aria-label="Linear API Key">
+            <button id="toggle-linear-key" type="button" class="settings-button">\u{1F441}\uFE0F</button>
+          </div>
+          <div class="settings-input-group">
+            <input type="text" id="linear-team-id" class="settings-input" placeholder="Linear Team ID" value="${linearConfig?.teamId || ""}" aria-label="Linear Team ID">
+            <input type="text" id="linear-project-id" class="settings-input" placeholder="Linear Project ID (optional)" value="${linearConfig?.projectId || ""}" aria-label="Linear Project ID">
+          </div>
+          <div class="settings-input-group">
+            <input type="text" id="linear-assignee-id" class="settings-input" placeholder="Linear Assignee ID (optional)" value="${linearConfig?.assigneeId || ""}" aria-label="Linear Assignee ID">
+            <button id="test-linear" type="button" class="settings-button">\u{1F9EA} Test</button>
+          </div>
+          <div id="linear-error" class="settings-error"></div>
+        </div>
+        
+        <div class="settings-actions">
+          <button id="export-settings" type="button" class="settings-button">\u2B07\uFE0F Export</button>
+          <button id="import-settings" type="button" class="settings-button">\u2B06\uFE0F Import</button>
+          <div class="consent-group">
+            <label>
+              <input id="consent-send" type="checkbox">
+              Explicit consent to send data to APIs
+            </label>
+          </div>
+        </div>
+        
+        <div class="settings-footer">
+          <button id="save-settings" class="settings-button primary">Save Settings</button>
+          <button id="cancel-settings" class="settings-button danger">Cancel</button>
         </div>
       </div>
     `;
       const modal = document.createElement("div");
-      modal.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;`;
-      modal.innerHTML = `<div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">${settingsHtml}</div>`;
+      modal.className = "settings-modal";
+      modal.innerHTML = `<div class="settings-modal-content">${settingsHtml}</div>`;
       document.body.appendChild(modal);
       const backendUrlInput = modal.querySelector("#backend-url");
       const encEnabledInput = modal.querySelector("#db-encryption-enabled");
@@ -4590,8 +4606,10 @@ ${sectionContent}
       });
       const setError = (id, msg) => {
         const el = modal.querySelector(id);
-        if (el)
+        if (el) {
           el.textContent = msg;
+          el.style.display = msg ? "block" : "none";
+        }
       };
       const validUrl = (value) => {
         try {
@@ -4680,8 +4698,24 @@ ${sectionContent}
           setError("#db-encryption-error", `Failed to configure encryption: ${e instanceof Error ? e.message : String(e)}`);
           return;
         }
-        document.body.removeChild(modal);
+        modal.remove();
+        document.removeEventListener("keydown", handleEscape);
       });
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) {
+          modal.remove();
+          document.removeEventListener("keydown", handleEscape);
+          logToConsole("\u274C Settings dialog cancelled", "info");
+        }
+      });
+      const handleEscape = (e) => {
+        if (e.key === "Escape") {
+          modal.remove();
+          document.removeEventListener("keydown", handleEscape);
+          logToConsole("\u274C Settings dialog cancelled", "info");
+        }
+      };
+      document.addEventListener("keydown", handleEscape);
       const exportBtn = modal.querySelector("#export-settings");
       exportBtn?.addEventListener("click", async (event) => {
         event.preventDefault();
@@ -4752,14 +4786,9 @@ ${sectionContent}
       const cancelBtn = modal.querySelector("#cancel-settings");
       cancelBtn?.addEventListener("click", (event) => {
         event.preventDefault();
-        document.body.removeChild(modal);
+        modal.remove();
+        document.removeEventListener("keydown", handleEscape);
         logToConsole("\u274C Settings dialog cancelled", "info");
-      });
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) {
-          document.body.removeChild(modal);
-          logToConsole("\u274C Settings dialog cancelled", "info");
-        }
       });
     }
     async function handleTestAPI(event) {

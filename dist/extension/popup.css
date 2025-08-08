@@ -1954,3 +1954,351 @@ button:hover {
 
 
 /* Save-on-collapse functionality - no UI elements needed */
+
+/* Settings Dialog Styles */
+.settings-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.settings-modal-content {
+  background: var(--theme-popup-background-primary);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px var(--theme-shadow-primary), 0 4px 16px var(--theme-shadow-secondary);
+  max-height: 80vh;
+  max-width: 620px;
+  width: 90%;
+  overflow-y: auto;
+  border: 1px solid var(--theme-border-primary);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  color: var(--theme-text-primary);
+  font-family: inherit;
+}
+
+.settings-container {
+  padding: 24px;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--theme-accent-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.settings-input-group:last-child {
+  margin-bottom: 0;
+}
+
+.settings-input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1.5px solid var(--theme-input-border);
+  border-radius: 6px;
+  background: var(--theme-input-background);
+  color: var(--theme-text-primary);
+  font-size: 0.95em;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-input:focus {
+  border-color: var(--theme-input-border-focus);
+  box-shadow: 0 0 0 2px rgba(168, 255, 120, 0.1);
+}
+
+.settings-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--theme-popup-background-quinary);
+}
+
+.settings-button {
+  padding: 8px 12px;
+  border: 1px solid var(--theme-border-secondary);
+  border-radius: 6px;
+  background: var(--theme-button-secondary);
+  color: var(--theme-text-primary);
+  font-size: 0.9em;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-button:hover {
+  background: var(--theme-popup-background-quaternary);
+  border-color: var(--theme-border-primary);
+  transform: translateY(-1px);
+}
+
+.settings-button:active {
+  transform: translateY(0);
+}
+
+.settings-button.primary {
+  background: var(--theme-button-approve);
+  color: white;
+  border-color: transparent;
+}
+
+.settings-button.primary:hover {
+  background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
+  transform: translateY(-1px);
+}
+
+.settings-button.danger {
+  background: var(--theme-button-cancel);
+  color: white;
+  border-color: transparent;
+}
+
+.settings-button.danger:hover {
+  background: linear-gradient(90deg, #f87171 0%, #ef4444 100%);
+  transform: translateY(-1px);
+}
+
+.settings-checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.settings-checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+  color: var(--theme-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-checkbox-group input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--theme-accent-primary);
+  cursor: pointer;
+}
+
+.settings-error {
+  color: var(--theme-status-error-text);
+  font-size: 0.85em;
+  min-height: 18px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--theme-status-error-bg);
+  border-radius: 4px;
+  border-left: 3px solid var(--theme-status-error-border);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-actions .settings-button {
+  flex: 1;
+  min-width: 100px;
+}
+
+.settings-actions .consent-group {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--theme-text-tertiary);
+}
+
+.settings-actions .consent-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-actions .consent-group input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--theme-accent-primary);
+}
+
+.settings-footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--theme-border-secondary);
+}
+
+.settings-footer .settings-button {
+  flex: 1;
+  padding: 12px 20px;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 480px) {
+  .settings-modal-content {
+    width: 95%;
+    margin: 10px;
+  }
+  
+  .settings-container {
+    padding: 16px;
+  }
+  
+  .settings-input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .settings-button {
+    width: 100%;
+  }
+  
+  .settings-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .settings-actions .consent-group {
+    margin-left: 0;
+    margin-top: 8px;
+  }
+  
+  .settings-footer {
+    flex-direction: column;
+  }
+}
+
+/* Scrollbar styling for settings modal */
+.settings-modal-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-modal-content::-webkit-scrollbar-track {
+  background: var(--theme-popup-background-quinary);
+  border-radius: 3px;
+}
+
+.settings-modal-content::-webkit-scrollbar-thumb {
+  background: var(--theme-border-primary);
+  border-radius: 3px;
+}
+
+.settings-modal-content::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-border-quaternary);
+}
+
+/* Animation for modal appearance */
+.settings-modal {
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+.settings-modal-content {
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Focus management for accessibility */
+.settings-input:focus,
+.settings-button:focus {
+  outline: 2px solid var(--theme-accent-primary);
+  outline-offset: 2px;
+}
+
+/* Loading states for test buttons */
+.settings-button.testing {
+  opacity: 0.7;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.settings-button.testing::after {
+  content: "⏳";
+  margin-left: 4px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Success/error states for test results */
+.settings-button.test-success {
+  background: var(--theme-status-success-bg);
+  color: var(--theme-status-success-text);
+  border-color: var(--theme-status-success-border);
+}
+
+.settings-button.test-error {
+  background: var(--theme-status-error-bg);
+  color: var(--theme-status-error-text);
+  border-color: var(--theme-status-error-border);
+}
+
+/* ... existing code ... */
