@@ -38,6 +38,8 @@ from kivy.uix.image import AsyncImage
 import re, webbrowser
 from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.image import Image
+from kivy.uix.popup import Popup
+from kivy.uix.filechooser import FileChooserIconView
 
 
 APP_TITLE = "JobOps App"
@@ -114,6 +116,11 @@ class JobOpsApp(App):
         self._exports_dir = Path(os.path.expanduser('~/.jobops/exports'))
         self._exports_dir.mkdir(parents=True, exist_ok=True)
         self._explorer_filter: str = ''
+        self._thumb_cards: dict[str, object] = {}
+        self._selected_thumb: str | None = None
+        self._last_click_path: str | None = None
+        self._last_click_ts: float = 0.0
+        self._thumb_base_height: int = 200
 
     def build(self):
         try:
@@ -143,10 +150,12 @@ class JobOpsApp(App):
         apply_jobops_theme()
         root = Builder.load_string(KV)
         # Start tray icon asynchronously
-        Clock.schedule_once(lambda dt: self._start_tray(), 0)
+        if platform in ('win', 'linux', 'macosx'):
+            Clock.schedule_once(lambda dt: self._start_tray(), 0)
         # Intercept window close to minimize to tray
         try:
-            Window.bind(on_request_close=self._on_request_close)
+            if platform in ('win', 'linux', 'macosx'):
+                Window.bind(on_request_close=self._on_request_close)
         except Exception:
             pass
         # Responsive nav
@@ -550,6 +559,14 @@ class JobOpsApp(App):
         except Exception:
             self.stop_loading()
 
+    def generate_and_open(self) -> None:
+        try:
+            zip_path = self.download_zip()
+            if zip_path:
+                self._open_in_file_manager(zip_path.parent)
+        except Exception:
+            pass
+
     def _sample_json(self) -> dict:
         return {
             "url": "https://careers.example.com/jobs/senior-python-engineer",
@@ -801,6 +818,8 @@ class JobOpsApp(App):
 
     def _on_request_close(self, *args, **kwargs):
         # Minimize to tray instead of exiting
+        if platform not in ('win', 'linux', 'macosx'):
+            return False
         try:
             Window.hide()
             self._is_hidden = True
@@ -828,34 +847,32 @@ class JobOpsApp(App):
 
     def _start_tray(self):
         try:
+            if platform not in ('win', 'linux', 'macosx'):
+                return
             if self._tray_icon:
                 return
             # Create a simple icon from the clipper asset or a placeholder
             icon_path = Path(__file__).resolve().parents[2] / "jobops_clipper" / "src" / "icon.png"
             if icon_path.exists():
-                image = Image.open(str(icon_path))
+                image = Image.open(str(icon_path)).convert('RGBA')
             else:
                 image = Image.new('RGBA', (64, 64), (20, 20, 28, 220))
             menu = pystray.Menu(
                 pystray.MenuItem('Show/Hide', self._toggle_visibility, default=True),
                 pystray.MenuItem('Exit', self._exit_from_tray),
             )
-            self._tray_icon = pystray.Icon("jobops")
-            self._tray_icon.icon = image
-            self._tray_icon.title = "JobOps"
-            self._tray_icon.menu = menu
-            self._tray_icon.visible = True
-
-            def run_tray():
-                try:
-                    def setup(icon):
-                        icon.visible = True
-                    self._tray_icon.run(setup=setup)
-                except Exception:
-                    pass
-
-            self._tray_thread = threading.Thread(target=run_tray, daemon=True)
-            self._tray_thread.start()
+            self._tray_icon = pystray.Icon("jobops", image=image, title="JobOps", menu=menu)
+            try:
+                self._tray_icon.run_detached()
+            except Exception:
+                # Fallback to manual thread
+                def run_tray():
+                    try:
+                        self._tray_icon.run()
+                    except Exception:
+                        pass
+                self._tray_thread = threading.Thread(target=run_tray, daemon=True)
+                self._tray_thread.start()
             # Update tooltip periodically
             Clock.schedule_interval(lambda dt: self._update_tray_tooltip(), 1.0)
         except Exception:
@@ -863,7 +880,7 @@ class JobOpsApp(App):
 
     def _update_tray_tooltip(self):
         try:
-            if self._tray_icon:
+            if self._tray_icon and platform in ('win', 'linux', 'macosx'):
                 self._tray_icon.title = self._tray_tooltip()
         except Exception:
             pass
@@ -899,13 +916,35 @@ class JobOpsApp(App):
 
     # Import JSON and populate forms
     def import_json(self):
-        # Load from default path: ~/.jobops/import.json
+        # Show a file dialog (Kivy popup) to select a JSON file
+        try:
+            chooser = FileChooserIconView(filters=['*.json'], path=str(Path.home()))
+            chooser.multiselect = False
+            box = BoxLayout(orientation='vertical', spacing=6, padding=(8,8))
+            box.add_widget(chooser)
+            actions = BoxLayout(size_hint_y=None, height=46, spacing=8)
+            ok_btn = Button(text='Open', size_hint_x=None, width=120)
+            cancel_btn = Button(text='Cancel', size_hint_x=None, width=120)
+            actions.add_widget(ok_btn); actions.add_widget(cancel_btn)
+            box.add_widget(actions)
+            popup = Popup(title='Select JSON to Open', content=box, size_hint=(0.9, 0.9))
+            def do_open(*_):
+                sel = chooser.selection[0] if chooser.selection else None
+                popup.dismiss()
+                if sel:
+                    self._open_json(Path(sel))
+            ok_btn.bind(on_release=do_open)
+            cancel_btn.bind(on_release=lambda *_: popup.dismiss())
+            popup.open()
+        except Exception as e:
+            self.root.title = f'Open error: {e}'
+
+    def _open_json(self, import_path: Path) -> None:
         try:
             self.start_loading('Importing')
-            import_path = Path(os.path.expanduser('~/.jobops/import.json'))
             if not import_path.exists():
                 self.stop_loading()
-                self.root.title = f'Place JSON at {import_path} then press Import'
+                self.root.title = f'File not found: {import_path}'
                 return
             with open(import_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -913,7 +952,6 @@ class JobOpsApp(App):
             self.stop_loading()
             self.root.title = f'Import Error: {e}'
             return
-        # Validate and save
         if not isinstance(data, dict):
             self.stop_loading()
             self.root.title = 'Invalid JSON: expected an object'
@@ -1168,11 +1206,8 @@ class JobOpsApp(App):
                 with open(path, 'r', encoding='utf-8') as f:
                     md = f.read()
                 self._render_markdown_to_preview(md)
-            elif ext == '.pdf':
-                self._render_pdf_to_preview(path)
             else:
-                lbl = self._mk_label(f'Unsupported file: {path.name}')
-                preview_container.add_widget(lbl)
+                preview_container.add_widget(self._mk_label('Only Markdown previews are supported here.'))
             self.root.title = f'Previewing: {path.name}'
         except Exception as e:
             self.root.title = f'Preview error: {e}'
@@ -1252,18 +1287,21 @@ class JobOpsApp(App):
         try:
             grid = self.root.ids.gallery_grid
             grid.clear_widgets()
+            self._thumb_cards.clear()
             files = []
-            for ext in ('*.md', '*.pdf'):
-                files.extend(base_dir.rglob(ext))
+            # Only markdown files
+            files.extend(base_dir.rglob('*.md'))
             files = sorted(files, key=lambda p: p.name.lower())
             if not files:
-                self._set_gallery_hint('No markdown or pdf files found in the zip.')
+                self._set_gallery_hint('No markdown files found in the zip.')
             else:
                 self._set_gallery_hint(f'Files in {base_dir.name} ({len(files)})')
+            # Smaller thumbnails
+            self._thumb_base_height = 120
             for f in files:
                 card = self._make_thumb_card(f)
                 grid.add_widget(card)
-            # adjust columns responsively
+                self._thumb_cards[str(f)] = card
             self._resize_gallery()
             try:
                 Window.bind(size=lambda *_: self._resize_gallery())
@@ -1276,68 +1314,92 @@ class JobOpsApp(App):
     def _resize_gallery(self):
         try:
             grid = self.root.ids.gallery_grid
-            w = self.root.width
-            col_width = 260
-            cols = max(1, int(w / col_width))
+            scroll = self.root.ids.gallery_scroll
+            n = len(grid.children)
+            if n == 0:
+                return
+            spacing = 10
+            padding_top_bottom = 8
+            # Start with a reasonable col guess
+            col_width = 240
+            max_cols = max(1, int(self.root.width / 180))
+            cols = max(1, min(max_cols, int(self.root.width / col_width)))
+            rows = (n + cols - 1) // cols
+            needed = rows * self._thumb_base_height + (rows - 1) * spacing + padding_top_bottom
+            # Increase columns until it fits or we hit max_cols
+            while needed > scroll.height and cols < max_cols:
+                cols += 1
+                rows = (n + cols - 1) // cols
+                needed = rows * self._thumb_base_height + (rows - 1) * spacing + padding_top_bottom
             grid.cols = cols
+            # ensure card heights are consistent
+            for child in grid.children:
+                try:
+                    child.height = self._thumb_base_height
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _select_thumb(self, card_widget, path: Path):
+        # Visual highlight for selection
+        try:
+            # reset previous
+            if self._selected_thumb and self._selected_thumb in self._thumb_cards:
+                prev = self._thumb_cards[self._selected_thumb]
+                self._apply_card_bg(prev, (0.12, 0.12, 0.18, 0.9))
+            self._selected_thumb = str(path)
+            self._apply_card_bg(card_widget, (0.18, 0.18, 0.22, 0.95))
+        except Exception:
+            pass
+
+    def _apply_card_bg(self, widget, rgba):
+        try:
+            widget.canvas.before.clear()
+            with widget.canvas.before:
+                Color(*rgba)
+                rr = RoundedRectangle(pos=widget.pos, size=widget.size, radius=[10,])
+            def upd(*_):
+                rr.pos = widget.pos; rr.size = widget.size
+            widget.bind(pos=upd, size=upd)
         except Exception:
             pass
 
     def _make_thumb_card(self, path: Path):
         from kivy.uix.boxlayout import BoxLayout
         from kivy.uix.label import Label
-        holder = BoxLayout(orientation='vertical', size_hint_y=None, height=220, padding=(8,8), spacing=6)
-        # background
-        def draw_bg(widget):
-            widget.canvas.before.clear()
-            with widget.canvas.before:
-                Color(0.12,0.12,0.18,0.9)
-                rr = RoundedRectangle(pos=widget.pos, size=widget.size, radius=[10,])
-            def upd(*_):
-                rr.pos = widget.pos; rr.size = widget.size
-            widget.bind(pos=upd, size=upd)
-        draw_bg(holder)
-        # preview
-        ext = path.suffix.lower()
-        if ext == '.pdf':
-            try:
-                import fitz
-                doc = fitz.open(path)
-                pix = doc[0].get_pixmap(dpi=120)
-                img = Image()
-                img.texture = self._pixmap_to_texture(pix)
-                img.size_hint_y = None
-                img.height = 150
-                img.allow_stretch = True
-                img.keep_ratio = True
-                holder.add_widget(img)
-            except Exception:
-                holder.add_widget(Label(text='[PDF preview failed]', color=(1,1,1,0.8), size_hint_y=None, height=150))
-        else:
-            # markdown quick preview
-            try:
-                with open(path, 'r', encoding='utf-8') as f:
-                    first = '\n'.join(f.read().splitlines()[:6])
-                lbl = Label(text=first or '(empty)', color=(1,1,1,0.9), size_hint_y=None, halign='left', valign='top')
-                lbl.text_size = (240, None)
-                lbl.bind(texture_size=lambda _i,_v: setattr(lbl, 'height', min(150, lbl.texture_size[1])))
-                holder.add_widget(lbl)
-            except Exception:
-                holder.add_widget(Label(text='[MD preview failed]', color=(1,1,1,0.8), size_hint_y=None, height=150))
-        # filename
+        holder = BoxLayout(orientation='vertical', size_hint_y=None, height=self._thumb_base_height, padding=(8,8), spacing=6)
+        self._apply_card_bg(holder, (0.12,0.12,0.18,0.9))
+        # markdown quick preview (first 3 lines)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                first = '\n'.join(f.read().splitlines()[:3])
+            lbl = Label(text=first or '(empty)', color=(1,1,1,0.9), size_hint_y=None, halign='left', valign='top')
+            lbl.text_size = (220, None)
+            lbl.bind(texture_size=lambda _i,_v: setattr(lbl, 'height', min(self._thumb_base_height-40, lbl.texture_size[1])))
+            holder.add_widget(lbl)
+        except Exception:
+            holder.add_widget(Label(text='[MD preview failed]', color=(1,1,1,0.8), size_hint_y=None, height=self._thumb_base_height-40))
         cap = Label(text=path.name, color=(1,1,1,1), size_hint_y=None)
-        cap.text_size=(240,None)
-        cap.bind(texture_size=lambda _i,_v: setattr(cap, 'height', min(40, cap.texture_size[1])))
+        cap.text_size=(220,None)
+        cap.bind(texture_size=lambda _i,_v: setattr(cap, 'height', min(30, cap.texture_size[1])))
         holder.add_widget(cap)
-        # click open
         def on_touch(_w, touch):
             try:
                 if not holder.get_root_window():
                     return False
                 lx, ly = holder.to_window(holder.x, holder.y)
                 if lx <= touch.x <= lx + holder.width and ly <= touch.y <= ly + holder.height:
-                    self._preview_file(path)
-                    self.root.ids.screen_manager.current = 'preview'
+                    self._select_thumb(holder, path)
+                    now = time.time()
+                    if self._last_click_path == str(path) and (now - self._last_click_ts) <= 0.35:
+                        self._preview_file(path)
+                        self.root.ids.screen_manager.current = 'preview'
+                        self._last_click_path = None
+                        self._last_click_ts = 0.0
+                    else:
+                        self._last_click_path = str(path)
+                        self._last_click_ts = now
                     return True
             except Exception:
                 return False
@@ -1480,6 +1542,7 @@ KV = """
                                 size_hint_y: None
                                 height: 28
                             ScrollView:
+                                id: gallery_scroll
                                 do_scroll_x: False
                                 do_scroll_y: True
                                 bar_width: 2
@@ -1591,21 +1654,17 @@ KV = """
                     pos: self.pos
                     size: self.size
             PillButton:
-                text: 'Import JSON'
+                text: 'Open'
                 background_color: 0.26, 0.74, 0.96, 1
                 on_release: app.import_json()
             PillButton:
-                text: 'Load Sample'
+                text: 'Demo'
                 background_color: 0.118, 0.227, 0.541, 1
                 on_release: app.load_sample_data()
             PillButton:
-                text: 'Preview'
-                background_color: 0.231, 0.510, 0.965, 1
-                on_release: app.generate_report()
-            PillButton:
-                text: 'Download Zip'
+                text: 'Generate'
                 background_color: 0.976, 0.451, 0.086, 1
-                on_release: app.download_zip()
+                on_release: app.generate_and_open()
             Widget:
                 size_hint_x: 1
 
