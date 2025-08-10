@@ -3,8 +3,9 @@ from __future__ import annotations
 from kivy.utils import platform
 
 # Extension palette (selected anchors)
-DARK_PRIMARY = (0.290, 1.000, 0.471, 1.0)   # ~ #4ade80
-LIGHT_PRIMARY = (0.023, 0.588, 0.412, 1.0)  # ~ #059669
+DARK_PRIMARY = (0.231, 0.510, 0.965, 1.0)   # ~ #3b82f6 (blue)
+LIGHT_PRIMARY = (0.976, 0.451, 0.086, 1.0)  # ~ #f97316 (orange)
+ACCENT_GRAY = (0.114, 0.118, 0.149, 1.0)    # ~ #1d1f26
 
 
 def apply_jobops_theme():

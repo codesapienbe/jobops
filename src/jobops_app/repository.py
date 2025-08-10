@@ -118,6 +118,17 @@ class Repository:
         except Exception:
             return None
 
+    def get_job_meta(self, job_application_id: str) -> Optional[Dict[str, Any]]:
+        cur = self._conn.cursor()
+        row = cur.execute(
+            "SELECT id, canonical_url, job_title, company_name, application_date, status, created_at, updated_at FROM job_applications WHERE id=?",
+            (job_application_id,),
+        ).fetchone()
+        if not row:
+            return None
+        keys = ["id", "canonical_url", "job_title", "company_name", "application_date", "status", "created_at", "updated_at"]
+        return {k: row[i] for i, k in enumerate(keys)}
+
     def list_jobs(self) -> List[Tuple[str, str]]:
         cur = self._conn.cursor()
         return [(r[0], r[1]) for r in cur.execute("SELECT id, canonical_url FROM job_applications ORDER BY updated_at DESC").fetchall()]
