@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import time
+import subprocess, sys
 
 from kivy.app import App
 from kivy.lang import Builder
@@ -112,6 +113,7 @@ class JobOpsApp(App):
                 pass
         self._exports_dir = Path(os.path.expanduser('~/.jobops/exports'))
         self._exports_dir.mkdir(parents=True, exist_ok=True)
+        self._explorer_filter: str = ''
 
     def build(self):
         try:
@@ -152,13 +154,25 @@ class JobOpsApp(App):
             Window.bind(size=lambda *_: self._toggle_nav_mode())
         except Exception:
             pass
+        # Drag & drop (zip)
+        try:
+            Window.bind(on_dropfile=self._on_drop_file)  # deprecated but widely available
+        except Exception:
+            pass
+        try:
+            Window.bind(on_drop_file=self._on_drop_file)  # newer api on some builds
+        except Exception:
+            pass
         return root
 
     def on_start(self):
-        # Initialize explorer on start
-        self._refresh_explorer()
+        # Initialize gallery message
         try:
-            self.root.ids.screen_manager.current = 'preview'
+            self._set_gallery_hint('Drag & drop a zip exported by JobOps into this window to browse files.')
+        except Exception:
+            pass
+        try:
+            self.root.ids.screen_manager.current = 'gallery'
         except Exception:
             pass
         Clock.schedule_once(lambda dt: self._center_window(), 0)
@@ -528,10 +542,11 @@ class JobOpsApp(App):
                     continue
                 if isinstance(payload, dict):
                     self.repo.upsert_section(job_id, key, payload)
-            # Generate a zip (per-section) to exports
-            self.download_zip()
+            # Generate a zip (per-section) to exports and open folder
+            zip_path = self.download_zip()
             self.stop_loading()
-            self._refresh_explorer()
+            if zip_path:
+                self._open_in_file_manager(zip_path.parent)
         except Exception:
             self.stop_loading()
 
@@ -639,7 +654,7 @@ class JobOpsApp(App):
         try:
             job_id = self.current_job_id or self.repo.get_latest_job_id()
             if not job_id:
-                return
+                return None
             meta = self.repo.get_job_meta(job_id) or {}
             sections_all = self.repo.list_sections_for_job(job_id)
             order = [s["name"] for s in SECTION_SPECS if s["name"] != "application_summary"]
@@ -662,8 +677,10 @@ class JobOpsApp(App):
                     pdf_bytes = self._markdown_to_pdf(md)
                     zf.writestr(f"{num}_{slug}.pdf", pdf_bytes)
             self.root.title = f'Saved: {zip_path}'
+            return zip_path
         except Exception as e:
             self.root.title = f'Export Error: {e}'
+            return None
 
     def _generate_markdown_for_section(self, meta: dict, section_title: str, fields: dict) -> str:
         title = (meta.get('job_title') or 'Job Title').strip()
@@ -1026,26 +1043,120 @@ class JobOpsApp(App):
 
     def _refresh_explorer(self) -> None:
         try:
-            tree = self.root.ids.file_tree
-            tree.clear_widgets()
+            tree_container = self.root.ids.file_tree
+            tree_container.clear_widgets()
+            # Hint row
+            from kivy.uix.label import Label as KLabel
+            hint = KLabel(text='Browse ~/.jobops/exports — click [DIR] to expand, click ZIP to extract, click file to preview', color=(1,1,1,0.7), size_hint_y=None)
+            hint.bind(texture_size=lambda _i,_v: setattr(hint, 'height', max(24, hint.texture_size[1]+6)))
+            tree_container.add_widget(hint)
+
             tv = TreeView(hide_root=True, indent_level=18)
-            root_node = tv.add_node(TreeViewLabel(text=str(self._exports_dir), is_open=True, bold=True))
-            def add_dir(path: Path, parent):
-                entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+            tv.size_hint_y = None
+            tv.size_hint_x = 1
+            tv.bind(minimum_height=tv.setter('height'))
+            def _sync_width(*_):
+                tv.width = tree_container.width
+            _sync_width()
+            tree_container.bind(width=_sync_width)
+
+            root_node = tv.add_node(TreeViewLabel(text=f"[v] {self._exports_dir.name}", is_open=True, no_selection=False, bold=True))
+
+            filter_q = (self._explorer_filter or '').lower().strip()
+
+            def include_path(p: Path) -> bool:
+                if not filter_q:
+                    return True
+                return filter_q in p.name.lower()
+
+            def bind_dir_toggle(label_widget: TreeViewLabel, node_ref):
+                def on_touch(_w, touch):
+                    try:
+                        if not label_widget.get_root_window():
+                            return False
+                        lx, ly = label_widget.to_window(label_widget.x, label_widget.y)
+                        if lx <= touch.x <= lx + label_widget.width and ly <= touch.y <= ly + label_widget.height:
+                            tv.toggle_node(node_ref)
+                            # update arrow
+                            prefix = '[v]' if node_ref.is_open else '[>]'
+                            parts = label_widget.text.split(' ', 1)
+                            label_widget.text = f"{prefix} {parts[1] if len(parts)>1 else ''}"
+                            return True
+                    except Exception:
+                        return False
+                    return False
+                label_widget.bind(on_touch_down=on_touch)
+
+            def bind_file_open(label_widget: TreeViewLabel, full_path: Path):
+                def on_touch(_w, touch):
+                    try:
+                        if not label_widget.get_root_window():
+                            return False
+                        lx, ly = label_widget.to_window(label_widget.x, label_widget.y)
+                        if lx <= touch.x <= lx + label_widget.width and ly <= touch.y <= ly + label_widget.height:
+                            p = full_path
+                            if p.suffix.lower() == '.zip':
+                                target_dir = p.parent / p.stem
+                                if not target_dir.exists():
+                                    try:
+                                        with ZipFile(p, 'r') as zf:
+                                            zf.extractall(target_dir)
+                                    except Exception as e:
+                                        self.root.title = f'Unzip error: {e}'
+                                        return True
+                                self._refresh_explorer()
+                                self.root.title = f'Extracted: {target_dir.name}'
+                            elif p.suffix.lower() in ('.md', '.pdf'):
+                                self._preview_file(p)
+                            else:
+                                self.root.title = f'Unsupported: {p.name}'
+                            return True
+                    except Exception:
+                        return False
+                    return False
+                label_widget.bind(on_touch_down=on_touch)
+
+            def add_dir(path: Path, parent) -> bool:
+                has_visible = False
+                try:
+                    entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+                except Exception:
+                    entries = []
                 for p in entries:
-                    node = tv.add_node(TreeViewLabel(text=p.name, no_selection=False), parent)
-                    node.path = str(p)
                     if p.is_dir():
-                        add_dir(p, node)
+                        dir_label = TreeViewLabel(text=f"[>] {p.name}", is_open=False, no_selection=False)
+                        dir_label.path = str(p)
+                        node = tv.add_node(dir_label, parent)
+                        bind_dir_toggle(dir_label, node)
+                        child_visible = add_dir(p, node)
+                        if not child_visible and not include_path(p):
+                            tv.remove_node(node)
+                        else:
+                            has_visible = True
+                    else:
+                        if include_path(p):
+                            tag = '[MD ]' if p.suffix.lower() == '.md' else ('[PDF]' if p.suffix.lower() == '.pdf' else '[ZIP]')
+                            lbl = TreeViewLabel(text=f"{tag} {p.name}", no_selection=False)
+                            lbl.path = str(p)
+                            tv.add_node(lbl, parent)
+                            bind_file_open(lbl, p)
+                            has_visible = True
+                return has_visible
+
             add_dir(self._exports_dir, root_node)
-            def on_node_select(instance, node):
-                p = Path(getattr(node, 'path', ''))
-                if p.is_file():
-                    self._preview_file(p)
-            tv.bind(selected_node=on_node_select)
-            tree.add_widget(tv)
+            tree_container.add_widget(tv)
         except Exception as e:
             self.root.title = f'Explorer error: {e}'
+
+    def set_explorer_filter(self, text: str) -> None:
+        self._explorer_filter = (text or '').strip()
+        self._refresh_explorer()
+
+    def open_exports_folder(self) -> None:
+        try:
+            webbrowser.open(self._exports_dir.as_uri())
+        except Exception:
+            pass
 
     def _preview_file(self, path: Path) -> None:
         try:
@@ -1100,6 +1211,153 @@ class JobOpsApp(App):
         tex.blit_buffer(pix.samples, colorfmt=mode, bufferfmt='ubyte')
         tex.flip_vertical()
         return tex
+
+    def _on_drop_file(self, *args):
+        try:
+            # Supports both events:
+            # - on_dropfile(window, file_path)
+            # - on_drop_file(window, file_path, x, y)
+            if len(args) >= 2:
+                file_path = args[1]
+            elif len(args) == 1:
+                file_path = args[0]
+            else:
+                self.root.title = 'Drop error: missing path'
+                return
+            path_str = file_path.decode('utf-8') if isinstance(file_path, (bytes, bytearray)) else str(file_path)
+            p = Path(path_str)
+            if not p.exists():
+                self.root.title = f'Dropped path not found: {p}'
+                return
+            if p.suffix.lower() == '.zip':
+                target = self._exports_dir / p.stem
+                if not target.exists():
+                    target.mkdir(parents=True, exist_ok=True)
+                    with ZipFile(p, 'r') as zf:
+                        zf.extractall(target)
+                self._build_gallery(target)
+                self.root.title = f'Loaded: {p.name}'
+            else:
+                self._set_gallery_hint('Please drop a .zip file exported by JobOps')
+        except Exception as e:
+            self.root.title = f'Drop error: {e}'
+
+    def _set_gallery_hint(self, text: str) -> None:
+        try:
+            self.root.ids.gallery_hint.text = text
+        except Exception:
+            pass
+
+    def _build_gallery(self, base_dir: Path) -> None:
+        try:
+            grid = self.root.ids.gallery_grid
+            grid.clear_widgets()
+            files = []
+            for ext in ('*.md', '*.pdf'):
+                files.extend(base_dir.rglob(ext))
+            files = sorted(files, key=lambda p: p.name.lower())
+            if not files:
+                self._set_gallery_hint('No markdown or pdf files found in the zip.')
+            else:
+                self._set_gallery_hint(f'Files in {base_dir.name} ({len(files)})')
+            for f in files:
+                card = self._make_thumb_card(f)
+                grid.add_widget(card)
+            # adjust columns responsively
+            self._resize_gallery()
+            try:
+                Window.bind(size=lambda *_: self._resize_gallery())
+            except Exception:
+                pass
+            self.root.ids.screen_manager.current = 'gallery'
+        except Exception as e:
+            self.root.title = f'Gallery error: {e}'
+
+    def _resize_gallery(self):
+        try:
+            grid = self.root.ids.gallery_grid
+            w = self.root.width
+            col_width = 260
+            cols = max(1, int(w / col_width))
+            grid.cols = cols
+        except Exception:
+            pass
+
+    def _make_thumb_card(self, path: Path):
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        holder = BoxLayout(orientation='vertical', size_hint_y=None, height=220, padding=(8,8), spacing=6)
+        # background
+        def draw_bg(widget):
+            widget.canvas.before.clear()
+            with widget.canvas.before:
+                Color(0.12,0.12,0.18,0.9)
+                rr = RoundedRectangle(pos=widget.pos, size=widget.size, radius=[10,])
+            def upd(*_):
+                rr.pos = widget.pos; rr.size = widget.size
+            widget.bind(pos=upd, size=upd)
+        draw_bg(holder)
+        # preview
+        ext = path.suffix.lower()
+        if ext == '.pdf':
+            try:
+                import fitz
+                doc = fitz.open(path)
+                pix = doc[0].get_pixmap(dpi=120)
+                img = Image()
+                img.texture = self._pixmap_to_texture(pix)
+                img.size_hint_y = None
+                img.height = 150
+                img.allow_stretch = True
+                img.keep_ratio = True
+                holder.add_widget(img)
+            except Exception:
+                holder.add_widget(Label(text='[PDF preview failed]', color=(1,1,1,0.8), size_hint_y=None, height=150))
+        else:
+            # markdown quick preview
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    first = '\n'.join(f.read().splitlines()[:6])
+                lbl = Label(text=first or '(empty)', color=(1,1,1,0.9), size_hint_y=None, halign='left', valign='top')
+                lbl.text_size = (240, None)
+                lbl.bind(texture_size=lambda _i,_v: setattr(lbl, 'height', min(150, lbl.texture_size[1])))
+                holder.add_widget(lbl)
+            except Exception:
+                holder.add_widget(Label(text='[MD preview failed]', color=(1,1,1,0.8), size_hint_y=None, height=150))
+        # filename
+        cap = Label(text=path.name, color=(1,1,1,1), size_hint_y=None)
+        cap.text_size=(240,None)
+        cap.bind(texture_size=lambda _i,_v: setattr(cap, 'height', min(40, cap.texture_size[1])))
+        holder.add_widget(cap)
+        # click open
+        def on_touch(_w, touch):
+            try:
+                if not holder.get_root_window():
+                    return False
+                lx, ly = holder.to_window(holder.x, holder.y)
+                if lx <= touch.x <= lx + holder.width and ly <= touch.y <= ly + holder.height:
+                    self._preview_file(path)
+                    self.root.ids.screen_manager.current = 'preview'
+                    return True
+            except Exception:
+                return False
+            return False
+        holder.bind(on_touch_down=on_touch)
+        return holder
+
+    def _open_in_file_manager(self, path: Path) -> None:
+        try:
+            if sys.platform == 'darwin':
+                subprocess.run(['open', str(path)], check=False)
+            elif os.name == 'nt':
+                os.startfile(str(path))  # type: ignore[attr-defined]
+            else:
+                subprocess.run(['xdg-open', str(path)], check=False)
+        except Exception:
+            try:
+                webbrowser.open(path.as_uri())
+            except Exception:
+                pass
 
 
 def run():
@@ -1206,59 +1464,73 @@ KV = """
                 orientation: 'horizontal'
                 padding: 0, 8
                 size_hint: 1, 1
-                # Left explorer
-                BoxLayout:
-                    id: file_tree
-                    size_hint_x: 0.28 if root.width > 1000 else 0.35 if root.width > 720 else 0.42
-                    size_hint_y: 1
-                    padding: 8, 8
-                # Right preview
-                BoxLayout:
-                    orientation: 'vertical'
-                    size_hint_x: 1
-                    ScreenManager:
-                        id: screen_manager
-                        Screen:
-                            name: 'preview'
+                # Gallery and Preview area
+                ScreenManager:
+                    id: screen_manager
+                    Screen:
+                        name: 'gallery'
+                        BoxLayout:
+                            orientation: 'vertical'
+                            spacing: 6
+                            padding: 8, 8
+                            Label:
+                                id: gallery_hint
+                                text: 'Drop a zip here'
+                                color: 1,1,1,0.8
+                                size_hint_y: None
+                                height: 28
                             ScrollView:
                                 do_scroll_x: False
                                 do_scroll_y: True
                                 bar_width: 2
-                                scroll_type: ['bars', 'content']
-                                size_hint: 1, 1
-                                BoxLayout:
-                                    id: md_render
-                                    orientation: 'vertical'
-                                    padding: 12, 12
-                                    spacing: 8
+                                GridLayout:
+                                    id: gallery_grid
+                                    cols: 3
+                                    size_hint_y: None
+                                    height: self.minimum_height
+                                    spacing: 10
+                                    padding: 4,4
+                    Screen:
+                        name: 'preview'
+                        ScrollView:
+                            do_scroll_x: False
+                            do_scroll_y: True
+                            bar_width: 2
+                            scroll_type: ['bars', 'content']
+                            size_hint: 1, 1
+                            BoxLayout:
+                                id: md_render
+                                orientation: 'vertical'
+                                padding: 12, 12
+                                spacing: 8
+                                size_hint_y: None
+                                size_hint_x: 1
+                                width: self.parent.width
+                                height: self.minimum_height
+                                Label:
+                                    id: md_preview_fallback
+                                    text: ''
+                                    color: 1,1,1,1
                                     size_hint_y: None
                                     size_hint_x: 1
-                                    width: self.parent.width
-                                    height: self.minimum_height
-                                    Label:
-                                        id: md_preview_fallback
-                                        text: ''
-                                        color: 1,1,1,1
-                                        size_hint_y: None
-                                        size_hint_x: 1
-                                        text_size: self.width, None
-                                        height: self.texture_size[1]
-                                        halign: 'left'
-                                        valign: 'top'
-                    Screen:
-                        name: 'code'
-                        BoxLayout:
-                            orientation: 'vertical'
-                            padding: 8, 8
-                            TextInput:
-                                id: md_code
-                                text: ''
-                                hint_text: 'Markdown code will appear here'
-                                foreground_color: 1,1,1,1
-                                background_color: 0.09,0.09,0.12,1
-                                cursor_color: 0.8,0.8,0.8,1
-                                size_hint: 1, 1
-                                multiline: True
+                                    text_size: self.width, None
+                                    height: self.texture_size[1]
+                                    halign: 'left'
+                                    valign: 'top'
+                        Screen:
+                            name: 'code'
+                            BoxLayout:
+                                orientation: 'vertical'
+                                padding: 8, 8
+                                TextInput:
+                                    id: md_code
+                                    text: ''
+                                    hint_text: 'Markdown code will appear here'
+                                    foreground_color: 1,1,1,1
+                                    background_color: 0.09,0.09,0.12,1
+                                    cursor_color: 0.8,0.8,0.8,1
+                                    size_hint: 1, 1
+                                    multiline: True
             FloatLayout:
                 id: preloader
                 size_hint: 1, 1
