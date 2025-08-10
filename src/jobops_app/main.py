@@ -40,6 +40,7 @@ from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.image import Image
 from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserIconView
+from kivy.uix.accordion import Accordion, AccordionItem
 
 
 APP_TITLE = "JobOps App"
@@ -100,6 +101,7 @@ class JobOpsApp(App):
         self.current_job_id: str | None = None
         self._is_hidden: bool = False
         self._loader_anim_event = None
+        self._loader_progress_event = None
         # swipe handling
         self._touch_start_x: float | None = None
         self._tray_icon: pystray.Icon | None = None
@@ -250,6 +252,9 @@ class JobOpsApp(App):
     def _render_markdown_to_preview(self, md: str) -> None:
         container: BoxLayout = self.root.ids.md_render
         container.clear_widgets()
+        self._render_markdown_to_container(container, md)
+
+    def _render_markdown_to_container(self, container: BoxLayout, md: str) -> None:
         from kivy.uix.label import Label
         pad = 12
         
@@ -481,6 +486,49 @@ class JobOpsApp(App):
             pass
         container.parent and container.parent.bind(width=lambda *_: setattr(container, 'width', container.parent.width))
         container.parent and container.parent.parent and container.parent.parent.bind(width=lambda *_: setattr(container, 'width', container.parent.parent.width))
+
+    def _render_all_markdowns(self, base_dir: Path) -> None:
+        try:
+            root_container: BoxLayout = self.root.ids.md_render
+            root_container.clear_widgets()
+            acc = Accordion(orientation='vertical', size_hint_y=None)
+            try:
+                acc.multiple = True  # allow all sections to stay open
+            except Exception:
+                pass
+            acc.bind(minimum_height=acc.setter('height'))
+            files = sorted(base_dir.rglob('*.md'), key=lambda p: p.name.lower())
+            for idx, f in enumerate(files, start=1):
+                title = f"{idx:02d} — {f.name}"
+                item = AccordionItem(title=title, min_space=40)
+                # container for rendered markdown
+                content = BoxLayout(orientation='vertical', size_hint_y=None, padding=(8,8), spacing=6)
+                content.bind(minimum_height=content.setter('height'))
+                try:
+                    with open(f, 'r', encoding='utf-8') as fh:
+                        md = fh.read()
+                except Exception as e:
+                    md = f"Error reading file: {e}"
+                self._render_markdown_to_container(content, md)
+                item.add_widget(content)
+                try:
+                    item.collapse = False  # expand by default
+                except Exception:
+                    pass
+                acc.add_widget(item)
+            root_container.add_widget(acc)
+            # propagate height so ScrollView can scroll all content
+            try:
+                root_container.bind(minimum_height=root_container.setter('height'))
+            except Exception:
+                pass
+            # Navigate to preview view
+            try:
+                self.root.ids.screen_manager.current = 'preview'
+            except Exception:
+                pass
+        except Exception as e:
+            self.root.title = f'Collapsible preview error: {e}'
 
     def switch_to_section(self, name: str):
         # Repurpose navigation: only 'application_summary' shows Preview
@@ -890,9 +938,14 @@ class JobOpsApp(App):
         try:
             overlay = self.root.ids.preloader
             label = self.root.ids.preloader_label
+            bar = self.root.ids.preloader_bar
             label.text = message
             overlay.disabled = False
             overlay.opacity = 1
+            try:
+                bar.value = 0
+            except Exception:
+                pass
             # Animated dots
             def animate(_dt):
                 base = message.rstrip('. ')
@@ -908,6 +961,9 @@ class JobOpsApp(App):
             if self._loader_anim_event:
                 self._loader_anim_event.cancel()
                 self._loader_anim_event = None
+            if self._loader_progress_event:
+                self._loader_progress_event.cancel()
+                self._loader_progress_event = None
             overlay = self.root.ids.preloader
             overlay.opacity = 0
             overlay.disabled = True
@@ -1264,18 +1320,77 @@ class JobOpsApp(App):
             if not p.exists():
                 self.root.title = f'Dropped path not found: {p}'
                 return
+            # Flash drop indicator
+            self._flash_drop_indicator('ZIP detected')
             if p.suffix.lower() == '.zip':
                 target = self._exports_dir / p.stem
-                if not target.exists():
-                    target.mkdir(parents=True, exist_ok=True)
-                    with ZipFile(p, 'r') as zf:
-                        zf.extractall(target)
-                self._build_gallery(target)
-                self.root.title = f'Loaded: {p.name}'
+                def do_extract():
+                    try:
+                        if not target.exists():
+                            target.mkdir(parents=True, exist_ok=True)
+                            with ZipFile(p, 'r') as zf:
+                                zf.extractall(target)
+                        # Build collapsible preview with all markdown files
+                        self._render_all_markdowns(target)
+                        # Force switch to preview after render
+                        try:
+                            self.root.ids.screen_manager.current = 'preview'
+                        except Exception:
+                            Clock.schedule_once(lambda dt: setattr(self.root.ids.screen_manager, 'current', 'preview'), 0)
+                        self.root.title = f'Loaded: {p.name}'
+                    finally:
+                        self.stop_loading()
+                # Show 1s progress then extract
+                self.show_progress('Processing ZIP…', 1.0, do_extract)
             else:
                 self._set_gallery_hint('Please drop a .zip file exported by JobOps')
         except Exception as e:
             self.root.title = f'Drop error: {e}'
+
+    def _flash_drop_indicator(self, message: str, duration: float = 0.3) -> None:
+        try:
+            overlay = self.root.ids.drop_indicator
+            label = self.root.ids.drop_indicator_label
+            label.text = message
+            overlay.opacity = 1
+            overlay.disabled = False
+            def hide(_dt):
+                overlay.opacity = 0
+                overlay.disabled = True
+            Clock.schedule_once(hide, duration)
+        except Exception:
+            pass
+
+    def show_progress(self, message: str, seconds: float, after_fn) -> None:
+        try:
+            overlay = self.root.ids.preloader
+            label = self.root.ids.preloader_label
+            bar = self.root.ids.preloader_bar
+            label.text = message
+            bar.max = 100
+            bar.value = 0
+            overlay.disabled = False
+            overlay.opacity = 1
+            steps = max(1, int(seconds / 0.05))
+            increment = 100 / steps
+            def tick(dt):
+                try:
+                    bar.value = min(100, bar.value + increment)
+                except Exception:
+                    pass
+            self._loader_progress_event = Clock.schedule_interval(tick, 0.05)
+            def finish(dt):
+                try:
+                    if self._loader_progress_event:
+                        self._loader_progress_event.cancel()
+                        self._loader_progress_event = None
+                except Exception:
+                    pass
+                after_fn()
+            Clock.schedule_once(finish, seconds)
+        except Exception:
+            # Fallback: just run after_fn after delay
+            Clock.schedule_once(lambda dt: after_fn(), seconds)
 
     def _set_gallery_hint(self, text: str) -> None:
         try:
@@ -1347,20 +1462,28 @@ class JobOpsApp(App):
             # reset previous
             if self._selected_thumb and self._selected_thumb in self._thumb_cards:
                 prev = self._thumb_cards[self._selected_thumb]
-                self._apply_card_bg(prev, (0.12, 0.12, 0.18, 0.9))
+                self._apply_card_bg(prev, (0.12, 0.12, 0.18, 0.9), with_border=False)
             self._selected_thumb = str(path)
-            self._apply_card_bg(card_widget, (0.18, 0.18, 0.22, 0.95))
+            self._apply_card_bg(card_widget, (0.18, 0.18, 0.22, 0.95), with_border=True)
+            self._set_gallery_hint(f'Selected: {Path(path).name} — double-click to open')
         except Exception:
             pass
 
-    def _apply_card_bg(self, widget, rgba):
+    def _apply_card_bg(self, widget, rgba, with_border: bool = False):
         try:
             widget.canvas.before.clear()
             with widget.canvas.before:
                 Color(*rgba)
                 rr = RoundedRectangle(pos=widget.pos, size=widget.size, radius=[10,])
+                if with_border:
+                    Color(1, 1, 1, 0.15)
+                    Line_ = RoundedRectangle  # placeholder to keep namespace clean
+                    # Draw a subtle outline using a slightly larger rectangle under a Line effect
+                    border = RoundedRectangle(pos=(widget.x-1, widget.y-1), size=(widget.width+2, widget.height+2), radius=[10,])
             def upd(*_):
                 rr.pos = widget.pos; rr.size = widget.size
+                if with_border:
+                    border.pos = (widget.x-1, widget.y-1); border.size = (widget.width+2, widget.height+2)
             widget.bind(pos=upd, size=upd)
         except Exception:
             pass
@@ -1380,7 +1503,7 @@ class JobOpsApp(App):
             holder.add_widget(lbl)
         except Exception:
             holder.add_widget(Label(text='[MD preview failed]', color=(1,1,1,0.8), size_hint_y=None, height=self._thumb_base_height-40))
-        cap = Label(text=path.name, color=(1,1,1,1), size_hint_y=None)
+        cap = Label(text=path.name, color=(1,1,1,1), size_hint_y=None, shorten=True)
         cap.text_size=(220,None)
         cap.bind(texture_size=lambda _i,_v: setattr(cap, 'height', min(30, cap.texture_size[1])))
         holder.add_widget(cap)
@@ -1391,6 +1514,14 @@ class JobOpsApp(App):
                 lx, ly = holder.to_window(holder.x, holder.y)
                 if lx <= touch.x <= lx + holder.width and ly <= touch.y <= ly + holder.height:
                     self._select_thumb(holder, path)
+                    # Prefer Kivy's native double tap if available
+                    if getattr(touch, 'is_double_tap', False):
+                        self._preview_file(path)
+                        self.root.ids.screen_manager.current = 'preview'
+                        self._last_click_path = None
+                        self._last_click_ts = 0.0
+                        return True
+                    # Fallback to timing-based double click
                     now = time.time()
                     if self._last_click_path == str(path) and (now - self._last_click_ts) <= 0.35:
                         self._preview_file(path)
@@ -1594,6 +1725,7 @@ KV = """
                                     cursor_color: 0.8,0.8,0.8,1
                                     size_hint: 1, 1
                                     multiline: True
+
             FloatLayout:
                 id: preloader
                 size_hint: 1, 1
@@ -1636,10 +1768,43 @@ KV = """
                             height: 48
                             font_size: '20sp'
                         ProgressBar:
+                            id: preloader_bar
                             max: 100
                             value: 50
                             size_hint_y: None
                             height: 8
+
+            # Drop indicator overlay (short flash upon drop)
+            FloatLayout:
+                id: drop_indicator
+                size_hint: 1, 1
+                opacity: 0
+                disabled: True
+                canvas.before:
+                    Color:
+                        rgba: 0.12, 0.65, 0.98, 0.18
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                AnchorLayout:
+                    anchor_x: 'center'
+                    anchor_y: 'center'
+                    size_hint: 1, 1
+                    Label:
+                        id: drop_indicator_label
+                        text: 'Drop detected'
+                        color: 1,1,1,1
+                        font_size: '18sp'
+                        size_hint: None, None
+                        height: 36
+                        width: self.texture_size[0] + dp(24)
+                        canvas.before:
+                            Color:
+                                rgba: 0.12, 0.65, 0.98, 0.4
+                            RoundedRectangle:
+                                pos: self.x - dp(8), self.y - dp(6)
+                                size: self.width + dp(16), self.height + dp(12)
+                                radius: [12,]
 
         # Bottom sticky bar
         BoxLayout:
