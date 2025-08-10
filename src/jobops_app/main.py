@@ -35,6 +35,8 @@ from kivy.graphics import Color, RoundedRectangle, Rectangle
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 import re, webbrowser
+from kivy.uix.treeview import TreeView, TreeViewLabel
+from kivy.uix.image import Image
 
 
 APP_TITLE = "JobOps App"
@@ -108,6 +110,8 @@ class JobOpsApp(App):
                 self.icon = str(icon_path)
             except Exception:
                 pass
+        self._exports_dir = Path(os.path.expanduser('~/.jobops/exports'))
+        self._exports_dir.mkdir(parents=True, exist_ok=True)
 
     def build(self):
         try:
@@ -151,13 +155,12 @@ class JobOpsApp(App):
         return root
 
     def on_start(self):
-        # Initialize preview on start
-        self._create_preview()
+        # Initialize explorer on start
+        self._refresh_explorer()
         try:
             self.root.ids.screen_manager.current = 'preview'
         except Exception:
             pass
-        # Recenter after window is shown
         Clock.schedule_once(lambda dt: self._center_window(), 0)
 
     def on_touch_down(self, touch):  # type: ignore[override]
@@ -520,20 +523,15 @@ class JobOpsApp(App):
             pos = sample.get('position_details', {})
             job_id = self.repo.get_or_create_job(url, pos.get('job_title'), pos.get('company_name'))
             self.current_job_id = job_id
-            # Upsert all dict sections present in sample (don't rely on SECTION_SPECS)
             for key, payload in sample.items():
                 if key == 'url':
                     continue
                 if isinstance(payload, dict):
                     self.repo.upsert_section(job_id, key, payload)
+            # Generate a zip (per-section) to exports
+            self.download_zip()
             self.stop_loading()
-            # Refresh preview immediately
-            self._create_preview()
-            try:
-                self.root.ids.screen_manager.current = 'preview'
-                self.root.title = 'Loaded sample data'
-            except Exception:
-                pass
+            self._refresh_explorer()
         except Exception:
             self.stop_loading()
 
@@ -1026,6 +1024,83 @@ class JobOpsApp(App):
         except Exception:
             pass
 
+    def _refresh_explorer(self) -> None:
+        try:
+            tree = self.root.ids.file_tree
+            tree.clear_widgets()
+            tv = TreeView(hide_root=True, indent_level=18)
+            root_node = tv.add_node(TreeViewLabel(text=str(self._exports_dir), is_open=True, bold=True))
+            def add_dir(path: Path, parent):
+                entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+                for p in entries:
+                    node = tv.add_node(TreeViewLabel(text=p.name, no_selection=False), parent)
+                    node.path = str(p)
+                    if p.is_dir():
+                        add_dir(p, node)
+            add_dir(self._exports_dir, root_node)
+            def on_node_select(instance, node):
+                p = Path(getattr(node, 'path', ''))
+                if p.is_file():
+                    self._preview_file(p)
+            tv.bind(selected_node=on_node_select)
+            tree.add_widget(tv)
+        except Exception as e:
+            self.root.title = f'Explorer error: {e}'
+
+    def _preview_file(self, path: Path) -> None:
+        try:
+            preview_container = self.root.ids.md_render
+            # Clear
+            preview_container.clear_widgets()
+            ext = path.suffix.lower()
+            if ext == '.md':
+                with open(path, 'r', encoding='utf-8') as f:
+                    md = f.read()
+                self._render_markdown_to_preview(md)
+            elif ext == '.pdf':
+                self._render_pdf_to_preview(path)
+            else:
+                lbl = self._mk_label(f'Unsupported file: {path.name}')
+                preview_container.add_widget(lbl)
+            self.root.title = f'Previewing: {path.name}'
+        except Exception as e:
+            self.root.title = f'Preview error: {e}'
+
+    def _mk_label(self, text: str):
+        from kivy.uix.label import Label
+        lbl = Label(text=text, color=(1,1,1,1), size_hint_y=None, halign='left', valign='top')
+        lbl.text_size = (self.root.ids.md_render.width - 24, None)
+        lbl.bind(texture_size=lambda _i,_v: setattr(lbl, 'height', lbl.texture_size[1]))
+        return lbl
+
+    def _render_pdf_to_preview(self, pdf_path: Path) -> None:
+        try:
+            import fitz  # pymupdf
+            container = self.root.ids.md_render
+            doc = fitz.open(pdf_path)
+            for page in doc:
+                pix = page.get_pixmap(dpi=160)
+                img = Image()
+                img.texture = self._pixmap_to_texture(pix)
+                img.size_hint_y = None
+                img.height = img.texture.height
+                img.width = container.width - 24
+                img.allow_stretch = True
+                img.keep_ratio = True
+                container.add_widget(img)
+            container.bind(minimum_height=container.setter('height'))
+        except Exception as e:
+            container = self.root.ids.md_render
+            container.add_widget(self._mk_label(f'Failed to render PDF: {e}'))
+
+    def _pixmap_to_texture(self, pix):
+        from kivy.graphics.texture import Texture
+        mode = 'rgba' if pix.alpha else 'rgb'
+        tex = Texture.create(size=(pix.width, pix.height), colorfmt=mode)
+        tex.blit_buffer(pix.samples, colorfmt=mode, bufferfmt='ubyte')
+        tex.flip_vertical()
+        return tex
+
 
 def run():
     JobOpsApp().run()
@@ -1120,107 +1195,116 @@ KV = """
                 halign: 'left'
 
         # Content area (glass background)
-        BoxLayout:
-            orientation: 'vertical'
-            padding: 0, 8
+        FloatLayout:
             canvas.before:
                 Color:
                     rgba: 0.06, 0.06, 0.09, 0.5
                 Rectangle:
                     pos: self.pos
                     size: self.size
-            ScreenManager:
-                id: screen_manager
-                Screen:
-                    name: 'preview'
-                    ScrollView:
-                        do_scroll_x: False
-                        do_scroll_y: True
-                        bar_width: 2
-                        scroll_type: ['bars', 'content']
-                        size_hint: 1, 1
-                        BoxLayout:
-                            id: md_render
-                            orientation: 'vertical'
-                            padding: 12, 12
-                            spacing: 8
-                            size_hint_y: None
-                            size_hint_x: 1
-                            width: self.parent.width
-                            height: self.minimum_height
-                            # Fallback when renderer errors
-                            Label:
-                                id: md_preview_fallback
-                                text: ''
-                                color: 1,1,1,1
-                                size_hint_y: None
-                                size_hint_x: 1
-                                text_size: self.width, None
-                                height: self.texture_size[1]
-                                halign: 'left'
-                                valign: 'top'
-                Screen:
-                    name: 'code'
-                    BoxLayout:
-                        orientation: 'vertical'
-                        padding: 8, 8
-                        TextInput:
-                            id: md_code
-                            text: ''
-                            hint_text: 'Markdown code will appear here'
-                            foreground_color: 1,1,1,1
-                            background_color: 0.09,0.09,0.12,1
-                            cursor_color: 0.8,0.8,0.8,1
-                            size_hint: 1, 1
-                            multiline: True
-
-        # Preloader overlay
-        FloatLayout:
-            id: preloader
-            size_hint: 1, 1
-            opacity: 0
-            disabled: True
-            canvas.before:
-                Color:
-                    rgba: 0, 0, 0, 0.35
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
-            AnchorLayout:
-                anchor_x: 'center'
-                anchor_y: 'center'
+            BoxLayout:
+                orientation: 'horizontal'
+                padding: 0, 8
                 size_hint: 1, 1
+                # Left explorer
+                BoxLayout:
+                    id: file_tree
+                    size_hint_x: 0.28 if root.width > 1000 else 0.35 if root.width > 720 else 0.42
+                    size_hint_y: 1
+                    padding: 8, 8
+                # Right preview
                 BoxLayout:
                     orientation: 'vertical'
-                    size_hint: None, None
-                    width: min(root.width * 0.6, 520)
-                    height: 160
-                    padding: 16, 16
-                    spacing: 8
-                    canvas.before:
-                        Color:
-                            rgba: 0.12, 0.12, 0.18, 0.7
-                        RoundedRectangle:
-                            pos: self.pos
-                            size: self.size
-                            radius: [16,]
-                        Color:
-                            rgba: 1, 1, 1, 0.10
-                        Line:
-                            rounded_rectangle: (self.x, self.y, self.width, self.height, 16)
-                            width: 1
-                    Label:
-                        id: preloader_label
-                        text: 'Loading…'
-                        color: 1,1,1,1
-                        size_hint_y: None
-                        height: 48
-                        font_size: '20sp'
-                    ProgressBar:
-                        max: 100
-                        value: 50
-                        size_hint_y: None
-                        height: 8
+                    size_hint_x: 1
+                    ScreenManager:
+                        id: screen_manager
+                        Screen:
+                            name: 'preview'
+                            ScrollView:
+                                do_scroll_x: False
+                                do_scroll_y: True
+                                bar_width: 2
+                                scroll_type: ['bars', 'content']
+                                size_hint: 1, 1
+                                BoxLayout:
+                                    id: md_render
+                                    orientation: 'vertical'
+                                    padding: 12, 12
+                                    spacing: 8
+                                    size_hint_y: None
+                                    size_hint_x: 1
+                                    width: self.parent.width
+                                    height: self.minimum_height
+                                    Label:
+                                        id: md_preview_fallback
+                                        text: ''
+                                        color: 1,1,1,1
+                                        size_hint_y: None
+                                        size_hint_x: 1
+                                        text_size: self.width, None
+                                        height: self.texture_size[1]
+                                        halign: 'left'
+                                        valign: 'top'
+                    Screen:
+                        name: 'code'
+                        BoxLayout:
+                            orientation: 'vertical'
+                            padding: 8, 8
+                            TextInput:
+                                id: md_code
+                                text: ''
+                                hint_text: 'Markdown code will appear here'
+                                foreground_color: 1,1,1,1
+                                background_color: 0.09,0.09,0.12,1
+                                cursor_color: 0.8,0.8,0.8,1
+                                size_hint: 1, 1
+                                multiline: True
+            FloatLayout:
+                id: preloader
+                size_hint: 1, 1
+                opacity: 0
+                disabled: True
+                canvas.before:
+                    Color:
+                        rgba: 0, 0, 0, 0.35
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                AnchorLayout:
+                    anchor_x: 'center'
+                    anchor_y: 'center'
+                    size_hint: 1, 1
+                    BoxLayout:
+                        orientation: 'vertical'
+                        size_hint: None, None
+                        width: min(root.width * 0.6, 520)
+                        height: 160
+                        padding: 16, 16
+                        spacing: 8
+                        canvas.before:
+                            Color:
+                                rgba: 0.12, 0.12, 0.18, 0.7
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [16,]
+                            Color:
+                                rgba: 1, 1, 1, 0.10
+                            Line:
+                                rounded_rectangle: (self.x, self.y, self.width, self.height, 16)
+                                width: 1
+                        Label:
+                            id: preloader_label
+                            text: 'Loading…'
+                            color: 1,1,1,1
+                            size_hint_y: None
+                            height: 48
+                            font_size: '20sp'
+                        ProgressBar:
+                            max: 100
+                            value: 50
+                            size_hint_y: None
+                            height: 8
 
         # Bottom sticky bar
         BoxLayout:
